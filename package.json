@@ -30,6 +30,12 @@
   "peerDependencies": {
     "typescript": "^5"
   },
+  "trustedDependencies": [
+    "@temporalio/core-bridge",
+    "@biomejs/biome",
+    "playwright",
+    "playwright-core"
+  ],
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.119",
     "@temporalio/activity": "^1.16.1",

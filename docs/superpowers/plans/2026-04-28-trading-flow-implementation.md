@@ -1147,18 +1147,18 @@ export const RejectedPayload = z.object({
 
 export const EntryFilledPayload = z.object({
   fillPrice: z.number(),
-  observedAt: z.string().datetime(),
+  observedAt: z.iso.datetime(),
 });
 
 export const TPHitPayload = z.object({
   level: z.number(),
   index: z.number().int().nonnegative(),  // which TP (TP1, TP2…)
-  observedAt: z.string().datetime(),
+  observedAt: z.iso.datetime(),
 });
 
 export const SLHitPayload = z.object({
   level: z.number(),
-  observedAt: z.string().datetime(),
+  observedAt: z.iso.datetime(),
 });
 
 export const TrailingMovedPayload = z.object({
@@ -1168,13 +1168,13 @@ export const TrailingMovedPayload = z.object({
 
 export const ExpiredPayload = z.object({
   reason: z.literal("ttl_reached"),
-  ttlExpiresAt: z.string().datetime(),
+  ttlExpiresAt: z.iso.datetime(),
 });
 
 export const PriceInvalidatedPayload = z.object({
   currentPrice: z.number(),
   invalidationLevel: z.number(),
-  observedAt: z.string().datetime(),
+  observedAt: z.iso.datetime(),
 });
 
 export const EventPayloadSchema = z.discriminatedUnion("type", [
@@ -1919,7 +1919,7 @@ const LLMProviderConfigSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("openrouter"),
     api_key: z.string(),
-    base_url: z.string().url().default("https://openrouter.ai/api/v1"),
+    base_url: z.url().default("https://openrouter.ai/api/v1"),
     monthly_budget_usd: z.number().positive().optional(),
     fallback: z.string().nullable().default(null),
   }),
