@@ -5,8 +5,17 @@ export class InMemoryEventStore implements EventStore {
   setupStateAfterAppend = new Map<string, SetupStateUpdate>();
 
   async append(event: NewEvent, setupUpdate: SetupStateUpdate): Promise<StoredEvent> {
+    // Assign sequence atomically — mirrors PostgresEventStore behavior so
+    // tests have the same semantics as production. Caller-supplied
+    // `event.sequence` is ignored.
+    const max = this.events
+      .filter((e) => e.setupId === event.setupId)
+      .reduce((m, e) => Math.max(m, e.sequence), 0);
+    const sequence = max + 1;
+    const { sequence: _ignored, ...rest } = event;
     const stored: StoredEvent = {
-      ...event,
+      ...rest,
+      sequence,
       id: crypto.randomUUID(),
       occurredAt: new Date(),
     };
@@ -21,13 +30,6 @@ export class InMemoryEventStore implements EventStore {
 
   async findByInputHash(setupId: string, inputHash: string): Promise<StoredEvent | null> {
     return this.events.find((e) => e.setupId === setupId && e.inputHash === inputHash) ?? null;
-  }
-
-  async nextSequence(setupId: string): Promise<number> {
-    const max = this.events
-      .filter((e) => e.setupId === setupId)
-      .reduce((m, e) => Math.max(m, e.sequence), 0);
-    return max + 1;
   }
 
   reset(): void {

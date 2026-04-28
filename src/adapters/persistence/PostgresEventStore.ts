@@ -75,14 +75,6 @@ export class PostgresEventStore implements EventStore {
       .limit(1);
     return row ? mapStored(row) : null;
   }
-
-  async nextSequence(setupId: string): Promise<number> {
-    const [row] = await this.db
-      .select({ max: sql<number>`COALESCE(MAX(${events.sequence}), 0)` })
-      .from(events)
-      .where(eq(events.setupId, setupId));
-    return Number(row?.max ?? 0) + 1;
-  }
 }
 
 function mapStored(r: typeof events.$inferSelect): StoredEvent {

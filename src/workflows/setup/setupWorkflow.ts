@@ -190,20 +190,20 @@ export async function setupWorkflow(initial: InitialEvidence): Promise<SetupStat
       scoreThresholdDead: initial.scoreThresholdDead,
     });
 
-    const seq = (await dbActivities.nextSequence({ setupId: initial.setupId })).sequence;
     const { type, payload } = verdictToEvent(verdict);
 
-    // Update in-memory state BEFORE persisting so concurrent timer scopes
-    // (e.g. TTL) see the new status and don't override it.
-    state.sequence = seq;
-    state.status = next.status;
+    // Mutate in-memory state BEFORE persisting. The store assigns the
+    // sequence atomically inside its transaction (Postgres MAX+1 / fake
+    // counter), so concurrent state mutations from other handlers (e.g.
+    // priceCheck flipping to INVALIDATED, or TTL flipping to EXPIRED)
+    // cannot collide on the unique (setup_id, sequence) constraint.
     state.score = next.score;
     state.invalidationLevel = next.invalidationLevel;
+    state.status = next.status;
 
-    await dbActivities.persistEvent({
+    const stored = await dbActivities.persistEvent({
       event: {
         setupId: initial.setupId,
-        sequence: seq,
         stage: "reviewer",
         actor: reviewerResult.promptVersion,
         type,
@@ -224,6 +224,7 @@ export async function setupWorkflow(initial: InitialEvidence): Promise<SetupStat
         invalidationLevel: next.invalidationLevel,
       },
     });
+    state.sequence = stored.sequence;
   });
 
   setHandler(corroborateSignal, async (args) => {
@@ -233,15 +234,9 @@ export async function setupWorkflow(initial: InitialEvidence): Promise<SetupStat
     const newStatus: SetupStatus =
       newScore >= initial.scoreThresholdFinalizer ? "FINALIZING" : before.status;
 
-    const seq = (await dbActivities.nextSequence({ setupId: initial.setupId })).sequence;
-    state.sequence = seq;
-    state.score = newScore;
-    state.status = newStatus;
-
-    await dbActivities.persistEvent({
+    const stored = await dbActivities.persistEvent({
       event: {
         setupId: initial.setupId,
-        sequence: seq,
         stage: "detector",
         actor: initial.detectorPromptVersion,
         type: "Strengthened",
@@ -264,6 +259,11 @@ export async function setupWorkflow(initial: InitialEvidence): Promise<SetupStat
         invalidationLevel: state.invalidationLevel,
       },
     });
+
+    state.sequence = stored.sequence;
+    state.score = newScore;
+    // Flip status LAST so active loop sees the new state only after persist commits.
+    state.status = newStatus;
   });
 
   setHandler(priceCheckSignal, async (args) => {
@@ -279,14 +279,10 @@ export async function setupWorkflow(initial: InitialEvidence): Promise<SetupStat
     if (!isActive(state.status)) return;
 
     const before = { status: state.status, score: state.score };
-    const seq = (await dbActivities.nextSequence({ setupId: initial.setupId })).sequence;
-    state.sequence = seq;
-    state.status = "INVALIDATED";
 
-    await dbActivities.persistEvent({
+    const stored = await dbActivities.persistEvent({
       event: {
         setupId: initial.setupId,
-        sequence: seq,
         stage: "system",
         actor: "price_monitor",
         type: "PriceInvalidated",
@@ -309,6 +305,9 @@ export async function setupWorkflow(initial: InitialEvidence): Promise<SetupStat
         invalidationLevel: state.invalidationLevel,
       },
     });
+
+    state.sequence = stored.sequence;
+    state.status = "INVALIDATED";
 
     if (everConfirmed) {
       await notifyActivities.notifyTelegramInvalidatedAfterConfirmed({
@@ -339,12 +338,10 @@ export async function setupWorkflow(initial: InitialEvidence): Promise<SetupStat
     workflowId: workflowInfo().workflowId,
   });
 
-  // Persist SetupCreated event
-  state.sequence = (await dbActivities.nextSequence({ setupId: initial.setupId })).sequence;
-  await dbActivities.persistEvent({
+  // Persist SetupCreated event — store assigns sequence atomically.
+  const createdEvt = await dbActivities.persistEvent({
     event: {
       setupId: initial.setupId,
-      sequence: state.sequence,
       stage: "detector",
       actor: initial.detectorPromptVersion,
       type: "SetupCreated",
@@ -369,6 +366,7 @@ export async function setupWorkflow(initial: InitialEvidence): Promise<SetupStat
       invalidationLevel: state.invalidationLevel,
     },
   });
+  state.sequence = createdEvt.sequence;
 
   // TTL timer (Temporal-native, durable). Runs in a cancellable scope so we
   // can stop it as soon as the workflow leaves an active state.
@@ -384,14 +382,15 @@ export async function setupWorkflow(initial: InitialEvidence): Promise<SetupStat
         // activities mid-flight. Without this guard the Expired event and
         // Telegram notification could be dropped on a race.
         await CancellationScope.nonCancellable(async () => {
-          const seq = (await dbActivities.nextSequence({ setupId: initial.setupId })).sequence;
           const before = state.status;
-          state.sequence = seq;
+          // For the TTL handler we flip state BEFORE persist (in a
+          // non-cancellable scope). This is intentional: it ensures the
+          // active loop observes EXPIRED and exits even if persist transiently
+          // fails — the persist activity itself retries idempotently.
           state.status = "EXPIRED";
-          await dbActivities.persistEvent({
+          const stored = await dbActivities.persistEvent({
             event: {
               setupId: initial.setupId,
-              sequence: seq,
               stage: "system",
               actor: "ttl",
               type: "Expired",
@@ -413,6 +412,7 @@ export async function setupWorkflow(initial: InitialEvidence): Promise<SetupStat
               invalidationLevel: state.invalidationLevel,
             },
           });
+          state.sequence = stored.sequence;
           await notifyActivities.notifyTelegramExpired({
             watchId: initial.watchId,
             asset: initial.asset,
@@ -443,15 +443,10 @@ export async function setupWorkflow(initial: InitialEvidence): Promise<SetupStat
           stop_loss?: number;
           take_profit?: number[];
         };
-        const seq = (await dbActivities.nextSequence({ setupId: initial.setupId })).sequence;
         if (decision.go) {
-          state.sequence = seq;
-          state.status = "TRACKING";
-          everConfirmed = true;
-          await dbActivities.persistEvent({
+          const stored = await dbActivities.persistEvent({
             event: {
               setupId: initial.setupId,
-              sequence: seq,
               stage: "finalizer",
               actor: finalizerPromptVersion,
               type: "Confirmed",
@@ -480,6 +475,9 @@ export async function setupWorkflow(initial: InitialEvidence): Promise<SetupStat
               invalidationLevel: state.invalidationLevel,
             },
           });
+          state.sequence = stored.sequence;
+          state.status = "TRACKING";
+          everConfirmed = true;
           await notifyActivities.notifyTelegramConfirmed({
             watchId: initial.watchId,
             asset: initial.asset,
@@ -505,12 +503,9 @@ export async function setupWorkflow(initial: InitialEvidence): Promise<SetupStat
           // so the active loop exits cleanly instead of blocking on `condition`.
           state.status = "CLOSED";
         } else {
-          state.sequence = seq;
-          state.status = "REJECTED";
-          await dbActivities.persistEvent({
+          const stored = await dbActivities.persistEvent({
             event: {
               setupId: initial.setupId,
-              sequence: seq,
               stage: "finalizer",
               actor: finalizerPromptVersion,
               type: "Rejected",
@@ -533,6 +528,8 @@ export async function setupWorkflow(initial: InitialEvidence): Promise<SetupStat
               invalidationLevel: state.invalidationLevel,
             },
           });
+          state.sequence = stored.sequence;
+          state.status = "REJECTED";
           await notifyActivities.notifyTelegramRejected({
             watchId: initial.watchId,
             asset: initial.asset,

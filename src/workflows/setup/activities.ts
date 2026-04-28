@@ -55,10 +55,6 @@ export function buildSetupActivities(deps: ActivityDeps) {
       return deps.eventStore.append(input.event, input.setupUpdate);
     },
 
-    async nextSequence(input: { setupId: string }): Promise<{ sequence: number }> {
-      return { sequence: await deps.eventStore.nextSequence(input.setupId) };
-    },
-
     async runReviewer(input: {
       setupId: string;
       tickSnapshotId: string;

@@ -173,15 +173,6 @@ describe("SetupWorkflow integration (real Postgres + real activities)", () => {
           };
         }
         if (input.systemPrompt.includes("Finalizer")) {
-          // Small artificial delay so the Strengthened persist (triggered by
-          // the review signal handler when it flips status to FINALIZING) has
-          // time to commit before the active loop calls nextSequence for the
-          // Confirmed event. Without this, both nextSequence calls can read
-          // the same MAX(sequence) value and produce a duplicate-key error
-          // ("ux_events_setup_seq"). The race is intentional in the workflow
-          // (status flips BEFORE persist to avoid a TTL race) but it surfaces
-          // when fakes resolve activities effectively instantly.
-          await new Promise((r) => setTimeout(r, 100));
           return {
             content: "{}",
             parsed: {

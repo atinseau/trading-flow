@@ -33,11 +33,6 @@ async function createTestSetup(): Promise<string> {
 }
 
 describe("PostgresEventStore", () => {
-  test("nextSequence returns 1 for fresh setup", async () => {
-    const id = await createTestSetup();
-    expect(await store.nextSequence(id)).toBe(1);
-  });
-
   test("append + listForSetup returns events in sequence order", async () => {
     const id = await createTestSetup();
     await store.append(

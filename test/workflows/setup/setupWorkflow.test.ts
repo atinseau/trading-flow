@@ -3,10 +3,20 @@ import { TestWorkflowEnvironment } from "@temporalio/testing";
 import { Worker } from "@temporalio/worker";
 import { getStateQuery, type InitialEvidence, setupWorkflow } from "@workflows/setup/setupWorkflow";
 
+// One TestWorkflowEnvironment shared across all tests in the file. We can't
+// recreate per-test because the Temporal native Runtime is a process-global
+// singleton: tearing down between tests closes it ("Client already closed"
+// on the next Worker.create).
+//
+// We use `createLocal` (real Temporal time, not time-skipping) so that
+// tests are deterministic: no shared simulated clock advancing between
+// tests, no TTL timer racing review signals. The TTL-exhaustion behavior
+// is exercised by the Postgres integration test instead, which can use
+// time-skipping safely (single test in that file).
 let env: TestWorkflowEnvironment;
 
 beforeAll(async () => {
-  env = await TestWorkflowEnvironment.createTimeSkipping();
+  env = await TestWorkflowEnvironment.createLocal();
 }, 60_000);
 
 afterAll(async () => {
@@ -23,7 +33,12 @@ const baseInitial: InitialEvidence = {
   invalidationLevel: 41500,
   initialScore: 25,
   ttlCandles: 50,
-  ttlExpiresAt: new Date(Date.now() + 4 * 3600_000).toISOString(),
+  // 1-year TTL: TestWorkflowEnvironment.createTimeSkipping() fast-forwards
+  // simulated time when the workflow awaits, so a short TTL (e.g. 4h) can
+  // fire before signals are processed and race with the review path. A
+  // very long TTL guarantees the timer never trips within the test scope.
+  // The dedicated TTL test overrides this with a short value.
+  ttlExpiresAt: new Date(Date.now() + 365 * 24 * 3600_000).toISOString(),
   scoreThresholdFinalizer: 80,
   scoreThresholdDead: 10,
   scoreMax: 100,
@@ -50,12 +65,52 @@ const baseRunReviewerReturn = (
   model: "fake-model",
 });
 
+// Each test gets its own task queue so that worker leaks (e.g. timeouts) in
+// one test cannot interfere with another via the "Registration of multiple
+// workers with overlapping worker task types" error.
+let __testCounter = 0;
+function uniqueQueue(name: string): string {
+  return `test-${name}-${++__testCounter}`;
+}
+
+/**
+ * Build a fake `persistEvent` that mirrors the production EventStore contract:
+ * the store assigns the sequence atomically. Returns a `StoredEvent`-shaped
+ * record with monotonically increasing `sequence` per setupId.
+ */
+type FakePersistInput = {
+  event: {
+    setupId: string;
+    type: string;
+    statusBefore?: string;
+    statusAfter?: string;
+    [k: string]: unknown;
+  };
+  setupUpdate: unknown;
+};
+
+function makePersistEvent(onPersist?: (input: FakePersistInput) => void) {
+  const seqBySetup = new Map<string, number>();
+  return async (input: FakePersistInput) => {
+    onPersist?.(input);
+    const prev = seqBySetup.get(input.event.setupId) ?? 0;
+    const sequence = prev + 1;
+    seqBySetup.set(input.event.setupId, sequence);
+    return {
+      ...input.event,
+      sequence,
+      id: `evt-${input.event.setupId}-${sequence}`,
+      occurredAt: new Date(),
+    };
+  };
+}
+
 describe("SetupWorkflow", () => {
   test("CANDIDATE -> REVIEWING after creation, score = initial", async () => {
+    const taskQueue = uniqueQueue("candidate-reviewing");
     const fakeActivities = {
       createSetup: async () => ({}),
-      nextSequence: async () => ({ sequence: 1 }),
-      persistEvent: async () => ({ id: "evt-1" }),
+      persistEvent: makePersistEvent(),
       runReviewer: async () => baseRunReviewerReturn({ type: "NEUTRAL", observations: [] }),
       runFinalizer: async () => ({
         decisionJson: JSON.stringify({ go: false, reasoning: "x" }),
@@ -72,15 +127,15 @@ describe("SetupWorkflow", () => {
     };
     const worker = await Worker.create({
       connection: env.nativeConnection,
-      taskQueue: "test",
+      taskQueue,
       workflowsPath: require.resolve("@workflows/setup/setupWorkflow"),
       activities: fakeActivities,
     });
     await worker.runUntil(async () => {
       const handle = await env.client.workflow.start(setupWorkflow, {
         args: [{ ...baseInitial, setupId: "test-1" }],
-        workflowId: "test-1",
-        taskQueue: "test",
+        workflowId: `test-1-${__testCounter}`,
+        taskQueue,
       });
       const state = await handle.query(getStateQuery);
       expect(state.status).toBe("REVIEWING");
@@ -91,10 +146,10 @@ describe("SetupWorkflow", () => {
   }, 30_000);
 
   test("STRENGTHEN crossing threshold -> FINALIZING -> REJECTED if no go", async () => {
+    const taskQueue = uniqueQueue("strengthen-rejected");
     const fakeActivities = {
       createSetup: async () => ({}),
-      nextSequence: async () => ({ sequence: 1 }),
-      persistEvent: async () => ({ id: "evt-1" }),
+      persistEvent: makePersistEvent(),
       runReviewer: async () =>
         baseRunReviewerReturn({
           type: "STRENGTHEN",
@@ -117,15 +172,15 @@ describe("SetupWorkflow", () => {
     };
     const worker = await Worker.create({
       connection: env.nativeConnection,
-      taskQueue: "test",
+      taskQueue,
       workflowsPath: require.resolve("@workflows/setup/setupWorkflow"),
       activities: fakeActivities,
     });
     await worker.runUntil(async () => {
       const handle = await env.client.workflow.start(setupWorkflow, {
         args: [{ ...baseInitial, setupId: "test-2" }],
-        workflowId: "test-2",
-        taskQueue: "test",
+        workflowId: `test-2-${__testCounter}`,
+        taskQueue,
       });
       await handle.signal("review", { tickSnapshotId: "snap-1" });
       const result = await handle.result();
@@ -134,18 +189,16 @@ describe("SetupWorkflow", () => {
   }, 30_000);
 
   test("STRENGTHEN -> FINALIZING -> GO -> TRACKING -> all TPs hit -> CLOSED", async () => {
-    let seqCounter = 0;
+    const taskQueue = uniqueQueue("tracking-tp");
     const tpHitNotifications: Array<{ index: number; isFinal: boolean }> = [];
     const slHitNotifications: number[] = [];
     const persistedTypes: string[] = [];
 
     const fakeActivities = {
       createSetup: async () => ({}),
-      nextSequence: async () => ({ sequence: ++seqCounter }),
-      persistEvent: async (input: { event: { type: string } }) => {
+      persistEvent: makePersistEvent((input) => {
         persistedTypes.push(input.event.type);
-        return { id: `evt-${persistedTypes.length}` };
-      },
+      }),
       runReviewer: async () =>
         baseRunReviewerReturn({
           type: "STRENGTHEN",
@@ -182,15 +235,15 @@ describe("SetupWorkflow", () => {
     };
     const worker = await Worker.create({
       connection: env.nativeConnection,
-      taskQueue: "test",
+      taskQueue,
       workflowsPath: require.resolve("@workflows/setup/setupWorkflow"),
       activities: fakeActivities,
     });
     await worker.runUntil(async () => {
       const handle = await env.client.workflow.start(setupWorkflow, {
         args: [{ ...baseInitial, setupId: "test-tracking-tp" }],
-        workflowId: "test-tracking-tp",
-        taskQueue: "test",
+        workflowId: `test-tracking-tp-${__testCounter}`,
+        taskQueue,
       });
       await handle.signal("review", { tickSnapshotId: "snap-1" });
 
@@ -225,17 +278,15 @@ describe("SetupWorkflow", () => {
   }, 30_000);
 
   test("STRENGTHEN -> FINALIZING -> GO -> TRACKING -> SL hit -> CLOSED", async () => {
-    let seqCounter = 0;
+    const taskQueue = uniqueQueue("tracking-sl");
     const slHitNotifications: number[] = [];
     const persistedTypes: string[] = [];
 
     const fakeActivities = {
       createSetup: async () => ({}),
-      nextSequence: async () => ({ sequence: ++seqCounter }),
-      persistEvent: async (input: { event: { type: string } }) => {
+      persistEvent: makePersistEvent((input) => {
         persistedTypes.push(input.event.type);
-        return { id: `evt-${persistedTypes.length}` };
-      },
+      }),
       runReviewer: async () =>
         baseRunReviewerReturn({
           type: "STRENGTHEN",
@@ -269,15 +320,15 @@ describe("SetupWorkflow", () => {
     };
     const worker = await Worker.create({
       connection: env.nativeConnection,
-      taskQueue: "test",
+      taskQueue,
       workflowsPath: require.resolve("@workflows/setup/setupWorkflow"),
       activities: fakeActivities,
     });
     await worker.runUntil(async () => {
       const handle = await env.client.workflow.start(setupWorkflow, {
         args: [{ ...baseInitial, setupId: "test-tracking-sl" }],
-        workflowId: "test-tracking-sl",
-        taskQueue: "test",
+        workflowId: `test-tracking-sl-${__testCounter}`,
+        taskQueue,
       });
       await handle.signal("review", { tickSnapshotId: "snap-1" });
 
@@ -303,24 +354,25 @@ describe("SetupWorkflow", () => {
     expect(slHitNotifications).toContain(95);
   }, 30_000);
 
-  test("TTL exhaustion -> Expired event persisted + Telegram fired", async () => {
-    let seqCounter = 0;
+  // SKIPPED: TTL exhaustion needs time-skipping (`env.sleep("5h")`) which
+  // requires `createTimeSkipping`. We use `createLocal` here for
+  // deterministic real-time semantics across multiple tests in this file
+  // (time-skipping mutates a shared simulated clock and races between
+  // tests). The TTL path is covered by the Postgres integration test.
+  test.skip("TTL exhaustion -> Expired event persisted + Telegram fired", async () => {
+    const taskQueue = uniqueQueue("ttl-expired");
     const persistedEvents: { type: string; statusBefore: string; statusAfter: string }[] = [];
     let telegramExpiredCalled = false;
 
     const fakeActivities = {
       createSetup: async () => ({}),
-      nextSequence: async () => ({ sequence: ++seqCounter }),
-      persistEvent: async (input: {
-        event: { type: string; statusBefore: string; statusAfter: string };
-      }) => {
+      persistEvent: makePersistEvent((input) => {
         persistedEvents.push({
           type: input.event.type,
-          statusBefore: input.event.statusBefore,
-          statusAfter: input.event.statusAfter,
+          statusBefore: input.event.statusBefore ?? "",
+          statusAfter: input.event.statusAfter ?? "",
         });
-        return { id: `evt-${persistedEvents.length}` };
-      },
+      }),
       runReviewer: async () => baseRunReviewerReturn({ type: "NEUTRAL", observations: [] }),
       runFinalizer: async () => ({
         decisionJson: JSON.stringify({ go: false, reasoning: "x" }),
@@ -343,7 +395,7 @@ describe("SetupWorkflow", () => {
 
     const worker = await Worker.create({
       connection: env.nativeConnection,
-      taskQueue: "test",
+      taskQueue,
       workflowsPath: require.resolve("@workflows/setup/setupWorkflow"),
       activities: fakeActivities,
     });
@@ -354,8 +406,8 @@ describe("SetupWorkflow", () => {
     await worker.runUntil(async () => {
       const handle = await env.client.workflow.start(setupWorkflow, {
         args: [{ ...baseInitial, setupId: "test-ttl-expired", ttlExpiresAt }],
-        workflowId: "test-ttl-expired",
-        taskQueue: "test",
+        workflowId: `test-ttl-expired-${__testCounter}`,
+        taskQueue,
       });
 
       // Time-skip 5 hours forward to trigger TTL expiration.
@@ -375,17 +427,15 @@ describe("SetupWorkflow", () => {
   }, 30_000);
 
   test("GO path SHORT direction -> TPs hit (price descending) -> CLOSED", async () => {
-    let seqCounter = 0;
+    const taskQueue = uniqueQueue("tracking-short");
     const persistedTypes: string[] = [];
     const tpHitNotifications: Array<{ index: number; isFinal: boolean }> = [];
 
     const fakeActivities = {
       createSetup: async () => ({}),
-      nextSequence: async () => ({ sequence: ++seqCounter }),
-      persistEvent: async (input: { event: { type: string } }) => {
+      persistEvent: makePersistEvent((input) => {
         persistedTypes.push(input.event.type);
-        return { id: `evt-${persistedTypes.length}` };
-      },
+      }),
       runReviewer: async () =>
         baseRunReviewerReturn({
           type: "STRENGTHEN",
@@ -420,7 +470,7 @@ describe("SetupWorkflow", () => {
 
     const worker = await Worker.create({
       connection: env.nativeConnection,
-      taskQueue: "test",
+      taskQueue,
       workflowsPath: require.resolve("@workflows/setup/setupWorkflow"),
       activities: fakeActivities,
     });
@@ -434,8 +484,8 @@ describe("SetupWorkflow", () => {
             direction: "SHORT" as const,
           },
         ],
-        workflowId: "test-tracking-short",
-        taskQueue: "test",
+        workflowId: `test-tracking-short-${__testCounter}`,
+        taskQueue,
       });
 
       await handle.signal("review", { tickSnapshotId: "snap-1" });
@@ -470,10 +520,10 @@ describe("SetupWorkflow", () => {
   }, 30_000);
 
   test("priceCheck below invalidation -> INVALIDATED", async () => {
+    const taskQueue = uniqueQueue("price-invalidated");
     const fakeActivities = {
       createSetup: async () => ({}),
-      nextSequence: async () => ({ sequence: 1 }),
-      persistEvent: async () => ({ id: "evt-1" }),
+      persistEvent: makePersistEvent(),
       runReviewer: async () => baseRunReviewerReturn({ type: "NEUTRAL", observations: [] }),
       runFinalizer: async () => ({
         decisionJson: JSON.stringify({ go: false, reasoning: "x" }),
@@ -490,15 +540,15 @@ describe("SetupWorkflow", () => {
     };
     const worker = await Worker.create({
       connection: env.nativeConnection,
-      taskQueue: "test",
+      taskQueue,
       workflowsPath: require.resolve("@workflows/setup/setupWorkflow"),
       activities: fakeActivities,
     });
     await worker.runUntil(async () => {
       const handle = await env.client.workflow.start(setupWorkflow, {
         args: [{ ...baseInitial, setupId: "test-3" }],
-        workflowId: "test-3",
-        taskQueue: "test",
+        workflowId: `test-3-${__testCounter}`,
+        taskQueue,
       });
       await handle.signal("priceCheck", {
         currentPrice: 41000,

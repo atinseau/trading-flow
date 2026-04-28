@@ -73,21 +73,10 @@ export async function trackingLoop(args: TrackingArgs): Promise<TrackingResult> 
   let nextTpIndex = 0;
   let currentSL = args.stopLoss;
   let closed = false;
-  let nextSequenceNumber = 0;
 
   // Pending tick queue: signal handlers enqueue, the consumer loop processes
   // them serially so concurrent signals can't read stale `nextTpIndex`.
   const pendingTicks: TrackingPriceTick[] = [];
-
-  // Helper: get and increment sequence
-  const nextSeq = async (setupId: string): Promise<number> => {
-    if (nextSequenceNumber === 0) {
-      nextSequenceNumber = (await dbActivities.nextSequence({ setupId })).sequence;
-    } else {
-      nextSequenceNumber++;
-    }
-    return nextSequenceNumber;
-  };
 
   setHandler(trackingPriceSignal, (tick) => {
     if (closed) return;
@@ -108,11 +97,9 @@ export async function trackingLoop(args: TrackingArgs): Promise<TrackingResult> 
       (args.direction === "SHORT" && tick.currentPrice >= currentSL);
 
     if (slHit) {
-      const seq = await nextSeq(args.setupId);
       await dbActivities.persistEvent({
         event: {
           setupId: args.setupId,
-          sequence: seq,
           stage: "tracker",
           actor: "tracker_v1",
           type: "SLHit",
@@ -147,11 +134,9 @@ export async function trackingLoop(args: TrackingArgs): Promise<TrackingResult> 
       if (!tpHit) break;
 
       const isFinalTp = nextTpIndex === sortedTPs.length - 1;
-      const seq = await nextSeq(args.setupId);
       await dbActivities.persistEvent({
         event: {
           setupId: args.setupId,
-          sequence: seq,
           stage: "tracker",
           actor: "tracker_v1",
           type: "TPHit",
@@ -185,11 +170,9 @@ export async function trackingLoop(args: TrackingArgs): Promise<TrackingResult> 
       // After TP1 hits: move SL to breakeven (entry) — classic risk management
       if (nextTpIndex === 0 && currentSL !== args.entry) {
         const newSL = args.entry;
-        const trailSeq = await nextSeq(args.setupId);
         await dbActivities.persistEvent({
           event: {
             setupId: args.setupId,
-            sequence: trailSeq,
             stage: "tracker",
             actor: "tracker_v1",
             type: "TrailingMoved",
