@@ -7,6 +7,8 @@ import { z } from "zod";
 
 const log = getLogger({ component: "binance-fetcher" });
 
+const BINANCE_BASE_URL = "https://api.binance.com";
+
 const TIMEFRAME_MAP: Record<string, string> = {
   "1m": "1m",
   "5m": "5m",
@@ -43,8 +45,6 @@ export class BinanceFetcher implements MarketDataFetcher {
   readonly source = "binance";
   private supportedSymbolsCache: { data: Set<string>; expiresAt: number } | null = null;
 
-  constructor(private config: { baseUrl?: string }) {}
-
   async fetchOHLCV(args: {
     asset: string;
     timeframe: string;
@@ -54,7 +54,7 @@ export class BinanceFetcher implements MarketDataFetcher {
     const interval = TIMEFRAME_MAP[args.timeframe];
     if (!interval) throw new Error(`Timeframe non supporté: ${args.timeframe}`);
 
-    const url = new URL(`${this.config.baseUrl ?? "https://api.binance.com"}/api/v3/klines`);
+    const url = new URL(`${BINANCE_BASE_URL}/api/v3/klines`);
     url.searchParams.set("symbol", args.asset);
     url.searchParams.set("interval", interval);
     url.searchParams.set("limit", String(args.limit));
@@ -97,7 +97,7 @@ export class BinanceFetcher implements MarketDataFetcher {
   async isAssetSupported(asset: string): Promise<boolean> {
     const now = Date.now();
     if (!this.supportedSymbolsCache || this.supportedSymbolsCache.expiresAt < now) {
-      const url = `${this.config.baseUrl ?? "https://api.binance.com"}/api/v3/exchangeInfo`;
+      const url = `${BINANCE_BASE_URL}/api/v3/exchangeInfo`;
       const response = await fetch(url);
       if (!response.ok) return false;
       const data = ExchangeInfoSchema.parse(await response.json());

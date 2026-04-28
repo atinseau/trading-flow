@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { BinanceFetcher } from "@adapters/market-data/BinanceFetcher";
 
 describe("BinanceFetcher", () => {
-  const fetcher = new BinanceFetcher({});
+  const fetcher = new BinanceFetcher();
 
   test("fetches BTCUSDT 1h with limit 50", async () => {
     const candles = await fetcher.fetchOHLCV({ asset: "BTCUSDT", timeframe: "1h", limit: 50 });
@@ -23,4 +23,10 @@ describe("BinanceFetcher", () => {
   test("isAssetSupported returns false for fake symbol", async () => {
     expect(await fetcher.isAssetSupported("FAKE_SYMBOL_XYZ")).toBe(false);
   }, 15_000);
+
+  test("constructs with no args", () => {
+    const f = new BinanceFetcher();
+    expect(f).toBeDefined();
+    expect(f.source).toBe("binance");
+  });
 });
