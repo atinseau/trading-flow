@@ -1838,8 +1838,8 @@ const PreFilterSchema = z.object({
     atr_ratio_min: z.number().positive().default(1.3),
     volume_spike_min: z.number().positive().default(1.5),
     rsi_extreme_distance: z.number().min(0).max(50).default(25),
-  }).default({}),
-}).default({});
+  }).prefault({}),
+}).prefault({});
 
 const AnalyzerSchema = z.object({
   provider: z.string(),
@@ -1889,11 +1889,11 @@ const WatchSchema = z.object({
   history_compaction: z.object({
     max_raw_events_in_context: z.number().int().positive().default(40),
     summarize_after_age_hours: z.number().int().positive().default(48),
-  }).default({}),
+  }).prefault({}),
   deduplication: z.object({
     similar_setup_window_candles: z.number().int().positive().default(5),
     similar_price_tolerance_pct: z.number().positive().default(0.5),
-  }).default({}),
+  }).prefault({}),
   pre_filter: PreFilterSchema,
   analyzers: z.object({
     detector: AnalyzerSchema,
@@ -1902,12 +1902,12 @@ const WatchSchema = z.object({
   }),
   optimization: z.object({
     reviewer_skip_when_detector_corroborated: z.boolean().default(true),
-  }).default({}),
+  }).prefault({}),
   notifications: NotificationsSchema,
   budget: z.object({
     max_cost_usd_per_day: z.number().positive().optional(),
     pause_on_budget_exceeded: z.boolean().default(true),
-  }).default({}),
+  }).prefault({}),
 });
 
 const LLMProviderConfigSchema = z.discriminatedUnion("type", [
@@ -1936,7 +1936,7 @@ export const ConfigSchema = z.object({
     retention: z.object({
       keep_days: z.number().int().positive().default(30),
       keep_for_active_setups: z.boolean().default(true),
-    }).default({}),
+    }).prefault({}),
   }),
   notifications: z.object({
     telegram: z.object({
@@ -1956,7 +1956,7 @@ export const ConfigSchema = z.object({
       scheduler: z.string().default("scheduler"),
       analysis: z.string().default("analysis"),
       notifications: z.string().default("notifications"),
-    }).default({}),
+    }).prefault({}),
   }),
   watches: z.array(WatchSchema),
 }).superRefine((cfg, ctx) => {
