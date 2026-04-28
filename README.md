@@ -40,6 +40,8 @@ bun run src/cli/kill-setup.ts <setup-id>
 bun run src/cli/force-tick.ts btc-1h
 bun run src/cli/pause-watch.ts btc-1h pause
 bun run src/cli/reload-config.ts
+bun run src/cli/replay-setup.ts <setup-id>           # report which events would re-run with current prompts
+bun run src/cli/replay-setup.ts <setup-id> --prompt=reviewer  # filter to specific stage
 ```
 
 ## Architecture
