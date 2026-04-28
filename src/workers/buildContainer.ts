@@ -1,6 +1,7 @@
 import { PlaywrightChartRenderer } from "@adapters/chart/PlaywrightChartRenderer";
 import { PureJsIndicatorCalculator } from "@adapters/indicators/PureJsIndicatorCalculator";
 import { buildProviderRegistry } from "@adapters/llm/buildProviderRegistry";
+import { loadInfraConfig } from "@config/InfraConfig";
 import { BinanceFetcher } from "@adapters/market-data/BinanceFetcher";
 import { YahooFinanceFetcher } from "@adapters/market-data/YahooFinanceFetcher";
 import { TelegramNotifier } from "@adapters/notify/TelegramNotifier";
@@ -17,6 +18,7 @@ import type { LLMProvider } from "@domain/ports/LLMProvider";
 import type { MarketDataFetcher } from "@domain/ports/MarketDataFetcher";
 import type { PriceFeed } from "@domain/ports/PriceFeed";
 import type { Config } from "@domain/schemas/Config";
+import type { WatchesConfig } from "@domain/schemas/WatchesConfig";
 import { Client, Connection } from "@temporalio/client";
 import type { ActivityDeps } from "@workflows/activityDependencies";
 import { drizzle } from "drizzle-orm/node-postgres";
@@ -88,10 +90,11 @@ export async function buildContainer(config: Config, role: WorkerRole): Promise<
 
   // LLM providers — needed by scheduler (Detector) and analysis (Reviewer/Finalizer); not notification.
   const llmUsageStore = new PostgresLLMUsageStore(db);
+  const infra = loadInfraConfig();
   const llmProviders =
     role === "notification"
       ? new Map<string, LLMProvider>()
-      : buildProviderRegistry(config, llmUsageStore);
+      : buildProviderRegistry(config as unknown as WatchesConfig, infra, llmUsageStore);
 
   // Notifier — required by notification worker and by setup activities scheduled on the analysis worker.
   const notifier =
