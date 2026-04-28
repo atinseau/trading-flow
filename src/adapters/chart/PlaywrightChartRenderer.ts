@@ -10,6 +10,8 @@ export class PlaywrightChartRenderer implements ChartRenderer {
   private browser: Browser | null = null;
   private pagePool: Page[] = [];
   private templateHtml: string | null = null;
+  private pagesInUse = 0;
+  private pagePromiseQueue: Array<(page: Page) => void> = [];
 
   constructor(private opts: { poolSize?: number; templatePath?: string } = {}) {}
 
@@ -73,24 +75,42 @@ export class PlaywrightChartRenderer implements ChartRenderer {
   }
 
   async dispose(): Promise<void> {
+    // Drop any pending waiters; callers awaiting will hang, which is acceptable
+    // at shutdown (process exit cleans them up).
+    this.pagePromiseQueue = [];
     for (const p of this.pagePool) await p.close().catch(() => {});
     this.pagePool = [];
+    this.pagesInUse = 0;
     await this.browser?.close().catch(() => {});
     this.browser = null;
   }
 
   private async acquirePage(): Promise<Page> {
-    const p = this.pagePool.pop();
-    if (p) return p;
+    const poolSize = this.opts.poolSize ?? 2;
+
+    if (this.pagesInUse >= poolSize) {
+      // At capacity — wait for a release (FIFO).
+      return new Promise<Page>((resolve) => {
+        this.pagePromiseQueue.push(resolve);
+      });
+    }
+
+    this.pagesInUse++;
+    const fromPool = this.pagePool.pop();
+    if (fromPool) return fromPool;
     if (!this.browser) throw new Error("Browser not initialized");
     return this.browser.newPage({ viewport: { width: 1280, height: 720 } });
   }
 
   private releasePage(page: Page): void {
-    if (this.pagePool.length < (this.opts.poolSize ?? 2)) {
-      this.pagePool.push(page);
-    } else {
-      page.close().catch(() => {});
+    // Hand off to a waiter if any — pagesInUse stays the same (transferred ownership).
+    const waiter = this.pagePromiseQueue.shift();
+    if (waiter) {
+      waiter(page);
+      return;
     }
+    // Otherwise: return to pool and decrement counter.
+    this.pagesInUse--;
+    this.pagePool.push(page);
   }
 }

@@ -3,6 +3,18 @@ import type * as activities from "./activities";
 
 const a = proxyActivities<ReturnType<typeof activities.buildSetupActivities>>({
   startToCloseTimeout: "30s",
+  retry: {
+    maximumAttempts: 3,
+    nonRetryableErrorTypes: [
+      "InvalidConfigError",
+      "AssetNotFoundError",
+      "LLMSchemaValidationError",
+      "PromptTooLargeError",
+      "NoProviderAvailableError",
+      "CircularFallbackError",
+      "StopRequestedError",
+    ],
+  },
 });
 
 export async function trackingLoop(setupId: string, _watchId: string): Promise<void> {

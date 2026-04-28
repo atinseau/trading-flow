@@ -14,7 +14,18 @@ import type * as schedulerActivities from "./activities";
 
 const a = proxyActivities<ReturnType<typeof schedulerActivities.buildSchedulerActivities>>({
   startToCloseTimeout: "60s",
-  retry: { maximumAttempts: 3 },
+  retry: {
+    maximumAttempts: 3,
+    nonRetryableErrorTypes: [
+      "InvalidConfigError",
+      "AssetNotFoundError",
+      "LLMSchemaValidationError",
+      "PromptTooLargeError",
+      "NoProviderAvailableError",
+      "CircularFallbackError",
+      "StopRequestedError",
+    ],
+  },
 });
 
 export type SchedulerArgs = { watchId: string; analysisTaskQueue: string };

@@ -4,7 +4,20 @@ import type * as activities from "./activities";
 const a = proxyActivities<ReturnType<typeof activities.buildPriceMonitorActivities>>({
   startToCloseTimeout: "10m",
   heartbeatTimeout: "60s",
-  retry: { maximumAttempts: 100, initialInterval: "5s", maximumInterval: "1m" },
+  retry: {
+    maximumAttempts: 100,
+    initialInterval: "5s",
+    maximumInterval: "1m",
+    nonRetryableErrorTypes: [
+      "InvalidConfigError",
+      "AssetNotFoundError",
+      "LLMSchemaValidationError",
+      "PromptTooLargeError",
+      "NoProviderAvailableError",
+      "CircularFallbackError",
+      "StopRequestedError",
+    ],
+  },
 });
 
 export type PriceMonitorArgs = {

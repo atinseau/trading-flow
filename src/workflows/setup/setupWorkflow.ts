@@ -19,7 +19,18 @@ import { trackingLoop } from "./trackingLoop";
 
 const a = proxyActivities<ReturnType<typeof activities.buildSetupActivities>>({
   startToCloseTimeout: "60s",
-  retry: { maximumAttempts: 3 },
+  retry: {
+    maximumAttempts: 3,
+    nonRetryableErrorTypes: [
+      "InvalidConfigError",
+      "AssetNotFoundError",
+      "LLMSchemaValidationError",
+      "PromptTooLargeError",
+      "NoProviderAvailableError",
+      "CircularFallbackError",
+      "StopRequestedError",
+    ],
+  },
 });
 
 export type InitialEvidence = {
