@@ -1,11 +1,13 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { LLMRateLimitError, LLMSchemaValidationError } from "@domain/errors";
 import type { LLMInput, LLMOutput, LLMProvider } from "@domain/ports/LLMProvider";
+import type { LLMUsageStore } from "@domain/ports/LLMUsageStore";
 
 export type ClaudeAgentSdkConfig = {
   workspaceDir: string;
   fallback?: string | null;
   dailyCallBudget?: number;
+  usageStore?: LLMUsageStore;
 };
 
 function isRateLimitError(err: unknown): boolean {
@@ -57,8 +59,11 @@ export class ClaudeAgentSdkProvider implements LLMProvider {
   async isAvailable(): Promise<boolean> {
     this.maybeResetCounters();
     if (this.rateLimitedUntil && this.rateLimitedUntil > new Date()) return false;
-    if (this.config.dailyCallBudget != null && this.callsToday >= this.config.dailyCallBudget) {
-      return false;
+    if (this.config.dailyCallBudget != null) {
+      const calls = this.config.usageStore
+        ? await this.config.usageStore.getCallsToday(this.name)
+        : this.callsToday;
+      if (calls >= this.config.dailyCallBudget) return false;
     }
     return true;
   }

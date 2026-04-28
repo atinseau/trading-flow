@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { OpenRouterProvider } from "@adapters/llm/OpenRouterProvider";
 import { LLMRateLimitError } from "@domain/errors";
+import { InMemoryLLMUsageStore } from "@test-fakes/InMemoryLLMUsageStore";
 import { z } from "zod";
 
 let server: ReturnType<typeof Bun.serve>;
@@ -81,5 +82,22 @@ describe("OpenRouterProvider", () => {
       model: "legacy-cost-field",
     });
     expect(out.costUsd).toBe(0.002);
+  });
+
+  test("isAvailable reads from durable store when provided", async () => {
+    const usageStore = new InMemoryLLMUsageStore();
+    usageStore.setSpent("or-durable", 10);
+
+    const p = new OpenRouterProvider("or-durable", {
+      apiKey: "k",
+      baseUrl,
+      monthlyBudgetUsd: 5, // budget 5, durable spent 10 → unavailable
+      usageStore,
+    });
+
+    expect(await p.isAvailable()).toBe(false);
+
+    usageStore.setSpent("or-durable", 1); // now under budget
+    expect(await p.isAvailable()).toBe(true);
   });
 });

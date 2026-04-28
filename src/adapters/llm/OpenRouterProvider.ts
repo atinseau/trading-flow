@@ -1,12 +1,14 @@
 import { readFile } from "node:fs/promises";
 import { LLMRateLimitError, LLMSchemaValidationError } from "@domain/errors";
 import type { LLMImageInput, LLMInput, LLMOutput, LLMProvider } from "@domain/ports/LLMProvider";
+import type { LLMUsageStore } from "@domain/ports/LLMUsageStore";
 
 export type OpenRouterConfig = {
   apiKey: string;
   baseUrl?: string;
   fallback?: string | null;
   monthlyBudgetUsd?: number;
+  usageStore?: LLMUsageStore;
 };
 
 async function buildMultipartContent(text: string, images: LLMImageInput[]): Promise<unknown[]> {
@@ -39,8 +41,11 @@ export class OpenRouterProvider implements LLMProvider {
 
   async isAvailable(): Promise<boolean> {
     this.maybeResetCounters();
-    if (this.config.monthlyBudgetUsd != null && this.spentUsdMtd >= this.config.monthlyBudgetUsd) {
-      return false;
+    if (this.config.monthlyBudgetUsd != null) {
+      const spent = this.config.usageStore
+        ? await this.config.usageStore.getSpentMonthUsd(this.name)
+        : this.spentUsdMtd;
+      if (spent >= this.config.monthlyBudgetUsd) return false;
     }
     return true;
   }

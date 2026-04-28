@@ -6,6 +6,7 @@ import { YahooFinanceFetcher } from "@adapters/market-data/YahooFinanceFetcher";
 import { TelegramNotifier } from "@adapters/notify/TelegramNotifier";
 import { FilesystemArtifactStore } from "@adapters/persistence/FilesystemArtifactStore";
 import { PostgresEventStore } from "@adapters/persistence/PostgresEventStore";
+import { PostgresLLMUsageStore } from "@adapters/persistence/PostgresLLMUsageStore";
 import { PostgresSetupRepository } from "@adapters/persistence/PostgresSetupRepository";
 import { PostgresTickSnapshotStore } from "@adapters/persistence/PostgresTickSnapshotStore";
 import { BinanceWsPriceFeed } from "@adapters/price-feed/BinanceWsPriceFeed";
@@ -53,7 +54,8 @@ export async function buildContainer(config: Config): Promise<Container> {
   await chartRenderer.warmUp();
 
   const indicatorCalculator = new PureJsIndicatorCalculator();
-  const llmProviders = buildProviderRegistry(config);
+  const llmUsageStore = new PostgresLLMUsageStore(db);
+  const llmProviders = buildProviderRegistry(config, llmUsageStore);
   const notifier = new TelegramNotifier({ token: config.notifications.telegram.bot_token });
 
   const priceFeeds = new Map<string, PriceFeed>();
