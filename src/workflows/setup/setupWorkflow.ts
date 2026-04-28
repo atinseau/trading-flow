@@ -377,39 +377,46 @@ export async function setupWorkflow(initial: InitialEvidence): Promise<SetupStat
     .run(async () => {
       if (ttlMs > 0) await sleep(ttlMs);
       if (state.status === "REVIEWING" || state.status === "FINALIZING") {
-        const seq = (await dbActivities.nextSequence({ setupId: initial.setupId })).sequence;
-        const before = state.status;
-        state.sequence = seq;
-        state.status = "EXPIRED";
-        await dbActivities.persistEvent({
-          event: {
-            setupId: initial.setupId,
-            sequence: seq,
-            stage: "system",
-            actor: "ttl",
-            type: "Expired",
-            scoreDelta: 0,
-            scoreAfter: state.score,
-            statusBefore: before,
-            statusAfter: "EXPIRED",
-            payload: {
+        // Persist + notify in a non-cancellable inner scope so that the active
+        // loop's `finally { ttlScope.cancel() }` (which fires when the loop
+        // observes state.status flip to EXPIRED) cannot cancel the in-flight
+        // activities mid-flight. Without this guard the Expired event and
+        // Telegram notification could be dropped on a race.
+        await CancellationScope.nonCancellable(async () => {
+          const seq = (await dbActivities.nextSequence({ setupId: initial.setupId })).sequence;
+          const before = state.status;
+          state.sequence = seq;
+          state.status = "EXPIRED";
+          await dbActivities.persistEvent({
+            event: {
+              setupId: initial.setupId,
+              sequence: seq,
+              stage: "system",
+              actor: "ttl",
               type: "Expired",
-              data: {
-                reason: "ttl_reached",
-                ttlExpiresAt: initial.ttlExpiresAt,
+              scoreDelta: 0,
+              scoreAfter: state.score,
+              statusBefore: before,
+              statusAfter: "EXPIRED",
+              payload: {
+                type: "Expired",
+                data: {
+                  reason: "ttl_reached",
+                  ttlExpiresAt: initial.ttlExpiresAt,
+                },
               },
             },
-          },
-          setupUpdate: {
-            score: state.score,
-            status: "EXPIRED",
-            invalidationLevel: state.invalidationLevel,
-          },
-        });
-        await notifyActivities.notifyTelegramExpired({
-          watchId: initial.watchId,
-          asset: initial.asset,
-          timeframe: initial.timeframe,
+            setupUpdate: {
+              score: state.score,
+              status: "EXPIRED",
+              invalidationLevel: state.invalidationLevel,
+            },
+          });
+          await notifyActivities.notifyTelegramExpired({
+            watchId: initial.watchId,
+            asset: initial.asset,
+            timeframe: initial.timeframe,
+          });
         });
       }
     })
