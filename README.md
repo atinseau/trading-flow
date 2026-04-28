@@ -42,6 +42,11 @@ bun run src/cli/pause-watch.ts btc-1h pause
 bun run src/cli/reload-config.ts
 bun run src/cli/replay-setup.ts <setup-id>           # report which events would re-run with current prompts
 bun run src/cli/replay-setup.ts <setup-id> --prompt=reviewer  # filter to specific stage
+bun run src/cli/cost-report.ts                              # all-time cost by provider
+bun run src/cli/cost-report.ts --by=model --since=2026-04-01
+bun run src/cli/cost-report.ts --watch=btc-1h --by=day
+bun run src/cli/purge-artifacts.ts --older-than-days=30 --dry-run
+bun run src/cli/purge-artifacts.ts --older-than-days=30
 ```
 
 ## Architecture
