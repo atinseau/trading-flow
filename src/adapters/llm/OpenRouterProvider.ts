@@ -82,12 +82,17 @@ export class OpenRouterProvider implements LLMProvider {
 
     const data = (await response.json()) as {
       choices: { message: { content: string } }[];
-      usage?: { prompt_tokens?: number; completion_tokens?: number; total_cost?: number };
+      usage?: {
+        prompt_tokens?: number;
+        completion_tokens?: number;
+        total_cost?: number;
+        cost?: number;
+      };
     };
     const content = data.choices[0]!.message.content;
     const promptTokens = data.usage?.prompt_tokens ?? 0;
     const completionTokens = data.usage?.completion_tokens ?? 0;
-    const costUsd = data.usage?.total_cost ?? 0;
+    const costUsd = data.usage?.cost ?? data.usage?.total_cost ?? 0;
     this.spentUsdMtd += costUsd;
 
     let parsed: unknown;

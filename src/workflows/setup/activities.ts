@@ -1,5 +1,7 @@
 import { resolveAndCall } from "@adapters/llm/resolveAndCall";
+import { loadPrompt } from "@adapters/prompts/loadPrompt";
 import { InvalidConfigError } from "@domain/errors";
+import type { EventPayload } from "@domain/events/schemas";
 import type { NewEvent, SetupStateUpdate } from "@domain/ports/EventStore";
 import type { Verdict } from "@domain/schemas/Verdict";
 import { VerdictSchema } from "@domain/schemas/Verdict";
@@ -75,7 +77,8 @@ export function buildSetupActivities(deps: ActivityDeps) {
       if (!snap) throw new Error(`TickSnapshot ${input.tickSnapshotId} not found`);
 
       const ohlcvBuf = await deps.artifactStore.get(snap.ohlcvUri);
-      const promptVersion = "reviewer_v1";
+      const reviewerPrompt = await loadPrompt("reviewer");
+      const promptVersion = reviewerPrompt.version;
       const inputHash = computeInputHash({
         setupId: input.setupId,
         promptVersion,
@@ -99,16 +102,32 @@ export function buildSetupActivities(deps: ActivityDeps) {
       }
 
       const history = await deps.eventStore.listForSetup(input.setupId);
-      const memoryBlock = history
-        .map((e) => `[seq ${e.sequence}] ${e.type} score→${e.scoreAfter}`)
-        .join("\n");
-      const prompt = `Setup ${setup.asset} ${setup.timeframe} score=${setup.currentScore}\n\nHistory:\n${memoryBlock}\n\nFresh data + chart attached. Reply JSON Verdict.`;
+      const userPrompt = reviewerPrompt.render({
+        setup: {
+          id: setup.id,
+          patternHint: setup.patternHint,
+          direction: setup.direction,
+          currentScore: setup.currentScore,
+          invalidationLevel: setup.invalidationLevel,
+          ageInCandles: 0,
+        },
+        history: history.map((e) => ({
+          sequence: e.sequence,
+          occurredAt: e.occurredAt.toISOString(),
+          scoreAfter: e.scoreAfter,
+          type: e.type,
+          observations: extractObservations(e.payload),
+          reasoning: extractReasoning(e.payload),
+        })),
+        tick: { tickAt: snap.tickAt.toISOString() },
+        fresh: { lastClose: 0, indicators: snap.indicators },
+      });
 
       const result = await resolveAndCall(
         watch.analyzers.reviewer.provider,
         {
           systemPrompt: "You refine an existing setup.",
-          userPrompt: prompt,
+          userPrompt,
           images: [{ sourceUri: snap.chartUri, mimeType: "image/png" }],
           model: watch.analyzers.reviewer.model,
           maxTokens: watch.analyzers.reviewer.max_tokens,
@@ -131,24 +150,37 @@ export function buildSetupActivities(deps: ActivityDeps) {
     async runFinalizer(input: {
       setupId: string;
       watchId: string;
-    }): Promise<{ decisionJson: string; costUsd: number }> {
+    }): Promise<{ decisionJson: string; costUsd: number; promptVersion: string }> {
       const watch = deps.watchById(input.watchId);
       if (!watch) throw new InvalidConfigError(`Unknown watch: ${input.watchId}`);
       const setup = await deps.setupRepo.get(input.setupId);
       if (!setup) throw new Error(`Setup ${input.setupId} not found`);
       const history = await deps.eventStore.listForSetup(input.setupId);
 
-      const prompt = `Setup ${setup.asset} ${setup.timeframe} reached threshold (score ${setup.currentScore}).
-Direction: ${setup.direction}
-Invalidation: ${setup.invalidationLevel}
-History sequence: ${history.length} events
-Decision: GO or NO_GO? If GO, provide entry/SL/TP.`;
+      const finalizerPrompt = await loadPrompt("finalizer");
+      const userPrompt = finalizerPrompt.render({
+        setup: {
+          id: setup.id,
+          asset: setup.asset,
+          timeframe: setup.timeframe,
+          patternHint: setup.patternHint,
+          direction: setup.direction,
+          currentScore: setup.currentScore,
+          invalidationLevel: setup.invalidationLevel,
+        },
+        historyCount: history.length,
+        history: history.map((e) => ({
+          sequence: e.sequence,
+          type: e.type,
+          scoreAfter: e.scoreAfter,
+        })),
+      });
 
       const result = await resolveAndCall(
         watch.analyzers.finalizer.provider,
         {
           systemPrompt: "You make the final go/no-go call.",
-          userPrompt: prompt,
+          userPrompt,
           model: watch.analyzers.finalizer.model,
           maxTokens: watch.analyzers.finalizer.max_tokens,
           responseSchema: FinalizerOutputSchema,
@@ -159,6 +191,7 @@ Decision: GO or NO_GO? If GO, provide entry/SL/TP.`;
       return {
         decisionJson: JSON.stringify(result.output.parsed),
         costUsd: result.output.costUsd,
+        promptVersion: finalizerPrompt.version,
       };
     },
 
@@ -236,4 +269,22 @@ Decision: GO or NO_GO? If GO, provide entry/SL/TP.`;
       });
     },
   };
+}
+
+function extractObservations(payload: EventPayload): unknown[] {
+  if (
+    payload.type === "Strengthened" ||
+    payload.type === "Weakened" ||
+    payload.type === "Neutral"
+  ) {
+    return payload.data.observations;
+  }
+  return [];
+}
+
+function extractReasoning(payload: EventPayload): string | null {
+  if (payload.type === "Strengthened" || payload.type === "Weakened") {
+    return payload.data.reasoning;
+  }
+  return null;
 }

@@ -94,6 +94,7 @@ export async function buildContainer(config: Config): Promise<Container> {
     config,
     watchById,
     temporalClient,
+    db,
   };
 
   return {

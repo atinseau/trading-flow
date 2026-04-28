@@ -13,7 +13,12 @@ for (const watch of config.watches.filter((w) => w.enabled)) {
   // Start SchedulerWorkflow (idempotent via workflowId)
   await client.workflow
     .start("schedulerWorkflow", {
-      args: [{ watchId: watch.id }],
+      args: [
+        {
+          watchId: watch.id,
+          analysisTaskQueue: config.temporal.task_queues.analysis,
+        },
+      ],
       workflowId: schedulerWorkflowId(watch.id),
       taskQueue: config.temporal.task_queues.scheduler,
     })

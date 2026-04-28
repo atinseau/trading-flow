@@ -1,7 +1,10 @@
 import { resolveAndCall } from "@adapters/llm/resolveAndCall";
+import { watchStates } from "@adapters/persistence/schema";
+import { loadPrompt } from "@adapters/prompts/loadPrompt";
 import { InvalidConfigError } from "@domain/errors";
 import { CandleSchema } from "@domain/schemas/Candle";
 import type { ActivityDeps } from "@workflows/activityDependencies";
+import { sql } from "drizzle-orm";
 import { z } from "zod";
 import { dedupNewSetups, type ProposedSetup } from "./dedup";
 import { evaluatePreFilter } from "./preFilter";
@@ -124,17 +127,24 @@ export function buildSchedulerActivities(deps: ActivityDeps) {
       watchId: string;
       tickSnapshotId: string;
       aliveSetups: unknown;
-    }): Promise<{ verdictJson: string; costUsd: number }> {
+    }): Promise<{ verdictJson: string; costUsd: number; promptVersion: string }> {
       const watch = deps.watchById(input.watchId);
       if (!watch) throw new InvalidConfigError(`Unknown watch: ${input.watchId}`);
       const snap = await deps.tickSnapshotStore.get(input.tickSnapshotId);
       if (!snap) throw new Error(`TickSnapshot ${input.tickSnapshotId} not found`);
-      const prompt = `Asset: ${snap.asset} ${snap.timeframe}\nIndicators: ${JSON.stringify(snap.indicators)}\nAlive setups: ${JSON.stringify(input.aliveSetups)}\nReturn JSON per schema.`;
+      const detectorPrompt = await loadPrompt("detector");
+      const userPrompt = detectorPrompt.render({
+        asset: snap.asset,
+        timeframe: snap.timeframe,
+        tickAt: snap.tickAt.toISOString(),
+        indicators: snap.indicators,
+        aliveSetups: input.aliveSetups,
+      });
       const result = await resolveAndCall(
         watch.analyzers.detector.provider,
         {
           systemPrompt: "You are a chart analyzer.",
-          userPrompt: prompt,
+          userPrompt,
           images: [{ sourceUri: snap.chartUri, mimeType: "image/png" }],
           model: watch.analyzers.detector.model,
           maxTokens: watch.analyzers.detector.max_tokens,
@@ -142,7 +152,11 @@ export function buildSchedulerActivities(deps: ActivityDeps) {
         },
         deps.llmProviders,
       );
-      return { verdictJson: JSON.stringify(result.output.parsed), costUsd: result.output.costUsd };
+      return {
+        verdictJson: JSON.stringify(result.output.parsed),
+        costUsd: result.output.costUsd,
+        promptVersion: detectorPrompt.version,
+      };
     },
 
     async dedupNewSetups(input: {
@@ -160,12 +174,31 @@ export function buildSchedulerActivities(deps: ActivityDeps) {
       });
     },
 
-    async recordWatchTick(_input: {
+    async recordWatchTick(input: {
       watchId: string;
       status: string;
       costUsd: number;
     }): Promise<void> {
-      console.log("[watch tick]", _input);
+      const now = deps.clock.now();
+      const costStr = String(input.costUsd);
+      await deps.db
+        .insert(watchStates)
+        .values({
+          watchId: input.watchId,
+          lastTickAt: now,
+          lastTickStatus: input.status,
+          totalCostUsdMtd: costStr,
+          totalCostUsdAllTime: costStr,
+        })
+        .onConflictDoUpdate({
+          target: watchStates.watchId,
+          set: {
+            lastTickAt: now,
+            lastTickStatus: input.status,
+            totalCostUsdMtd: sql`${watchStates.totalCostUsdMtd} + ${costStr}`,
+            totalCostUsdAllTime: sql`${watchStates.totalCostUsdAllTime} + ${costStr}`,
+          },
+        });
     },
 
     async loadWatchConfig(input: { watchId: string }) {

@@ -16,9 +16,15 @@ beforeAll(() => {
         if (auth !== "Bearer test-key") return new Response("unauth", { status: 401 });
         const body = (await req.json()) as { model: string };
         if (body.model === "rate-limit-test") return new Response("slow down", { status: 429 });
+        if (body.model === "legacy-cost-field") {
+          return Response.json({
+            choices: [{ message: { content: '{"verdict":"NEUTRAL"}' } }],
+            usage: { prompt_tokens: 100, completion_tokens: 50, total_cost: 0.002 },
+          });
+        }
         return Response.json({
           choices: [{ message: { content: '{"verdict":"NEUTRAL"}' } }],
-          usage: { prompt_tokens: 100, completion_tokens: 50, total_cost: 0.001 },
+          usage: { prompt_tokens: 100, completion_tokens: 50, cost: 0.001 },
         });
       }
       return new Response("not found", { status: 404 });
@@ -65,5 +71,15 @@ describe("OpenRouterProvider", () => {
   test("monthly budget exhaustion → isAvailable false", async () => {
     const p = new OpenRouterProvider("or", { apiKey: "k", baseUrl, monthlyBudgetUsd: 0 });
     expect(await p.isAvailable()).toBe(false);
+  });
+
+  test("legacy total_cost field is also read", async () => {
+    const p = new OpenRouterProvider("or", { apiKey: "test-key", baseUrl });
+    const out = await p.complete({
+      systemPrompt: "s",
+      userPrompt: "u",
+      model: "legacy-cost-field",
+    });
+    expect(out.costUsd).toBe(0.002);
   });
 });

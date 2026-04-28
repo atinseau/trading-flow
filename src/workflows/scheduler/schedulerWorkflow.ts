@@ -17,7 +17,7 @@ const a = proxyActivities<ReturnType<typeof schedulerActivities.buildSchedulerAc
   retry: { maximumAttempts: 3 },
 });
 
-export type SchedulerArgs = { watchId: string };
+export type SchedulerArgs = { watchId: string; analysisTaskQueue: string };
 
 export const doTickSignal = defineSignal<[]>("doTick");
 export const pauseSignal = defineSignal<[]>("pause");
@@ -55,7 +55,7 @@ export async function schedulerWorkflow(args: SchedulerArgs): Promise<void> {
     }
     tickInProgress = true;
     try {
-      await runOneTick(args.watchId);
+      await runOneTick(args.watchId, args.analysisTaskQueue);
       lastTickAt = new Date().toISOString();
       await a.recordWatchTick({ watchId: args.watchId, status: "success", costUsd: 0 });
     } catch {
@@ -70,7 +70,7 @@ export async function schedulerWorkflow(args: SchedulerArgs): Promise<void> {
   await condition(() => false);
 }
 
-async function runOneTick(watchId: string): Promise<void> {
+async function runOneTick(watchId: string, analysisTaskQueue: string): Promise<void> {
   const { ohlcvJson } = await a.fetchOHLCV({ watchId });
   const { indicatorsJson } = await a.computeIndicators({ ohlcvJson });
   const preFilter = await a.evaluatePreFilter({ ohlcvJson, indicatorsJson, watchId });
@@ -140,7 +140,7 @@ async function runOneTick(watchId: string): Promise<void> {
     await startChild(setupWorkflow, {
       args: [initial],
       workflowId: `setup-${setupId}`,
-      taskQueue: "analysis",
+      taskQueue: analysisTaskQueue,
       parentClosePolicy: ParentClosePolicy.ABANDON,
     });
   }

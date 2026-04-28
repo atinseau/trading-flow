@@ -11,6 +11,7 @@ import type { SetupRepository } from "@domain/ports/SetupRepository";
 import type { TickSnapshotStore } from "@domain/ports/TickSnapshotStore";
 import type { Config, WatchConfig } from "@domain/schemas/Config";
 import type { Client } from "@temporalio/client";
+import type { drizzle } from "drizzle-orm/node-postgres";
 
 export type ActivityDeps = {
   marketDataFetchers: Map<string, MarketDataFetcher>;
@@ -27,4 +28,5 @@ export type ActivityDeps = {
   config: Config;
   watchById: (id: string) => WatchConfig | undefined;
   temporalClient: Client;
+  db: ReturnType<typeof drizzle>;
 };
