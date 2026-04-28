@@ -1,37 +1,23 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { PostgresEventStore } from "@adapters/persistence/PostgresEventStore";
 import { setups } from "@adapters/persistence/schema";
-import { PostgreSqlContainer, type StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 import { eq } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/node-postgres";
-import { migrate } from "drizzle-orm/node-postgres/migrator";
-import pg from "pg";
-import { Wait } from "testcontainers";
+import { startTestPostgres, type TestPostgres } from "../../helpers/postgres";
 
-let container: StartedPostgreSqlContainer;
-let pool: pg.Pool;
-let db: ReturnType<typeof drizzle>;
+let pg: TestPostgres;
 let store: PostgresEventStore;
 
 beforeAll(async () => {
-  // Override default wait strategy: Bun + testcontainers hangs on Wait.forListeningPorts
-  // (https://github.com/oven-sh/bun/issues/21342). Log-message wait works fine in Bun.
-  container = await new PostgreSqlContainer("postgres:16-alpine")
-    .withWaitStrategy(Wait.forLogMessage(/database system is ready to accept connections/, 2))
-    .start();
-  pool = new pg.Pool({ connectionString: container.getConnectionUri() });
-  db = drizzle(pool);
-  await migrate(db, { migrationsFolder: "./migrations" });
-  store = new PostgresEventStore(db);
+  pg = await startTestPostgres();
+  store = new PostgresEventStore(pg.db);
 }, 60_000);
 
 afterAll(async () => {
-  await pool.end();
-  await container.stop();
+  await pg.cleanup();
 });
 
 async function createTestSetup(): Promise<string> {
-  const [row] = await db
+  const [row] = await pg.db
     .insert(setups)
     .values({
       watchId: crypto.randomUUID(),
@@ -182,7 +168,7 @@ describe("PostgresEventStore", () => {
       { score: 35, status: "FINALIZING", invalidationLevel: 41700 },
     );
 
-    const [row] = await db.select().from(setups).where(eq(setups.id, id));
+    const [row] = await pg.db.select().from(setups).where(eq(setups.id, id));
     expect(row?.status).toBe("FINALIZING");
     expect(Number(row?.currentScore)).toBe(35);
     expect(Number(row?.invalidationLevel)).toBe(41700);
