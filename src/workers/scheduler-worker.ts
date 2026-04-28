@@ -1,4 +1,5 @@
-import { loadConfig } from "@config/loadConfig";
+import { loadInfraConfig } from "@config/InfraConfig";
+import { loadWatchesConfig } from "@config/loadWatchesConfig";
 import { HealthServer } from "@observability/healthServer";
 import { getLogger } from "@observability/logger";
 import { NativeConnection, Worker } from "@temporalio/worker";
@@ -9,20 +10,31 @@ import { buildContainer } from "./buildContainer";
 const log = getLogger({ component: "scheduler-worker" });
 
 const configPath = process.argv[2] ?? "config/watches.yaml";
-const config = await loadConfig(configPath);
+const infra = loadInfraConfig();
+const watches = await loadWatchesConfig(configPath);
 
 const healthPort = Number(process.env.HEALTH_PORT ?? 8081);
 const health = new HealthServer("scheduler-worker", healthPort);
 health.start();
 
-const container = await buildContainer(config, "scheduler");
+if (watches === null) {
+  const container = await buildContainer(infra, null, "scheduler");
+  health.setStatus("standby", { reason: "no watches.yaml — system idle, drop the file and restart" });
+  log.info({ configPath }, "standby: no watches.yaml — idle (Temporal worker not registered)");
+  await new Promise<void>((resolve) => process.once("SIGTERM", () => resolve()));
+  log.info("shutting down (standby)");
+  await health.stop();
+  await container.shutdown();
+  process.exit(0);
+}
 
-const connection = await NativeConnection.connect({ address: config.temporal.address });
+const container = await buildContainer(infra, watches, "scheduler");
+const connection = await NativeConnection.connect({ address: infra.temporal.address });
 
 const worker = await Worker.create({
   connection,
-  namespace: config.temporal.namespace,
-  taskQueue: config.temporal.task_queues.scheduler,
+  namespace: infra.temporal.namespace,
+  taskQueue: infra.temporal.task_queues.scheduler,
   workflowsPath: require.resolve("../workflows/scheduler/index.ts"),
   activities: {
     ...buildSchedulerActivities(container.deps),
@@ -30,7 +42,7 @@ const worker = await Worker.create({
   },
 });
 
-log.info({ taskQueue: config.temporal.task_queues.scheduler }, "starting");
+log.info({ taskQueue: infra.temporal.task_queues.scheduler }, "starting");
 
 const healthTick = setInterval(() => {
   const runState = worker.getState();

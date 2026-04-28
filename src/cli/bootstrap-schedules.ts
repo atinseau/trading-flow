@@ -1,4 +1,5 @@
-import { loadConfig } from "@config/loadConfig";
+import { loadInfraConfig } from "@config/InfraConfig";
+import { loadWatchesConfig } from "@config/loadWatchesConfig";
 import { cronForTimeframe } from "@domain/services/cronForTimeframe";
 import { getLogger } from "@observability/logger";
 import { Client, Connection, ScheduleNotFoundError } from "@temporalio/client";
@@ -9,11 +10,18 @@ import { schedulerWorkflowId } from "@workflows/scheduler/schedulerWorkflow";
 const log = getLogger({ component: "bootstrap-schedules" });
 
 const configPath = process.argv[2] ?? "config/watches.yaml";
-const config = await loadConfig(configPath);
-const connection = await Connection.connect({ address: config.temporal.address });
-const client = new Client({ connection, namespace: config.temporal.namespace });
+const infra = loadInfraConfig();
+const watches = await loadWatchesConfig(configPath);
 
-for (const watch of config.watches.filter((w) => w.enabled)) {
+if (watches === null) {
+  log.info({ configPath }, "standby: no watches.yaml — skipping schedule bootstrap");
+  process.exit(0);
+}
+
+const connection = await Connection.connect({ address: infra.temporal.address });
+const client = new Client({ connection, namespace: infra.temporal.namespace });
+
+for (const watch of watches.watches.filter((w) => w.enabled)) {
   const watchLog = log.child({ watchId: watch.id });
   const cron = watch.schedule.detector_cron ?? cronForTimeframe(watch.timeframes.primary);
   watchLog.info(
@@ -24,35 +32,31 @@ for (const watch of config.watches.filter((w) => w.enabled)) {
     },
     "schedule cron",
   );
-  // Start SchedulerWorkflow (idempotent via workflowId)
   await client.workflow
     .start("schedulerWorkflow", {
       args: [
         {
           watchId: watch.id,
-          analysisTaskQueue: config.temporal.task_queues.analysis,
+          analysisTaskQueue: infra.temporal.task_queues.analysis,
         },
       ],
       workflowId: schedulerWorkflowId(watch.id),
-      taskQueue: config.temporal.task_queues.scheduler,
+      taskQueue: infra.temporal.task_queues.scheduler,
     })
     .catch((err: Error) => {
       if (!/already running|already started|alreadystarted/i.test(err.message)) throw err;
     });
 
-  // Start PriceMonitorWorkflow
   await client.workflow
     .start("priceMonitorWorkflow", {
       args: [{ watchId: watch.id, adapter: pickPriceFeedAdapter(watch.asset.source) }],
       workflowId: priceMonitorWorkflowId(watch.id),
-      taskQueue: config.temporal.task_queues.scheduler,
+      taskQueue: infra.temporal.task_queues.scheduler,
     })
     .catch((err: Error) => {
       if (!/already running|already started|alreadystarted/i.test(err.message)) throw err;
     });
 
-  // Create or update Schedule that signals doTick (via tickStarterWorkflow,
-  // since Temporal Schedules only support startWorkflow as their action).
   const scheduleId = `tick-${watch.id}`;
   const handle = client.schedule.getHandle(scheduleId);
   try {
@@ -77,7 +81,7 @@ for (const watch of config.watches.filter((w) => w.enabled)) {
           type: "startWorkflow",
           workflowType: "tickStarterWorkflow",
           workflowId: `tick-starter-${watch.id}`,
-          taskQueue: config.temporal.task_queues.scheduler,
+          taskQueue: infra.temporal.task_queues.scheduler,
           args: [{ watchId: watch.id }],
         },
       });
