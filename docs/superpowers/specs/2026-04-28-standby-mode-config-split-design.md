@@ -252,12 +252,20 @@ HTTP 200 because the worker is alive and the infra it depends on is reachable. T
 - `market_data`: change from `z.record(z.string(), z.unknown())` to `z.array(z.string())`.
 - `llm_providers.openrouter`: drop `api_key` field. `llm_providers.claude_max`: drop `workspace_dir` field.
 - `artifacts`: drop `base_dir` field. Keep `type` and `retention`.
-- `WatchSchema`: drop `notifications.telegram_chat_id`. Hoist `notifications.notify_on` to `watches[].notify_on`. Remove other fields under `notifications` (none remain).
+- `WatchSchema`: drop `notifications.telegram_chat_id` (the chat_id is now env-driven and accessed via `deps.infra`). Hoist `notifications.notify_on`, `notifications.include_chart_image`, `notifications.include_reasoning` to `watches[].notify_on`, `watches[].include_chart_image`, `watches[].include_reasoning`. Drop the entire `notifications` block from the watch schema (now empty).
 - `superRefine`: keep provider name validation; switch `market_data[watch.asset.source]` check to `market_data.includes(watch.asset.source)`.
+
+**`src/workflows/activityDependencies.ts`**
+- `config: Config` becomes `config: WatchesConfig`.
+- New field added: `infra: InfraConfig`. Activities that need credentials/addresses (notably the six Telegram-sending activities in `setup/activities.ts`) read them via `deps.infra` instead of via the watch object.
+
+**`src/workflows/setup/activities.ts`**
+- Each of the six `notifier.send` calls passes `chatId: deps.infra.notifications.telegram.chat_id` (instead of the deleted `watch.notifications.telegram_chat_id`).
+- Reads of `watch.notifications.notify_on`, `watch.notifications.include_chart_image`, `watch.notifications.include_reasoning` migrate to top-level `watch.notify_on`, `watch.include_chart_image`, `watch.include_reasoning`.
 
 **`src/workers/buildContainer.ts`**
 - New signature: `buildContainer(infra: InfraConfig, watches: WatchesConfig | null, role: WorkerRole): Promise<Container>`.
-- Postgres pool, Temporal client, persistence stores, clock are always built (use `infra` for connection params).
+- Postgres pool, persistence stores, clock are always built (use `infra` for connection params). `deps.infra` is populated in **both** standby and active branches so any future activity that reads it works in either mode.
 - When `watches === null`:
   - `marketDataFetchers = new Map()`, `chartRenderer = null`, `indicatorCalculator = null`, `priceFeeds = new Map()`, `llmProviders = new Map()`.
   - `notifier = null` (no events to notify in standby).
@@ -265,7 +273,7 @@ HTTP 200 because the worker is alive and the infra it depends on is reachable. T
 - When `watches !== null`:
   - Market data fetchers built per `watches.market_data` array, looking up adapter by name.
   - Provider registry built via `buildProviderRegistry(watches, infra, llmUsageStore)`.
-  - Notifier composed: console always; telegram appended via `MultiNotifier` if `watches.notifications.telegram === true`. If only console, `notifier = new ConsoleNotifier()`. If both, `notifier = new MultiNotifier([console, telegram])`.
+  - Notifier composed: console always; telegram appended via `MultiNotifier` if `watches.notifications.telegram === true`. `TelegramNotifier` is constructed with `{ token: infra.notifications.telegram.bot_token }` only — `chatId` is supplied per-call by the activity.
 
 **`src/adapters/llm/buildProviderRegistry.ts`**
 - Signature: `(watches: WatchesConfig, infra: InfraConfig, store: LLMUsageStore)`.
@@ -275,7 +283,7 @@ HTTP 200 because the worker is alive and the infra it depends on is reachable. T
 - Constructor takes no required args (the base URL is a `const` at the top of the file).
 
 **`src/adapters/notify/TelegramNotifier.ts`**
-- Constructor: `{ token: string, chatId: string }`. Drop any `default_chat_id` field. The notifier always sends to the single deployment chat.
+- Constructor: `{ token: string }` only. Drop `default_chat_id`. The `Notifier` port (`send({ chatId, text, parseMode?, images? })`) is **unchanged** — `chatId` stays per-call so the abstraction stays open to multi-bot/multi-chat in the future. For this iteration, callers pass the env-driven `infra.notifications.telegram.chat_id` to every `send` call.
 
 **`src/observability/healthServer.ts`**
 - `Status` adds `"standby"`. Payload supports an optional `reason: string` field. `setStatus(status, meta)` accepts `meta.reason`.
