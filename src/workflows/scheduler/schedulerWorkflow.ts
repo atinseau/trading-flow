@@ -144,3 +144,12 @@ async function runOneTick(watchId: string): Promise<void> {
 }
 
 export const schedulerWorkflowId = (watchId: string) => `scheduler-${watchId}`;
+
+/**
+ * Tiny workflow that exists solely to be the action of a Temporal Schedule.
+ * Schedules can only start workflows (not signal them directly), so this
+ * workflow signals the long-running schedulerWorkflow on each tick.
+ */
+export async function tickStarterWorkflow(args: { watchId: string }): Promise<void> {
+  await getExternalWorkflowHandle(schedulerWorkflowId(args.watchId)).signal(doTickSignal);
+}

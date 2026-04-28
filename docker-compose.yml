@@ -58,6 +58,73 @@ services:
     ports:
       - "127.0.0.1:8080:8080"
 
+  migrate:
+    build: { context: ., dockerfile: docker/Dockerfile.worker }
+    container_name: tf-migrate
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-trading_flow}:${POSTGRES_PASSWORD}@postgres:5432/trading_flow
+    command: bun run src/cli/migrate.ts
+    restart: "no"
+
+  bootstrap-schedules:
+    build: { context: ., dockerfile: docker/Dockerfile.worker }
+    container_name: tf-bootstrap-schedules
+    depends_on:
+      temporal:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    environment: &worker_env
+      DATABASE_URL: postgres://${POSTGRES_USER:-trading_flow}:${POSTGRES_PASSWORD}@postgres:5432/trading_flow
+      TEMPORAL_ADDRESS: temporal:7233
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID}
+    volumes: &worker_volumes
+      - ./config:/app/config:ro
+      - ./prompts:/app/prompts:ro
+      - artifacts_data:/data/artifacts
+      - claude_workspace:/data/claude-workspace
+    command: bun run src/cli/bootstrap-schedules.ts
+    restart: "no"
+
+  scheduler-worker:
+    build: { context: ., dockerfile: docker/Dockerfile.worker }
+    container_name: tf-scheduler-worker
+    restart: unless-stopped
+    depends_on:
+      bootstrap-schedules:
+        condition: service_completed_successfully
+    environment: *worker_env
+    volumes: *worker_volumes
+    command: bun run src/workers/scheduler-worker.ts
+
+  analysis-worker:
+    build: { context: ., dockerfile: docker/Dockerfile.worker }
+    container_name: tf-analysis-worker
+    restart: unless-stopped
+    depends_on:
+      bootstrap-schedules:
+        condition: service_completed_successfully
+    environment: *worker_env
+    volumes: *worker_volumes
+    command: bun run src/workers/analysis-worker.ts
+
+  notification-worker:
+    build: { context: ., dockerfile: docker/Dockerfile.worker }
+    container_name: tf-notification-worker
+    restart: unless-stopped
+    depends_on:
+      temporal:
+        condition: service_healthy
+    environment: *worker_env
+    volumes: *worker_volumes
+    command: bun run src/workers/notification-worker.ts
+
 volumes:
   postgres_data:
     driver: local
