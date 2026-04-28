@@ -12,6 +12,7 @@
     "test:adapters": "bun test test/adapters",
     "test:workflows": "bun test test/workflows",
     "test:e2e": "bun test test/e2e",
+    "test:llm": "RUN_LLM=1 bun test test/llm",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "bun run src/cli/migrate.ts",
     "db:studio": "drizzle-kit studio",
