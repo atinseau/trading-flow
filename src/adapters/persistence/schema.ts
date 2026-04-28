@@ -48,9 +48,7 @@ export const setups = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
     closedAt: timestamp("closed_at", { withTimezone: true }),
   },
-  (t) => ({
-    watchStatusIdx: index("idx_setups_watch_status").on(t.watchId, t.status),
-  }),
+  (t) => [index("idx_setups_watch_status").on(t.watchId, t.status)],
 );
 
 export const events = pgTable(
@@ -77,12 +75,12 @@ export const events = pgTable(
     costUsd: numeric("cost_usd", { precision: 10, scale: 6 }),
     latencyMs: integer("latency_ms"),
   },
-  (t) => ({
-    setupTimeIdx: index("idx_events_setup_time").on(t.setupId, t.occurredAt),
-    typeIdx: index("idx_events_type").on(t.type),
-    uniqueSeq: uniqueIndex("ux_events_setup_seq").on(t.setupId, t.sequence),
-    inputHashIdx: index("idx_events_input_hash").on(t.setupId, t.inputHash),
-  }),
+  (t) => [
+    index("idx_events_setup_time").on(t.setupId, t.occurredAt),
+    index("idx_events_type").on(t.type),
+    uniqueIndex("ux_events_setup_seq").on(t.setupId, t.sequence),
+    index("idx_events_input_hash").on(t.setupId, t.inputHash),
+  ],
 );
 
 export const artifacts = pgTable(
@@ -97,9 +95,7 @@ export const artifacts = pgTable(
     sha256: text("sha256").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => ({
-    sha256Idx: index("idx_artifacts_sha256").on(t.sha256),
-  }),
+  (t) => [index("idx_artifacts_sha256").on(t.sha256)],
 );
 
 export const tickSnapshots = pgTable(
@@ -116,7 +112,5 @@ export const tickSnapshots = pgTable(
     preFilterPass: boolean("pre_filter_pass").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => ({
-    watchTickIdx: index("idx_ticks_watch_time").on(t.watchId, t.tickAt),
-  }),
+  (t) => [index("idx_ticks_watch_time").on(t.watchId, t.tickAt)],
 );
