@@ -6,7 +6,10 @@ import {
   proxyActivities,
   setHandler,
   sleep,
+  workflowInfo,
 } from "@temporalio/workflow";
+import type { Verdict } from "../../domain/schemas/Verdict";
+import { applyVerdict } from "../../domain/scoring/applyVerdict";
 import type { SetupStatus } from "../../domain/state-machine/setupTransitions";
 import { isActive } from "../../domain/state-machine/setupTransitions";
 import type * as activities from "./activities";
@@ -26,6 +29,7 @@ export type InitialEvidence = {
   direction: "LONG" | "SHORT";
   invalidationLevel: number;
   initialScore: number;
+  ttlCandles: number;
   ttlExpiresAt: string;
   scoreThresholdFinalizer: number;
   scoreThresholdDead: number;
@@ -72,17 +76,25 @@ export async function setupWorkflow(initial: InitialEvidence): Promise<SetupStat
       tickSnapshotId: args.tickSnapshotId,
       watchId: initial.watchId,
     });
-    const v = JSON.parse(verdictJson).verdict as { type: string; scoreDelta?: number };
-    if (v.type === "INVALIDATE") {
-      state.status = "INVALIDATED";
-      return;
-    }
-    if (v.type === "STRENGTHEN" || v.type === "WEAKEN") {
-      const delta = v.scoreDelta ?? 0;
-      state.score = Math.max(0, Math.min(initial.scoreMax, state.score + delta));
-      if (state.score <= initial.scoreThresholdDead) state.status = "EXPIRED";
-      else if (state.score >= initial.scoreThresholdFinalizer) state.status = "FINALIZING";
-    }
+    const v = JSON.parse(verdictJson).verdict as Verdict;
+
+    const next = applyVerdict(
+      {
+        status: state.status,
+        score: state.score,
+        invalidationLevel: state.invalidationLevel,
+        direction: state.direction,
+      },
+      v,
+      {
+        scoreMax: initial.scoreMax,
+        scoreThresholdFinalizer: initial.scoreThresholdFinalizer,
+        scoreThresholdDead: initial.scoreThresholdDead,
+      },
+    );
+    state.status = next.status;
+    state.score = next.score;
+    state.invalidationLevel = next.invalidationLevel;
   });
 
   setHandler(corroborateSignal, async (args) => {
@@ -100,6 +112,21 @@ export async function setupWorkflow(initial: InitialEvidence): Promise<SetupStat
 
   setHandler(closeSignal, () => {
     state.status = "CLOSED";
+  });
+
+  // Create the setup row first so subsequent events satisfy the FK.
+  await a.createSetup({
+    setupId: initial.setupId,
+    watchId: initial.watchId,
+    asset: initial.asset,
+    timeframe: initial.timeframe,
+    patternHint: initial.patternHint,
+    invalidationLevel: initial.invalidationLevel,
+    direction: initial.direction,
+    ttlCandles: initial.ttlCandles,
+    ttlExpiresAt: initial.ttlExpiresAt,
+    initialScore: initial.initialScore,
+    workflowId: workflowInfo().workflowId,
   });
 
   // Persist SetupCreated event

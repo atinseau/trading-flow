@@ -22,6 +22,7 @@ const baseInitial: InitialEvidence = {
   direction: "LONG",
   invalidationLevel: 41500,
   initialScore: 25,
+  ttlCandles: 50,
   ttlExpiresAt: new Date(Date.now() + 4 * 3600_000).toISOString(),
   scoreThresholdFinalizer: 80,
   scoreThresholdDead: 10,
@@ -31,6 +32,7 @@ const baseInitial: InitialEvidence = {
 describe("SetupWorkflow", () => {
   test("CANDIDATE -> REVIEWING after creation, score = initial", async () => {
     const fakeActivities = {
+      createSetup: async () => ({}),
       nextSequence: async () => ({ sequence: 1 }),
       persistEvent: async () => ({ id: "evt-1" }),
       runReviewer: async () => ({
@@ -68,6 +70,7 @@ describe("SetupWorkflow", () => {
 
   test("STRENGTHEN crossing threshold -> FINALIZING -> REJECTED if no go", async () => {
     const fakeActivities = {
+      createSetup: async () => ({}),
       nextSequence: async () => ({ sequence: 1 }),
       persistEvent: async () => ({ id: "evt-1" }),
       runReviewer: async () => ({
@@ -103,6 +106,7 @@ describe("SetupWorkflow", () => {
 
   test("priceCheck below invalidation -> INVALIDATED", async () => {
     const fakeActivities = {
+      createSetup: async () => ({}),
       nextSequence: async () => ({ sequence: 1 }),
       persistEvent: async () => ({ id: "evt-1" }),
       runReviewer: async () => ({

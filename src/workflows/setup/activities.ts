@@ -17,6 +17,35 @@ const FinalizerOutputSchema = z.object({
 
 export function buildSetupActivities(deps: ActivityDeps) {
   return {
+    async createSetup(input: {
+      setupId: string;
+      watchId: string;
+      asset: string;
+      timeframe: string;
+      patternHint: string;
+      invalidationLevel: number;
+      direction: "LONG" | "SHORT";
+      ttlCandles: number;
+      ttlExpiresAt: string;
+      initialScore: number;
+      workflowId: string;
+    }) {
+      return deps.setupRepo.create({
+        id: input.setupId,
+        watchId: input.watchId,
+        asset: input.asset,
+        timeframe: input.timeframe,
+        status: "REVIEWING",
+        currentScore: input.initialScore,
+        patternHint: input.patternHint,
+        invalidationLevel: input.invalidationLevel,
+        direction: input.direction,
+        ttlCandles: input.ttlCandles,
+        ttlExpiresAt: new Date(input.ttlExpiresAt),
+        workflowId: input.workflowId,
+      });
+    },
+
     async persistEvent(input: { event: NewEvent; setupUpdate: SetupStateUpdate }) {
       return deps.eventStore.append(input.event, input.setupUpdate);
     },

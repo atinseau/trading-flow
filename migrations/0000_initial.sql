@@ -1,4 +1,4 @@
-CREATE TABLE IF NOT EXISTS "artifacts" (
+CREATE TABLE "artifacts" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"event_id" uuid,
 	"kind" text NOT NULL,
@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS "artifacts" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "events" (
+CREATE TABLE "events" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"setup_id" uuid NOT NULL,
 	"sequence" integer NOT NULL,
@@ -30,9 +30,9 @@ CREATE TABLE IF NOT EXISTS "events" (
 	"latency_ms" integer
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "setups" (
+CREATE TABLE "setups" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-	"watch_id" uuid NOT NULL,
+	"watch_id" text NOT NULL,
 	"asset" text NOT NULL,
 	"timeframe" text NOT NULL,
 	"status" text NOT NULL,
@@ -49,9 +49,9 @@ CREATE TABLE IF NOT EXISTS "setups" (
 	CONSTRAINT "setups_workflow_id_unique" UNIQUE("workflow_id")
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "tick_snapshots" (
+CREATE TABLE "tick_snapshots" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-	"watch_id" uuid NOT NULL,
+	"watch_id" text NOT NULL,
 	"tick_at" timestamp with time zone NOT NULL,
 	"asset" text NOT NULL,
 	"timeframe" text NOT NULL,
@@ -62,8 +62,8 @@ CREATE TABLE IF NOT EXISTS "tick_snapshots" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "watch_states" (
-	"watch_id" uuid PRIMARY KEY NOT NULL,
+CREATE TABLE "watch_states" (
+	"watch_id" text PRIMARY KEY NOT NULL,
 	"enabled" boolean DEFAULT true NOT NULL,
 	"last_tick_at" timestamp with time zone,
 	"last_tick_status" text,
@@ -74,22 +74,12 @@ CREATE TABLE IF NOT EXISTS "watch_states" (
 	"deleted_at" timestamp with time zone
 );
 --> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "artifacts" ADD CONSTRAINT "artifacts_event_id_events_id_fk" FOREIGN KEY ("event_id") REFERENCES "public"."events"("id") ON DELETE cascade ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
-END $$;
---> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "events" ADD CONSTRAINT "events_setup_id_setups_id_fk" FOREIGN KEY ("setup_id") REFERENCES "public"."setups"("id") ON DELETE cascade ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
-END $$;
---> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "idx_artifacts_sha256" ON "artifacts" USING btree ("sha256");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "idx_events_setup_time" ON "events" USING btree ("setup_id","occurred_at");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "idx_events_type" ON "events" USING btree ("type");--> statement-breakpoint
-CREATE UNIQUE INDEX IF NOT EXISTS "ux_events_setup_seq" ON "events" USING btree ("setup_id","sequence");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "idx_events_input_hash" ON "events" USING btree ("setup_id","input_hash");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "idx_setups_watch_status" ON "setups" USING btree ("watch_id","status");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "idx_ticks_watch_time" ON "tick_snapshots" USING btree ("watch_id","tick_at");
+ALTER TABLE "artifacts" ADD CONSTRAINT "artifacts_event_id_events_id_fk" FOREIGN KEY ("event_id") REFERENCES "public"."events"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "events" ADD CONSTRAINT "events_setup_id_setups_id_fk" FOREIGN KEY ("setup_id") REFERENCES "public"."setups"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+CREATE INDEX "idx_artifacts_sha256" ON "artifacts" USING btree ("sha256");--> statement-breakpoint
+CREATE INDEX "idx_events_setup_time" ON "events" USING btree ("setup_id","occurred_at");--> statement-breakpoint
+CREATE INDEX "idx_events_type" ON "events" USING btree ("type");--> statement-breakpoint
+CREATE UNIQUE INDEX "ux_events_setup_seq" ON "events" USING btree ("setup_id","sequence");--> statement-breakpoint
+CREATE INDEX "idx_events_input_hash" ON "events" USING btree ("setup_id","input_hash");--> statement-breakpoint
+CREATE INDEX "idx_setups_watch_status" ON "setups" USING btree ("watch_id","status");--> statement-breakpoint
+CREATE INDEX "idx_ticks_watch_time" ON "tick_snapshots" USING btree ("watch_id","tick_at");

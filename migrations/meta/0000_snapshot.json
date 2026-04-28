@@ -1,5 +1,5 @@
 {
-  "id": "f1c36fa7-dfd6-4b8a-9159-7daa07a9257e",
+  "id": "5c1cf7e2-fa26-4213-a9a2-5fcc548c2a5a",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -327,7 +327,7 @@
         },
         "watch_id": {
           "name": "watch_id",
-          "type": "uuid",
+          "type": "text",
           "primaryKey": false,
           "notNull": true
         },
@@ -464,7 +464,7 @@
         },
         "watch_id": {
           "name": "watch_id",
-          "type": "uuid",
+          "type": "text",
           "primaryKey": false,
           "notNull": true
         },
@@ -554,7 +554,7 @@
       "columns": {
         "watch_id": {
           "name": "watch_id",
-          "type": "uuid",
+          "type": "text",
           "primaryKey": true,
           "notNull": true
         },

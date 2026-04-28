@@ -14,7 +14,7 @@ import {
 } from "drizzle-orm/pg-core";
 
 export const watchStates = pgTable("watch_states", {
-  watchId: uuid("watch_id").primaryKey(),
+  watchId: text("watch_id").primaryKey(),
   enabled: boolean("enabled").notNull().default(true),
   lastTickAt: timestamp("last_tick_at", { withTimezone: true }),
   lastTickStatus: text("last_tick_status"),
@@ -33,7 +33,7 @@ export const setups = pgTable(
   "setups",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    watchId: uuid("watch_id").notNull(),
+    watchId: text("watch_id").notNull(),
     asset: text("asset").notNull(),
     timeframe: text("timeframe").notNull(),
     status: text("status").notNull(),
@@ -102,7 +102,7 @@ export const tickSnapshots = pgTable(
   "tick_snapshots",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    watchId: uuid("watch_id").notNull(),
+    watchId: text("watch_id").notNull(),
     tickAt: timestamp("tick_at", { withTimezone: true }).notNull(),
     asset: text("asset").notNull(),
     timeframe: text("timeframe").notNull(),

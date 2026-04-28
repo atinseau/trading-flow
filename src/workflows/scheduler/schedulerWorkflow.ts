@@ -117,6 +117,7 @@ async function runOneTick(watchId: string): Promise<void> {
       direction: newSetup.direction,
       invalidationLevel: newSetup.keyLevels.invalidation,
       initialScore: newSetup.initialScore,
+      ttlCandles: watch.setup_lifecycle.ttl_candles,
       ttlExpiresAt: new Date(
         Date.now() + watch.setup_lifecycle.ttl_candles * 3600_000,
       ).toISOString(),
