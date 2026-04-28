@@ -1,0 +1,28 @@
+import type { ArtifactStore } from "@domain/ports/ArtifactStore";
+import type { ChartRenderer } from "@domain/ports/ChartRenderer";
+import type { Clock } from "@domain/ports/Clock";
+import type { EventStore } from "@domain/ports/EventStore";
+import type { IndicatorCalculator } from "@domain/ports/IndicatorCalculator";
+import type { LLMProvider } from "@domain/ports/LLMProvider";
+import type { MarketDataFetcher } from "@domain/ports/MarketDataFetcher";
+import type { Notifier } from "@domain/ports/Notifier";
+import type { PriceFeed } from "@domain/ports/PriceFeed";
+import type { SetupRepository } from "@domain/ports/SetupRepository";
+import type { TickSnapshotStore } from "@domain/ports/TickSnapshotStore";
+import type { Config, WatchConfig } from "@domain/schemas/Config";
+
+export type ActivityDeps = {
+  marketDataFetchers: Map<string, MarketDataFetcher>;
+  chartRenderer: ChartRenderer;
+  indicatorCalculator: IndicatorCalculator;
+  llmProviders: Map<string, LLMProvider>;
+  priceFeeds: Map<string, PriceFeed>;
+  notifier: Notifier;
+  setupRepo: SetupRepository;
+  eventStore: EventStore;
+  artifactStore: ArtifactStore;
+  tickSnapshotStore: TickSnapshotStore;
+  clock: Clock;
+  config: Config;
+  watchById: (id: string) => WatchConfig | undefined;
+};
