@@ -18,6 +18,7 @@ export class FakeChartRenderer implements ChartRenderer {
       sha256: createHash("sha256").update(fakePng).digest("hex"),
       bytes: fakePng.length,
       mimeType: "image/png",
+      content: fakePng,
     };
   }
 }

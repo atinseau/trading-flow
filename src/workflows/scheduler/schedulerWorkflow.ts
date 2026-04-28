@@ -7,6 +7,7 @@ import {
   proxyActivities,
   setHandler,
   startChild,
+  uuid4,
 } from "@temporalio/workflow";
 import { type InitialEvidence, setupWorkflow } from "../setup/setupWorkflow";
 import type * as schedulerActivities from "./activities";
@@ -107,7 +108,7 @@ async function runOneTick(watchId: string): Promise<void> {
   const watch = await a.loadWatchConfig({ watchId });
   if (!watch) return;
   for (const newSetup of dedup.creates) {
-    const setupId = crypto.randomUUID();
+    const setupId = uuid4();
     const initial: InitialEvidence = {
       setupId,
       watchId,

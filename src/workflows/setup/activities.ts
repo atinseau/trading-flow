@@ -58,7 +58,15 @@ export function buildSetupActivities(deps: ActivityDeps) {
       setupId: string;
       tickSnapshotId: string;
       watchId: string;
-    }): Promise<{ verdictJson: string; costUsd: number; eventAlreadyExisted: boolean }> {
+    }): Promise<{
+      verdictJson: string;
+      costUsd: number;
+      eventAlreadyExisted: boolean;
+      inputHash: string;
+      promptVersion: string;
+      provider: string;
+      model: string;
+    }> {
       const watch = deps.watchById(input.watchId);
       if (!watch) throw new InvalidConfigError(`Unknown watch: ${input.watchId}`);
       const setup = await deps.setupRepo.get(input.setupId);
@@ -78,10 +86,15 @@ export function buildSetupActivities(deps: ActivityDeps) {
 
       const cached = await deps.eventStore.findByInputHash(input.setupId, inputHash);
       if (cached) {
+        // Idempotent retry — workflow will skip applyVerdict + persistEvent.
         return {
-          verdictJson: JSON.stringify(cached.payload.data),
+          verdictJson: "",
           costUsd: 0,
           eventAlreadyExisted: true,
+          inputHash,
+          promptVersion,
+          provider: cached.provider ?? "",
+          model: cached.model ?? "",
         };
       }
 
@@ -105,14 +118,13 @@ export function buildSetupActivities(deps: ActivityDeps) {
       );
       const verdict = result.output.parsed as Verdict;
       return {
-        verdictJson: JSON.stringify({
-          verdict,
-          inputHash,
-          promptVersion,
-          provider: result.usedProvider,
-        }),
+        verdictJson: JSON.stringify(verdict),
         costUsd: result.output.costUsd,
         eventAlreadyExisted: false,
+        inputHash,
+        promptVersion,
+        provider: result.usedProvider,
+        model: watch.analyzers.reviewer.model,
       };
     },
 

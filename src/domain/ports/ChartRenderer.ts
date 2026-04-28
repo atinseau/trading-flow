@@ -5,6 +5,7 @@ export type ChartRenderResult = {
   sha256: string;
   bytes: number;
   mimeType: string;
+  content: Buffer;
 };
 
 export interface ChartRenderer {

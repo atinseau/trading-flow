@@ -29,17 +29,34 @@ const baseInitial: InitialEvidence = {
   scoreMax: 100,
 };
 
+const baseRunReviewerReturn = (
+  verdict: unknown,
+): {
+  verdictJson: string;
+  costUsd: number;
+  eventAlreadyExisted: boolean;
+  inputHash: string;
+  promptVersion: string;
+  provider: string;
+  model: string;
+} => ({
+  verdictJson: JSON.stringify(verdict),
+  costUsd: 0,
+  eventAlreadyExisted: false,
+  inputHash: "test-hash",
+  promptVersion: "reviewer_v1",
+  provider: "fake",
+  model: "fake-model",
+});
+
 describe("SetupWorkflow", () => {
   test("CANDIDATE -> REVIEWING after creation, score = initial", async () => {
     const fakeActivities = {
       createSetup: async () => ({}),
       nextSequence: async () => ({ sequence: 1 }),
       persistEvent: async () => ({ id: "evt-1" }),
-      runReviewer: async () => ({
-        verdictJson: JSON.stringify({ verdict: { type: "NEUTRAL" } }),
-        costUsd: 0,
-        eventAlreadyExisted: false,
-      }),
+      runReviewer: async () =>
+        baseRunReviewerReturn({ type: "NEUTRAL", observations: [] }),
       runFinalizer: async () => ({
         decisionJson: JSON.stringify({ go: false, reasoning: "x" }),
         costUsd: 0,
@@ -73,11 +90,13 @@ describe("SetupWorkflow", () => {
       createSetup: async () => ({}),
       nextSequence: async () => ({ sequence: 1 }),
       persistEvent: async () => ({ id: "evt-1" }),
-      runReviewer: async () => ({
-        verdictJson: JSON.stringify({ verdict: { type: "STRENGTHEN", scoreDelta: 60 } }),
-        costUsd: 0,
-        eventAlreadyExisted: false,
-      }),
+      runReviewer: async () =>
+        baseRunReviewerReturn({
+          type: "STRENGTHEN",
+          scoreDelta: 60,
+          observations: [],
+          reasoning: "looks strong",
+        }),
       runFinalizer: async () => ({
         decisionJson: JSON.stringify({ go: false, reasoning: "x" }),
         costUsd: 0,
@@ -109,11 +128,8 @@ describe("SetupWorkflow", () => {
       createSetup: async () => ({}),
       nextSequence: async () => ({ sequence: 1 }),
       persistEvent: async () => ({ id: "evt-1" }),
-      runReviewer: async () => ({
-        verdictJson: JSON.stringify({ verdict: { type: "NEUTRAL" } }),
-        costUsd: 0,
-        eventAlreadyExisted: false,
-      }),
+      runReviewer: async () =>
+        baseRunReviewerReturn({ type: "NEUTRAL", observations: [] }),
       runFinalizer: async () => ({
         decisionJson: JSON.stringify({ go: false, reasoning: "x" }),
         costUsd: 0,

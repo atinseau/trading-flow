@@ -60,7 +60,13 @@ export class PlaywrightChartRenderer implements ChartRenderer {
       const path = args.outputUri.replace(/^file:\/\//, "");
       await mkdir(dirname(path), { recursive: true });
       await writeFile(path, buffer);
-      return { uri: args.outputUri, sha256, bytes: buffer.length, mimeType: "image/png" };
+      return {
+        uri: args.outputUri,
+        sha256,
+        bytes: buffer.length,
+        mimeType: "image/png",
+        content: buffer,
+      };
     } finally {
       this.releasePage(page);
     }

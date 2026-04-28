@@ -68,10 +68,9 @@ export function buildSchedulerActivities(deps: ActivityDeps) {
         height: 720,
         outputUri: tempUri,
       });
-      const buf = await deps.artifactStore.get(result.uri).catch(() => Buffer.from([]));
       const stored = await deps.artifactStore.put({
         kind: "chart_image",
-        content: buf.length > 0 ? buf : Buffer.from(result.uri),
+        content: result.content,
         mimeType: "image/png",
       });
       return { artifactUri: stored.uri, sha256: stored.sha256 };

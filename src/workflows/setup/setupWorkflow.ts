@@ -8,6 +8,8 @@ import {
   sleep,
   workflowInfo,
 } from "@temporalio/workflow";
+import type { EventPayload } from "../../domain/events/schemas";
+import type { EventTypeName } from "../../domain/events/types";
 import type { Verdict } from "../../domain/schemas/Verdict";
 import { applyVerdict } from "../../domain/scoring/applyVerdict";
 import type { SetupStatus } from "../../domain/state-machine/setupTransitions";
@@ -56,6 +58,58 @@ export type SetupWorkflowState = {
 
 export const getStateQuery = defineQuery<SetupWorkflowState>("getState");
 
+function verdictToEvent(
+  verdict: Verdict,
+): { type: EventTypeName; payload: EventPayload } {
+  switch (verdict.type) {
+    case "STRENGTHEN":
+      return {
+        type: "Strengthened",
+        payload: {
+          type: "Strengthened",
+          data: {
+            reasoning: verdict.reasoning,
+            observations: verdict.observations,
+            source: "reviewer_full",
+          },
+        },
+      };
+    case "WEAKEN":
+      return {
+        type: "Weakened",
+        payload: {
+          type: "Weakened",
+          data: {
+            reasoning: verdict.reasoning,
+            observations: verdict.observations,
+          },
+        },
+      };
+    case "NEUTRAL":
+      return {
+        type: "Neutral",
+        payload: {
+          type: "Neutral",
+          data: {
+            observations: verdict.observations,
+          },
+        },
+      };
+    case "INVALIDATE":
+      return {
+        type: "Invalidated",
+        payload: {
+          type: "Invalidated",
+          data: {
+            reason: verdict.reason,
+            trigger: "reviewer_verdict",
+            deterministic: false,
+          },
+        },
+      };
+  }
+}
+
 export async function setupWorkflow(initial: InitialEvidence): Promise<SetupStatus> {
   const state: SetupWorkflowState = {
     status: "REVIEWING",
@@ -71,43 +125,141 @@ export async function setupWorkflow(initial: InitialEvidence): Promise<SetupStat
 
   setHandler(reviewSignal, async (args) => {
     if (state.status !== "REVIEWING") return;
-    const { verdictJson } = await a.runReviewer({
+    const reviewerResult = await a.runReviewer({
       setupId: initial.setupId,
       tickSnapshotId: args.tickSnapshotId,
       watchId: initial.watchId,
     });
-    const v = JSON.parse(verdictJson).verdict as Verdict;
 
-    const next = applyVerdict(
-      {
-        status: state.status,
-        score: state.score,
-        invalidationLevel: state.invalidationLevel,
-        direction: state.direction,
-      },
-      v,
-      {
-        scoreMax: initial.scoreMax,
-        scoreThresholdFinalizer: initial.scoreThresholdFinalizer,
-        scoreThresholdDead: initial.scoreThresholdDead,
-      },
-    );
+    if (reviewerResult.eventAlreadyExisted) return;
+
+    const verdict = JSON.parse(reviewerResult.verdictJson) as Verdict;
+    const before = {
+      status: state.status,
+      score: state.score,
+      invalidationLevel: state.invalidationLevel,
+      direction: state.direction,
+    };
+    const next = applyVerdict(before, verdict, {
+      scoreMax: initial.scoreMax,
+      scoreThresholdFinalizer: initial.scoreThresholdFinalizer,
+      scoreThresholdDead: initial.scoreThresholdDead,
+    });
+
+    const seq = (await a.nextSequence({ setupId: initial.setupId })).sequence;
+    const { type, payload } = verdictToEvent(verdict);
+
+    // Update in-memory state BEFORE persisting so concurrent timer scopes
+    // (e.g. TTL) see the new status and don't override it.
+    state.sequence = seq;
     state.status = next.status;
     state.score = next.score;
     state.invalidationLevel = next.invalidationLevel;
+
+    await a.persistEvent({
+      event: {
+        setupId: initial.setupId,
+        sequence: seq,
+        stage: "reviewer",
+        actor: "reviewer_v1",
+        type,
+        scoreDelta: next.score - before.score,
+        scoreAfter: next.score,
+        statusBefore: before.status,
+        statusAfter: next.status,
+        payload,
+        provider: reviewerResult.provider,
+        model: reviewerResult.model,
+        promptVersion: reviewerResult.promptVersion,
+        inputHash: reviewerResult.inputHash,
+        costUsd: reviewerResult.costUsd,
+      },
+      setupUpdate: {
+        score: next.score,
+        status: next.status,
+        invalidationLevel: next.invalidationLevel,
+      },
+    });
   });
 
   setHandler(corroborateSignal, async (args) => {
     if (state.status !== "REVIEWING") return;
-    state.score = Math.min(initial.scoreMax, state.score + args.confidenceDelta);
-    if (state.score >= initial.scoreThresholdFinalizer) state.status = "FINALIZING";
+    const before = { status: state.status, score: state.score };
+    const newScore = Math.min(initial.scoreMax, state.score + args.confidenceDelta);
+    const newStatus: SetupStatus =
+      newScore >= initial.scoreThresholdFinalizer ? "FINALIZING" : before.status;
+
+    const seq = (await a.nextSequence({ setupId: initial.setupId })).sequence;
+    state.sequence = seq;
+    state.score = newScore;
+    state.status = newStatus;
+
+    await a.persistEvent({
+      event: {
+        setupId: initial.setupId,
+        sequence: seq,
+        stage: "detector",
+        actor: "detector_v1",
+        type: "Strengthened",
+        scoreDelta: newScore - before.score,
+        scoreAfter: newScore,
+        statusBefore: before.status,
+        statusAfter: newStatus,
+        payload: {
+          type: "Strengthened",
+          data: {
+            reasoning: "Corroborating evidence from detector",
+            observations: [],
+            source: "detector_corroboration",
+          },
+        },
+      },
+      setupUpdate: {
+        score: newScore,
+        status: newStatus,
+        invalidationLevel: state.invalidationLevel,
+      },
+    });
   });
 
-  setHandler(priceCheckSignal, (args) => {
+  setHandler(priceCheckSignal, async (args) => {
     const breached =
       (state.direction === "LONG" && args.currentPrice < state.invalidationLevel) ||
       (state.direction === "SHORT" && args.currentPrice > state.invalidationLevel);
-    if (breached) state.status = "INVALIDATED";
+    if (!breached) return;
+    if (!isActive(state.status)) return;
+
+    const before = { status: state.status, score: state.score };
+    const seq = (await a.nextSequence({ setupId: initial.setupId })).sequence;
+    state.sequence = seq;
+    state.status = "INVALIDATED";
+
+    await a.persistEvent({
+      event: {
+        setupId: initial.setupId,
+        sequence: seq,
+        stage: "system",
+        actor: "price_monitor",
+        type: "PriceInvalidated",
+        scoreDelta: 0,
+        scoreAfter: before.score,
+        statusBefore: before.status,
+        statusAfter: "INVALIDATED",
+        payload: {
+          type: "PriceInvalidated",
+          data: {
+            currentPrice: args.currentPrice,
+            invalidationLevel: state.invalidationLevel,
+            observedAt: args.observedAt,
+          },
+        },
+      },
+      setupUpdate: {
+        score: before.score,
+        status: "INVALIDATED",
+        invalidationLevel: state.invalidationLevel,
+      },
+    });
   });
 
   setHandler(closeSignal, () => {
@@ -179,16 +331,83 @@ export async function setupWorkflow(initial: InitialEvidence): Promise<SetupStat
       await condition(() => !isActive(state.status) || state.status === "FINALIZING");
 
       if (state.status === "FINALIZING") {
-        const { decisionJson } = await a.runFinalizer({
+        const finalizerResult = await a.runFinalizer({
           setupId: initial.setupId,
           watchId: initial.watchId,
         });
-        const decision = JSON.parse(decisionJson) as { go: boolean; reasoning: string };
+        const decision = JSON.parse(finalizerResult.decisionJson) as {
+          go: boolean;
+          reasoning: string;
+          entry?: number;
+          stop_loss?: number;
+          take_profit?: number[];
+        };
+        const seq = (await a.nextSequence({ setupId: initial.setupId })).sequence;
         if (decision.go) {
+          state.sequence = seq;
           state.status = "TRACKING";
+          await a.persistEvent({
+            event: {
+              setupId: initial.setupId,
+              sequence: seq,
+              stage: "finalizer",
+              actor: "finalizer_v1",
+              type: "Confirmed",
+              scoreDelta: 0,
+              scoreAfter: state.score,
+              statusBefore: "FINALIZING",
+              statusAfter: "TRACKING",
+              payload: {
+                type: "Confirmed",
+                data: {
+                  decision: "GO",
+                  entry: decision.entry ?? 0,
+                  stopLoss: decision.stop_loss ?? 0,
+                  takeProfit:
+                    decision.take_profit && decision.take_profit.length > 0
+                      ? decision.take_profit
+                      : [0],
+                  reasoning: decision.reasoning,
+                },
+              },
+              costUsd: finalizerResult.costUsd,
+            },
+            setupUpdate: {
+              score: state.score,
+              status: "TRACKING",
+              invalidationLevel: state.invalidationLevel,
+            },
+          });
           await trackingLoop(initial.setupId, initial.watchId);
         } else {
+          state.sequence = seq;
           state.status = "REJECTED";
+          await a.persistEvent({
+            event: {
+              setupId: initial.setupId,
+              sequence: seq,
+              stage: "finalizer",
+              actor: "finalizer_v1",
+              type: "Rejected",
+              scoreDelta: 0,
+              scoreAfter: state.score,
+              statusBefore: "FINALIZING",
+              statusAfter: "REJECTED",
+              payload: {
+                type: "Rejected",
+                data: {
+                  decision: "NO_GO",
+                  reasoning: decision.reasoning,
+                },
+              },
+              costUsd: finalizerResult.costUsd,
+            },
+            setupUpdate: {
+              score: state.score,
+              status: "REJECTED",
+              invalidationLevel: state.invalidationLevel,
+            },
+          });
         }
       }
     }
