@@ -1929,7 +1929,7 @@ const LLMProviderConfigSchema = z.discriminatedUnion("type", [
 export const ConfigSchema = z.object({
   version: z.literal(1),
   market_data: z.record(z.string(), z.unknown()),
-  llm_providers: z.record(LLMProviderConfigSchema),
+  llm_providers: z.record(z.string(), LLMProviderConfigSchema),
   artifacts: z.object({
     type: z.enum(["filesystem", "s3"]),
     base_dir: z.string().optional(),
