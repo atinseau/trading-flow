@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <script src="https://unpkg.com/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js"></script>
+  <style>
+    html, body { margin: 0; padding: 0; background: #131722; height: 100%; }
+    #chart { width: 100vw; height: 100vh; }
+  </style>
+</head>
+<body>
+  <div id="chart"></div>
+  <script>
+    const chart = LightweightCharts.createChart(document.getElementById("chart"), {
+      layout: { background: { color: "#131722" }, textColor: "#d1d4dc" },
+      grid: { vertLines: { color: "#2a2e39" }, horzLines: { color: "#2a2e39" } },
+      timeScale: { timeVisible: true, secondsVisible: false, borderColor: "#485158" },
+      rightPriceScale: { borderColor: "#485158" },
+      crosshair: { mode: 0 },
+    });
+    const series = chart.addCandlestickSeries({
+      upColor: "#26a69a", downColor: "#ef5350",
+      borderVisible: false,
+      wickUpColor: "#26a69a", wickDownColor: "#ef5350",
+    });
+    window.__renderCandles = (candles) => {
+      series.setData(candles);
+      chart.timeScale().fitContent();
+      requestAnimationFrame(() => { window.__chartReady = true; });
+    };
+  </script>
+</body>
+</html>
