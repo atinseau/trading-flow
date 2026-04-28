@@ -33,3 +33,6 @@ Thumbs.db
 # Test artifacts
 coverage/
 .nyc_output/
+
+# Superpowers (brainstorm sessions, plans cache)
+.superpowers/
