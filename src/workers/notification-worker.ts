@@ -14,7 +14,7 @@ const healthPort = Number(process.env.HEALTH_PORT ?? 8083);
 const health = new HealthServer("notification-worker", healthPort);
 health.start();
 
-const container = await buildContainer(config);
+const container = await buildContainer(config, "notification");
 
 const connection = await NativeConnection.connect({ address: config.temporal.address });
 

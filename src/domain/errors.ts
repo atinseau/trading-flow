@@ -16,9 +16,6 @@ export class LLMTimeoutError extends TradingFlowError {
 export class FetchTimeoutError extends TradingFlowError {
   readonly retryable = true;
 }
-export class DBConnectionError extends TradingFlowError {
-  readonly retryable = true;
-}
 export class ExchangeRateLimitError extends TradingFlowError {
   readonly retryable = true;
 }

@@ -29,7 +29,7 @@ async function createTestSetup(): Promise<string> {
       workflowId: `wf-${crypto.randomUUID()}`,
     })
     .returning({ id: setups.id });
-  return row!.id;
+  return row?.id;
 }
 
 describe("PostgresEventStore", () => {

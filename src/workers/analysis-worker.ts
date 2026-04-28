@@ -14,7 +14,7 @@ const healthPort = Number(process.env.HEALTH_PORT ?? 8082);
 const health = new HealthServer("analysis-worker", healthPort);
 health.start();
 
-const container = await buildContainer(config);
+const container = await buildContainer(config, "analysis");
 
 const connection = await NativeConnection.connect({ address: config.temporal.address });
 

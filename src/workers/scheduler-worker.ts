@@ -15,7 +15,7 @@ const healthPort = Number(process.env.HEALTH_PORT ?? 8081);
 const health = new HealthServer("scheduler-worker", healthPort);
 health.start();
 
-const container = await buildContainer(config);
+const container = await buildContainer(config, "scheduler");
 
 const connection = await NativeConnection.connect({ address: config.temporal.address });
 

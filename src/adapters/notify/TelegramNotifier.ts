@@ -17,7 +17,7 @@ export class TelegramNotifier implements Notifier {
     const parseMode = args.parseMode === "Markdown" ? "MarkdownV2" : args.parseMode;
 
     if (args.images?.length === 1) {
-      const path = args.images[0]!.uri.replace(/^file:\/\//, "");
+      const path = args.images[0]?.uri.replace(/^file:\/\//, "");
       const msg = await this.bot.api.sendPhoto(args.chatId, new InputFile(path), {
         caption: args.text,
         parse_mode: parseMode,
@@ -32,7 +32,7 @@ export class TelegramNotifier implements Notifier {
         caption: img.caption,
       }));
       const msgs = await this.bot.api.sendMediaGroup(args.chatId, media);
-      return { messageId: msgs[0]!.message_id };
+      return { messageId: msgs[0]?.message_id };
     }
 
     const msg = await this.bot.api.sendMessage(args.chatId, args.text, {

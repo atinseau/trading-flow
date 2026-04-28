@@ -55,7 +55,7 @@ export class FilesystemArtifactStore implements ArtifactStore {
       })
       .returning();
 
-    return { id: row!.id, uri, sha256, bytes: args.content.length, mimeType: args.mimeType };
+    return { id: row?.id, uri, sha256, bytes: args.content.length, mimeType: args.mimeType };
   }
 
   async get(uri: string): Promise<Buffer> {

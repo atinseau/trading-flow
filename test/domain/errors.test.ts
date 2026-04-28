@@ -2,7 +2,6 @@ import { expect, test } from "bun:test";
 import {
   AssetNotFoundError,
   CircularFallbackError,
-  DBConnectionError,
   ExchangeRateLimitError,
   FetchTimeoutError,
   InvalidConfigError,
@@ -19,7 +18,6 @@ test("retryable errors expose retryable=true", () => {
   expect(new LLMRateLimitError("x").retryable).toBe(true);
   expect(new LLMTimeoutError("x").retryable).toBe(true);
   expect(new FetchTimeoutError("x").retryable).toBe(true);
-  expect(new DBConnectionError("x").retryable).toBe(true);
   expect(new ExchangeRateLimitError("x").retryable).toBe(true);
 });
 

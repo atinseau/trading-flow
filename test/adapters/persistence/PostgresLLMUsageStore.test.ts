@@ -24,7 +24,7 @@ beforeAll(async () => {
       workflowId: `wf-${crypto.randomUUID()}`,
     })
     .returning({ id: setups.id });
-  testSetupId = s!.id;
+  testSetupId = s?.id;
 }, 60_000);
 
 afterAll(async () => {

@@ -3,6 +3,27 @@ import { LLMRateLimitError, LLMSchemaValidationError } from "@domain/errors";
 import type { LLMImageInput, LLMInput, LLMOutput, LLMProvider } from "@domain/ports/LLMProvider";
 import type { LLMUsageStore } from "@domain/ports/LLMUsageStore";
 import { getLogger } from "@observability/logger";
+import { z } from "zod";
+
+const OpenRouterResponseSchema = z.object({
+  choices: z
+    .array(
+      z.object({
+        message: z.object({
+          content: z.string(),
+        }),
+      }),
+    )
+    .min(1),
+  usage: z
+    .object({
+      prompt_tokens: z.number().optional(),
+      completion_tokens: z.number().optional(),
+      cost: z.number().optional(),
+      total_cost: z.number().optional(),
+    })
+    .optional(),
+});
 
 export type OpenRouterConfig = {
   apiKey: string;
@@ -99,16 +120,9 @@ export class OpenRouterProvider implements LLMProvider {
       throw new Error(`OpenRouter ${response.status}: ${text}`);
     }
 
-    const data = (await response.json()) as {
-      choices: { message: { content: string } }[];
-      usage?: {
-        prompt_tokens?: number;
-        completion_tokens?: number;
-        total_cost?: number;
-        cost?: number;
-      };
-    };
-    const content = data.choices[0]!.message.content;
+    const rawData = await response.json();
+    const data = OpenRouterResponseSchema.parse(rawData);
+    const content = data.choices[0].message.content;
     const promptTokens = data.usage?.prompt_tokens ?? 0;
     const completionTokens = data.usage?.completion_tokens ?? 0;
     const costUsd = data.usage?.cost ?? data.usage?.total_cost ?? 0;

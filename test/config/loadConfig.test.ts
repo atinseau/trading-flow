@@ -64,6 +64,6 @@ watches:
 `,
   );
   const cfg = await loadConfig(path);
-  expect(cfg.watches[0]!.id).toBe("btc-1h");
+  expect(cfg.watches[0]?.id).toBe("btc-1h");
   expect(cfg.notifications.telegram.bot_token).toBe("secret");
 });
