@@ -20,7 +20,11 @@ if (watches === null) {
   const container = await buildContainer(infra, null, "notification");
   health.setStatus("standby", { reason: "no watches.yaml — system idle, drop the file and restart" });
   log.info({ configPath }, "standby: no watches.yaml — idle (Temporal worker not registered)");
-  await new Promise<void>((resolve) => process.once("SIGTERM", () => resolve()));
+  await new Promise<void>((resolve) => {
+    const stop = () => resolve();
+    process.once("SIGTERM", stop);
+    process.once("SIGINT", stop);
+  });
   log.info("shutting down (standby)");
   await health.stop();
   await container.shutdown();
