@@ -77,6 +77,7 @@ export type InitialEvidence = {
   scoreThresholdFinalizer: number;
   scoreThresholdDead: number;
   scoreMax: number;
+  detectorPromptVersion: string;
 };
 
 export type ReviewSignalArgs = { tickSnapshotId: string };
@@ -204,7 +205,7 @@ export async function setupWorkflow(initial: InitialEvidence): Promise<SetupStat
         setupId: initial.setupId,
         sequence: seq,
         stage: "reviewer",
-        actor: "reviewer_v1",
+        actor: reviewerResult.promptVersion,
         type,
         scoreDelta: next.score - before.score,
         scoreAfter: next.score,
@@ -242,7 +243,7 @@ export async function setupWorkflow(initial: InitialEvidence): Promise<SetupStat
         setupId: initial.setupId,
         sequence: seq,
         stage: "detector",
-        actor: "detector_v1",
+        actor: initial.detectorPromptVersion,
         type: "Strengthened",
         scoreDelta: newScore - before.score,
         scoreAfter: newScore,
@@ -345,7 +346,7 @@ export async function setupWorkflow(initial: InitialEvidence): Promise<SetupStat
       setupId: initial.setupId,
       sequence: state.sequence,
       stage: "detector",
-      actor: "detector_v1",
+      actor: initial.detectorPromptVersion,
       type: "SetupCreated",
       scoreDelta: 0,
       scoreAfter: state.score,
@@ -434,6 +435,7 @@ export async function setupWorkflow(initial: InitialEvidence): Promise<SetupStat
           setupId: initial.setupId,
           watchId: initial.watchId,
         });
+        const finalizerPromptVersion = finalizerResult.promptVersion;
         const decision = JSON.parse(finalizerResult.decisionJson) as {
           go: boolean;
           reasoning: string;
@@ -451,7 +453,7 @@ export async function setupWorkflow(initial: InitialEvidence): Promise<SetupStat
               setupId: initial.setupId,
               sequence: seq,
               stage: "finalizer",
-              actor: "finalizer_v1",
+              actor: finalizerPromptVersion,
               type: "Confirmed",
               scoreDelta: 0,
               scoreAfter: state.score,
@@ -510,7 +512,7 @@ export async function setupWorkflow(initial: InitialEvidence): Promise<SetupStat
               setupId: initial.setupId,
               sequence: seq,
               stage: "finalizer",
-              actor: "finalizer_v1",
+              actor: finalizerPromptVersion,
               type: "Rejected",
               scoreDelta: 0,
               scoreAfter: state.score,

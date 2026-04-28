@@ -27,6 +27,7 @@ const baseInitial: InitialEvidence = {
   scoreThresholdFinalizer: 80,
   scoreThresholdDead: 10,
   scoreMax: 100,
+  detectorPromptVersion: "detector_v3",
 };
 
 const baseRunReviewerReturn = (
@@ -59,6 +60,7 @@ describe("SetupWorkflow", () => {
       runFinalizer: async () => ({
         decisionJson: JSON.stringify({ go: false, reasoning: "x" }),
         costUsd: 0,
+        promptVersion: "finalizer_v3",
       }),
       markSetupClosed: async () => {},
       listEventsForSetup: async () => [],
@@ -103,6 +105,7 @@ describe("SetupWorkflow", () => {
       runFinalizer: async () => ({
         decisionJson: JSON.stringify({ go: false, reasoning: "x" }),
         costUsd: 0,
+        promptVersion: "finalizer_v3",
       }),
       markSetupClosed: async () => {},
       listEventsForSetup: async () => [],
@@ -159,6 +162,7 @@ describe("SetupWorkflow", () => {
           take_profit: [105, 110],
         }),
         costUsd: 0,
+        promptVersion: "finalizer_v3",
       }),
       markSetupClosed: async () => {},
       listEventsForSetup: async () => [],
@@ -248,6 +252,7 @@ describe("SetupWorkflow", () => {
           take_profit: [110, 120],
         }),
         costUsd: 0,
+        promptVersion: "finalizer_v3",
       }),
       markSetupClosed: async () => {},
       listEventsForSetup: async () => [],
@@ -320,6 +325,7 @@ describe("SetupWorkflow", () => {
       runFinalizer: async () => ({
         decisionJson: JSON.stringify({ go: false, reasoning: "x" }),
         costUsd: 0,
+        promptVersion: "finalizer_v3",
       }),
       markSetupClosed: async () => {},
       listEventsForSetup: async () => [],
@@ -396,6 +402,7 @@ describe("SetupWorkflow", () => {
           take_profit: [95, 90], // SHORT: TPs below entry
         }),
         costUsd: 0,
+        promptVersion: "finalizer_v3",
       }),
       markSetupClosed: async () => {},
       listEventsForSetup: async () => [],
@@ -471,6 +478,7 @@ describe("SetupWorkflow", () => {
       runFinalizer: async () => ({
         decisionJson: JSON.stringify({ go: false, reasoning: "x" }),
         costUsd: 0,
+        promptVersion: "finalizer_v3",
       }),
       markSetupClosed: async () => {},
       listEventsForSetup: async () => [],

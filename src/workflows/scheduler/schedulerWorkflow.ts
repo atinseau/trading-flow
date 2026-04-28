@@ -142,7 +142,11 @@ async function runOneTick(
   });
 
   const alive = await dbActivities.listAliveSetups({ watchId });
-  const { verdictJson, costUsd: detectorCost } = await llmActivities.runDetector({
+  const {
+    verdictJson,
+    costUsd: detectorCost,
+    promptVersion: detectorPromptVersion,
+  } = await llmActivities.runDetector({
     watchId,
     tickSnapshotId,
     aliveSetups: alive,
@@ -196,6 +200,7 @@ async function runOneTick(
       scoreThresholdFinalizer: watch.setup_lifecycle.score_threshold_finalizer,
       scoreThresholdDead: watch.setup_lifecycle.score_threshold_dead,
       scoreMax: watch.setup_lifecycle.score_max,
+      detectorPromptVersion,
     };
     await startChild(setupWorkflow, {
       args: [initial],

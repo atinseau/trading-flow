@@ -243,6 +243,7 @@ describe("SetupWorkflow integration (real Postgres + real activities)", () => {
       scoreThresholdFinalizer: 80,
       scoreThresholdDead: 10,
       scoreMax: 100,
+      detectorPromptVersion: "detector_v3",
     };
 
     let finalStatus: string | undefined;
