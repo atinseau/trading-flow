@@ -1,42 +1,38 @@
 version: 1
 
-market_data:
-  binance: { base_url: "https://api.binance.com" }
+# White-list of enabled market data sources.
+# Base URLs are hardcoded in the adapters — this is just an opt-in switch.
+market_data: [binance]
 
+# Notification channels. Console is always active; opt-in for the rest.
+notifications:
+  telegram: true
+
+# LLM providers. Credentials and filesystem paths are env-driven (see .env).
 llm_providers:
   claude_max:
     type: claude-agent-sdk
-    workspace_dir: /data/claude-workspace
     daily_call_budget: 800
     fallback: openrouter
   openrouter:
     type: openrouter
-    api_key: ${OPENROUTER_API_KEY}
     monthly_budget_usd: 50
     fallback: null
 
+# Artifact retention policy (the base directory itself is in ARTIFACTS_BASE_DIR).
 artifacts:
   type: filesystem
-  base_dir: /data/artifacts
+  retention:
+    keep_days: 30
+    keep_for_active_setups: true
 
-notifications:
-  telegram:
-    bot_token: ${TELEGRAM_BOT_TOKEN}
-    default_chat_id: ${TELEGRAM_CHAT_ID}
-
-database:
-  url: ${DATABASE_URL}
-
-temporal:
-  address: ${TEMPORAL_ADDRESS}
-
+# User-defined trading watches.
 watches:
   - id: btc-1h
     enabled: true
     asset: { symbol: BTCUSDT, source: binance }
     timeframes: { primary: 1h, higher: [4h] }
     schedule:
-      # detector_cron: "*/15 * * * *"     # optionnel — par défaut dérivé du timeframe primary
       timezone: UTC
     candles:
       detector_lookback: 200
@@ -61,8 +57,6 @@ watches:
       finalizer: { provider: claude_max, model: claude-opus-4-7 }
     optimization:
       reviewer_skip_when_detector_corroborated: true
-    notifications:
-      telegram_chat_id: ${TELEGRAM_CHAT_ID}
-      notify_on: [confirmed, tp_hit, sl_hit, invalidated_after_confirmed]
+    notify_on: [confirmed, tp_hit, sl_hit, invalidated_after_confirmed]
     budget:
       max_cost_usd_per_day: 5.00
