@@ -7,7 +7,7 @@ afterEach(() => {
 
 test("loadPrompt('detector') returns rendered template + version", async () => {
   const result = await loadPrompt("detector");
-  expect(result.version).toBe("detector_v2");
+  expect(result.version).toBe("detector_v3");
   expect(typeof result.render).toBe("function");
 
   // Render with sample context
@@ -20,17 +20,17 @@ test("loadPrompt('detector') returns rendered template + version", async () => {
   });
   expect(text).toContain("BTCUSDT");
   expect(text).toContain("1h");
-  expect(text).toContain("aucun setup vivant");
+  expect(text).toContain("no alive setups");
 });
 
 test("loadPrompt('reviewer') extracts version", async () => {
   const result = await loadPrompt("reviewer");
-  expect(result.version).toBe("reviewer_v2");
+  expect(result.version).toBe("reviewer_v3");
 });
 
 test("loadPrompt('finalizer') extracts version", async () => {
   const result = await loadPrompt("finalizer");
-  expect(result.version).toBe("finalizer_v2");
+  expect(result.version).toBe("finalizer_v3");
 });
 
 test("loadPrompt is cached (same instance returned)", async () => {

@@ -1,107 +1,107 @@
 {{!--
-  version: finalizer_v2
-  description: Final go/no-go decision. v2 adds market context, fee/slippage
-               consideration, fail-closed bias, few-shot examples.
+  version: finalizer_v3
+  description: Final go/no-go decision. v3 = full English translation for
+               optimal LLM performance.
 --}}
 
-# Décision finale GO / NO_GO
+# Final GO / NO_GO decision
 
-## Setup à arbitrer
+## Setup to arbitrate
 
-- **ID** : `{{setup.id}}`
-- **Asset / Timeframe** : {{setup.asset}} / {{setup.timeframe}}
-- **Pattern** : {{setup.patternHint}}
-- **Direction** : `{{setup.direction}}`
-- **Score atteint** : {{setup.currentScore}}/100 (seuil franchi)
-- **Niveau d'invalidation** : {{setup.invalidationLevel}}
+- **ID**: `{{setup.id}}`
+- **Asset / Timeframe**: {{setup.asset}} / {{setup.timeframe}}
+- **Pattern**: {{setup.patternHint}}
+- **Direction**: `{{setup.direction}}`
+- **Score reached**: {{setup.currentScore}}/100 (threshold crossed)
+- **Invalidation level**: {{setup.invalidationLevel}}
 
-## Historique complet ({{historyCount}} évènements)
+## Full history ({{historyCount}} events)
 
 {{#each history}}
-- Tick {{this.sequence}} : `{{this.type}}` (score → {{this.scoreAfter}})
+- Tick {{this.sequence}}: `{{this.type}}` (score → {{this.scoreAfter}})
 {{/each}}
 
-## Image du graphe
+## Chart image
 
-Voir image jointe (peut être omise si non fournie — base-toi sur l'historique).
+See attached image (may be omitted if not provided — rely on history).
 
-## Critères de décision
+## Decision criteria
 
-Tu dois être **sceptique**. Le score 80+ est un seuil **nécessaire** mais pas **suffisant**. Vérifie :
+You must be **skeptical**. A score of 80+ is a **necessary** but not **sufficient** threshold. Verify:
 
-### 1. Solidité du setup
-- Le score a-t-il grimpé via des observations chiffrées et concrètes, ou via des descriptions vagues ?
-- Combien de Strengthened événements vs Weakened ? Si beaucoup de Weakened malgré le score actuel, c'est suspect.
-- L'âge du setup : un setup qui mature en 3 bougies est plus suspect qu'un setup qui mature en 15 bougies via accumulation progressive.
+### 1. Setup solidity
+- Did the score grow via concrete, quantified observations, or via vague descriptions?
+- How many Strengthened events vs Weakened? If many Weakened despite the current score, that's suspicious.
+- Setup age: a setup that matures in 3 candles is more suspicious than one that matures in 15 candles via gradual accumulation.
 
-### 2. Risque / récompense
-- Distance entry → invalidation = risque
-- Distance entry → take_profit = récompense
-- **Ratio R:R minimum acceptable : 1:2** (récompense ≥ 2× risque)
-- Si tu ne peux pas calculer un ratio ≥ 1:2 propre, c'est NO_GO.
+### 2. Risk / reward
+- Distance entry → invalidation = risk
+- Distance entry → take_profit = reward
+- **Minimum acceptable R:R ratio: 1:2** (reward ≥ 2× risk)
+- If you cannot compute a clean ratio ≥ 1:2, it's NO_GO.
 
-### 3. Contexte marché
-- L'heure : si on est dans une session creuse (ex: dimanche soir crypto, ouverture US sur stocks), réduis ta confiance.
-- Volatilité (ATR/ATR_MA20 dans l'historique) : très élevée → spreads/slippage augmentent → risque effectif > risque calculé.
-- Coûts implicites : compte ~0.1% de fees + slippage typique. Le R:R doit tenir APRÈS fees.
+### 3. Market context
+- Time of day: if we're in a thin session (e.g., Sunday evening crypto, US opening on stocks), reduce your confidence.
+- Volatility (ATR/ATR_MA20 in the history): very high → spreads/slippage increase → effective risk > calculated risk.
+- Implicit costs: account for ~0.1% fees + typical slippage. The R:R must hold AFTER fees.
 
 ## Few-shot examples
 
-### Exemple 1 — GO solide
+### Example 1 — Solid GO
 
-Setup score 85, 6 ticks d'analyse, 5 Strengthened consécutifs, 1 NEUTRAL. Pattern : double_bottom LONG. Entry 42100, invalidation 41700 (risque 400), TP1 43000, TP2 44000. R:R sur TP1 = 900/400 = 2.25. R:R sur TP2 = 1900/400 = 4.75.
+Setup score 85, 6 ticks of analysis, 5 consecutive Strengthened, 1 NEUTRAL. Pattern: double_bottom LONG. Entry 42100, invalidation 41700 (risk 400), TP1 43000, TP2 44000. R:R on TP1 = 900/400 = 2.25. R:R on TP2 = 1900/400 = 4.75.
 
-→ Output :
+→ Output:
 ```
 {
   "go": true,
-  "reasoning": "Setup mûr (6 ticks, 5 STRENGTHEN consécutifs). R:R 2.25 sur TP1, 4.75 sur TP2 — bon. Invalidation propre sous le second creux.",
+  "reasoning": "Mature setup (6 ticks, 5 consecutive STRENGTHEN). R:R 2.25 on TP1, 4.75 on TP2 — good. Clean invalidation below the second bottom.",
   "entry": 42100,
   "stop_loss": 41700,
   "take_profit": [43000, 44000]
 }
 ```
 
-### Exemple 2 — NO_GO sur R:R faible
+### Example 2 — NO_GO on weak R:R
 
-Setup score 82. Entry envisageable 42500, invalidation 42000 (risque 500), cible naturelle 42800 (récompense 300). R:R = 0.6. Pas acceptable.
+Setup score 82. Possible entry 42500, invalidation 42000 (risk 500), natural target 42800 (reward 300). R:R = 0.6. Not acceptable.
 
-→ Output :
+→ Output:
 ```
 {
   "go": false,
-  "reasoning": "R:R défavorable (0.6) — l'entry est trop proche d'une résistance évidente. Aucune cible propre offre un ratio ≥ 1:2."
+  "reasoning": "Unfavorable R:R (0.6) — the entry is too close to an obvious resistance. No clean target offers a ratio ≥ 1:2."
 }
 ```
 
-### Exemple 3 — NO_GO sur historique douteux
+### Example 3 — NO_GO on questionable history
 
-Setup score 81 atteint en 3 ticks rapides via 3 STRENGTHEN sur observations vagues ("RSI semble se redresser", "le volume est intéressant"). Pas de confluence multi-timeframe, pas de niveaux clairement respectés.
+Setup score 81 reached in 3 quick ticks via 3 STRENGTHEN on vague observations ("RSI seems to recover", "the volume is interesting"). No multi-timeframe confluence, no clearly respected levels.
 
-→ Output :
+→ Output:
 ```
 {
   "go": false,
-  "reasoning": "Score grimpé trop vite sur observations qualitatives. Manque de signaux quantitatifs (chiffres, pourcentages, niveaux précis). Risque de faux positif."
+  "reasoning": "Score grew too fast on qualitative observations. Lack of quantitative signals (numbers, percentages, precise levels). Risk of false positive."
 }
 ```
 
-## Règles de fail-closed
+## Fail-closed rules
 
-- **En cas de doute, NO_GO.** Un faux positif érode la confiance utilisateur ; une opportunité ratée est invisible.
-- **Toujours préférer la prudence** sur les setups jeunes (< 4 ticks) ou avec ratio R:R < 1:2.
-- **Si tu n'arrives pas à formuler un raisonnement de 3 phrases concrètes** pour le GO, c'est NO_GO par défaut.
+- **When in doubt, NO_GO.** A false positive erodes user trust; a missed opportunity is invisible.
+- **Always prefer caution** on young setups (< 4 ticks) or with R:R ratio < 1:2.
+- **If you cannot articulate a 3-sentence concrete rationale** for the GO, it's NO_GO by default.
 
-## Format de sortie
+## Output format
 
-Schéma de réponse attendu :
+Expected response schema:
 
-| Champ | Type | Description |
+| Field | Type | Description |
 |-------|------|-------------|
-| `go` | boolean | `true` si tu valides la prise de position |
-| `reasoning` | string | 3-5 phrases. Cite des chiffres concrets |
-| `entry` | number | Prix d'entrée. REQUIS si `go = true` |
-| `stop_loss` | number | Stop-loss. REQUIS si `go = true` |
-| `take_profit` | array<number> | 1 à 3 niveaux de prise de profit. REQUIS si `go = true` |
+| `go` | boolean | `true` if you validate taking the position |
+| `reasoning` | string | 3-5 sentences. Cite concrete numbers |
+| `entry` | number | Entry price. REQUIRED if `go = true` |
+| `stop_loss` | number | Stop-loss. REQUIRED if `go = true` |
+| `take_profit` | array<number> | 1 to 3 take-profit levels. REQUIRED if `go = true` |
 
-Si `go = false`, omets `entry`, `stop_loss`, et `take_profit`. Le `reasoning` suffit.
+If `go = false`, omit `entry`, `stop_loss`, and `take_profit`. The `reasoning` is enough.

@@ -1,126 +1,126 @@
 {{!--
-  version: reviewer_v2
+  version: reviewer_v3
   description: Refine an existing setup with fresh data + accumulated memory.
-               v2 adds quantitative scoring guidance, few-shot, fail-closed.
+               v3 = full English translation for optimal LLM performance.
 --}}
 
-# Raffinage d'un setup en cours
+# Refining an active setup
 
-## Setup en cours
+## Active setup
 
-- **ID** : `{{setup.id}}`
-- **Pattern** : {{setup.patternHint}}
-- **Direction** : `{{setup.direction}}`
-- **Score actuel** : {{setup.currentScore}}/100
-- **Niveau d'invalidation** : {{setup.invalidationLevel}}
-- **Âge** : {{setup.ageInCandles}} bougies
+- **ID**: `{{setup.id}}`
+- **Pattern**: {{setup.patternHint}}
+- **Direction**: `{{setup.direction}}`
+- **Current score**: {{setup.currentScore}}/100
+- **Invalidation level**: {{setup.invalidationLevel}}
+- **Age**: {{setup.ageInCandles}} candles
 
-## Mémoire — historique
+## Memory — history
 
 {{#each history}}
 ### Tick {{this.sequence}} ({{this.occurredAt}}) → score {{this.scoreAfter}}
 
-**Verdict** : `{{this.type}}`
+**Verdict**: `{{this.type}}`
 
 {{#if this.observations}}
-**Observations** :
+**Observations**:
 {{#each this.observations}}
-- _{{this.kind}}_ : {{this.text}}
+- _{{this.kind}}_: {{this.text}}
 {{/each}}
 {{/if}}
 
 {{#if this.reasoning}}
-**Raisonnement** : {{this.reasoning}}
+**Reasoning**: {{this.reasoning}}
 {{/if}}
 
 ---
 {{/each}}
 
-## Données fraîches (tick {{tick.tickAt}})
+## Fresh data (tick {{tick.tickAt}})
 
-- Dernière clôture : `{{fresh.lastClose}}`
-- Indicateurs : RSI `{{fresh.indicators.rsi}}`, ATR `{{fresh.indicators.atr}}`
-- Image du graphe ci-jointe.
+- Last close: `{{fresh.lastClose}}`
+- Indicators: RSI `{{fresh.indicators.rsi}}`, ATR `{{fresh.indicators.atr}}`
+- Chart image attached.
 
-## Calibration de `scoreDelta`
+## `scoreDelta` calibration
 
-| Delta | Quand l'utiliser |
-|-------|------------------|
-| `+15 / +20` | Confluence forte : 2-3 signaux concordants confirment le setup |
-| `+5 / +10` | 1 signal additionnel clair (volume, divergence, niveau respecté) |
-| `0` (NEUTRAL) | Rien de neuf depuis le dernier tick |
-| `-5 / -10` | 1 signal contraire (volume faible sur retest, RSI qui diverge à l'envers) |
-| `-15 / -25` | Plusieurs signaux contraires, structure menacée mais pas cassée |
-| INVALIDATE | Structure cassée nettement, niveau franchi, contradiction majeure |
+| Delta | When to use |
+|-------|-------------|
+| `+15 / +20` | Strong confluence: 2-3 concordant signals confirm the setup |
+| `+5 / +10` | 1 clear additional signal (volume, divergence, level respected) |
+| `0` (NEUTRAL) | Nothing new since the last tick |
+| `-5 / -10` | 1 contrary signal (weak volume on retest, RSI diverging the wrong way) |
+| `-15 / -25` | Multiple contrary signals, structure threatened but not broken |
+| INVALIDATE | Structure clearly broken, level crossed, major contradiction |
 
 ## Few-shot examples
 
-### Exemple 1 — STRENGTHEN
+### Example 1 — STRENGTHEN
 
-Setup `double_bottom` LONG score 50. Mémoire : volume confirmé tick précédent. Fresh data : RSI passe de 35 à 42, EMA20 croise au-dessus EMA50 sur ce tick.
+Setup `double_bottom` LONG score 50. Memory: volume confirmed on the previous tick. Fresh data: RSI moves from 35 to 42, EMA20 crosses above EMA50 on this tick.
 
-→ Output :
+→ Output:
 ```
 {
   "type": "STRENGTHEN",
   "scoreDelta": 15,
   "observations": [
-    { "kind": "ema_cross", "text": "EMA20 croise au-dessus EMA50", "evidence": { "ema20": 42100, "ema50": 42050 } },
-    { "kind": "rsi_recovery", "text": "RSI sort de zone basse: 35 → 42", "evidence": { "previous": 35, "current": 42 } }
+    { "kind": "ema_cross", "text": "EMA20 crosses above EMA50", "evidence": { "ema20": 42100, "ema50": 42050 } },
+    { "kind": "rsi_recovery", "text": "RSI exits oversold zone: 35 → 42", "evidence": { "previous": 35, "current": 42 } }
   ],
-  "reasoning": "Confluence baissière s'estompe : EMA cross + RSI recovery confirment la reprise du double bottom",
+  "reasoning": "Bearish confluence fades: EMA cross + RSI recovery confirm the double bottom recovery",
   "invalidationLevelUpdate": null
 }
 ```
 
-### Exemple 2 — INVALIDATE
+### Example 2 — INVALIDATE
 
-Setup score 60. Fresh data : prix passe sous le niveau d'invalidation, structure clairement cassée (close < invalidation pour la 2e bougie consécutive).
+Setup score 60. Fresh data: price drops below the invalidation level, structure clearly broken (close < invalidation for the 2nd consecutive candle).
 
-→ Output :
+→ Output:
 ```
 {
   "type": "INVALIDATE",
   "reason": "structure_break_confirmed",
   "observations": [
-    { "kind": "price_below_invalidation", "text": "Close 41420 sous invalidation 41500 sur 2 bougies" }
+    { "kind": "price_below_invalidation", "text": "Close 41420 below invalidation 41500 across 2 candles" }
   ]
 }
 ```
 
-### Exemple 3 — NEUTRAL
+### Example 3 — NEUTRAL
 
-Setup score 45. Fresh data : range étroit sur 3 bougies, volume anémique, indicateurs stables.
+Setup score 45. Fresh data: tight range across 3 candles, anemic volume, stable indicators.
 
-→ Output :
+→ Output:
 ```
 {
   "type": "NEUTRAL",
   "observations": [
-    { "kind": "consolidation", "text": "Range 41850-41920 sur 3 bougies, volume <0.7x moyenne" }
+    { "kind": "consolidation", "text": "Range 41850-41920 across 3 candles, volume <0.7x average" }
   ]
 }
 ```
 
-## Règles de fail-closed
+## Fail-closed rules
 
-- **Si rien de notable depuis le tick précédent** → `NEUTRAL` (préserve le score, ajoute juste une observation contextuelle).
-- **Si signaux ambigus** (1 pour, 1 contre) → `NEUTRAL`, pas STRENGTHEN ni WEAKEN.
-- **Si tu hésites entre WEAKEN et INVALIDATE** → choisis WEAKEN. INVALIDATE est terminal, doit être déclenchée que sur cassure claire.
-- **Surcharge importante** : ne fais PAS grimper le score sur des observations marginales. Le Finalizer compte sur ta retenue.
+- **If nothing notable since the previous tick** → `NEUTRAL` (preserve the score, just add a contextual observation).
+- **If signals are ambiguous** (1 for, 1 against) → `NEUTRAL`, not STRENGTHEN nor WEAKEN.
+- **If you hesitate between WEAKEN and INVALIDATE** → choose WEAKEN. INVALIDATE is terminal and should only fire on a clear break.
+- **Important constraint**: do NOT inflate the score on marginal observations. The Finalizer relies on your restraint.
 
-## Format de sortie
+## Output format
 
-Schéma de réponse attendu :
+Expected response schema:
 
-| Champ | Type | Description |
+| Field | Type | Description |
 |-------|------|-------------|
-| `type` | string | "STRENGTHEN", "WEAKEN", "NEUTRAL", ou "INVALIDATE" |
-| `scoreDelta` | number entre -30 et +30 | Requis pour STRENGTHEN/WEAKEN. Omis pour NEUTRAL/INVALIDATE |
-| `observations` | array | Toujours non-vide même pour NEUTRAL |
-| `observations[i].kind` | string | Label libre (ex: "volume_spike", "rsi_divergence") |
-| `observations[i].text` | string | Explication |
-| `observations[i].evidence` | object optionnel | Données chiffrées qui supportent |
-| `reasoning` | string | Requis pour STRENGTHEN/WEAKEN. 2-3 phrases |
-| `reason` | string | Requis pour INVALIDATE (ex: "structure_break", "volume_collapse") |
-| `invalidationLevelUpdate` | number ou null | Si tu veux ajuster le niveau d'invalidation |
+| `type` | string | "STRENGTHEN", "WEAKEN", "NEUTRAL", or "INVALIDATE" |
+| `scoreDelta` | number between -30 and +30 | Required for STRENGTHEN/WEAKEN. Omitted for NEUTRAL/INVALIDATE |
+| `observations` | array | Always non-empty even for NEUTRAL |
+| `observations[i].kind` | string | Free-form label (e.g. "volume_spike", "rsi_divergence") |
+| `observations[i].text` | string | Explanation |
+| `observations[i].evidence` | object optional | Quantified data that supports |
+| `reasoning` | string | Required for STRENGTHEN/WEAKEN. 2-3 sentences |
+| `reason` | string | Required for INVALIDATE (e.g. "structure_break", "volume_collapse") |
+| `invalidationLevelUpdate` | number or null | If you want to adjust the invalidation level |

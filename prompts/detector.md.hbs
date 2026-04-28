@@ -1,58 +1,58 @@
 {{!--
-  version: detector_v2
-  description: Free-form pattern detection with corroboration. v2 adds few-shot
-               examples, quantitative scoring guidance, and fail-closed instructions.
+  version: detector_v3
+  description: Free-form pattern detection with corroboration. v3 = full English
+               translation for optimal LLM performance.
 --}}
 
-# Détection libre de patterns sur graphe
+# Free-form pattern detection on a chart
 
-## Contexte du tick
+## Tick context
 
-- **Asset / Timeframe** : {{asset}} / {{timeframe}}
-- **Tick à** : {{tickAt}}
+- **Asset / Timeframe**: {{asset}} / {{timeframe}}
+- **Tick at**: {{tickAt}}
 
-## Indicateurs (données fraîches)
+## Indicators (fresh data)
 
-- RSI (14) : `{{indicators.rsi}}` (extrême < 30 ou > 70)
-- EMA20 / EMA50 / EMA200 : `{{indicators.ema20}}` / `{{indicators.ema50}}` / `{{indicators.ema200}}` (alignement = trend)
-- ATR (14) / ATR MA20 : `{{indicators.atr}}` / `{{indicators.atrMa20}}` (volatilité — ratio > 1.5 = expansion)
-- Volume / MA20 : `{{indicators.lastVolume}}` / `{{indicators.volumeMa20}}` (ratio > 1.5 = volume spike)
-- Recent High / Low (50p) : `{{indicators.recentHigh}}` / `{{indicators.recentLow}}` (niveaux pivots récents)
+- RSI (14): `{{indicators.rsi}}` (extreme < 30 or > 70)
+- EMA20 / EMA50 / EMA200: `{{indicators.ema20}}` / `{{indicators.ema50}}` / `{{indicators.ema200}}` (alignment = trend)
+- ATR (14) / ATR MA20: `{{indicators.atr}}` / `{{indicators.atrMa20}}` (volatility — ratio > 1.5 = expansion)
+- Volume / MA20: `{{indicators.lastVolume}}` / `{{indicators.volumeMa20}}` (ratio > 1.5 = volume spike)
+- Recent High / Low (50p): `{{indicators.recentHigh}}` / `{{indicators.recentLow}}` (recent pivot levels)
 
-## Setups vivants sur {{asset}} {{timeframe}}
+## Alive setups on {{asset}} {{timeframe}}
 
 {{#if aliveSetups.length}}
 {{#each aliveSetups}}
-- **#{{this.id}}** — `{{this.patternHint}}` `{{this.direction}}` | invalidation `{{this.invalidationLevel}}` | score `{{this.currentScore}}/100` | âge `{{this.ageInCandles}}` bougies
+- **#{{this.id}}** — `{{this.patternHint}}` `{{this.direction}}` | invalidation `{{this.invalidationLevel}}` | score `{{this.currentScore}}/100` | age `{{this.ageInCandles}}` candles
 {{/each}}
 {{else}}
-*(aucun setup vivant — tu peux librement proposer de nouveaux candidats)*
+*(no alive setups — you are free to propose new candidates)*
 {{/if}}
 
-## Image du graphe
+## Chart image
 
-Voir image jointe (graphe en bougies japonaises).
+See attached image (Japanese candlestick chart).
 
-## Calibration des scores initiaux
+## Initial score calibration
 
-Pour `initial_score` d'un nouveau setup :
+For `initial_score` of a new setup:
 
-| Score | Quand l'utiliser |
-|-------|------------------|
-| 15-20 | Setup spéculatif, 1 seul signal faible (ex: simple RSI extrême sans confirmation) |
-| 25 (par défaut) | 2 signaux concordants (ex: pattern visuel + indicateur) |
-| 30-40 | 3+ signaux + contexte favorable (ex: pattern + volume + alignement EMA) |
-| 40+ | Setup quasi parfait (rare, multi-timeframe confluence) |
+| Score | When to use |
+|-------|-------------|
+| 15-20 | Speculative setup, 1 weak signal only (e.g., RSI extreme without confirmation) |
+| 25 (default) | 2 concordant signals (e.g., visual pattern + indicator) |
+| 30-40 | 3+ signals + favorable context (e.g., pattern + volume + EMA alignment) |
+| 40+ | Near-perfect setup (rare, multi-timeframe confluence) |
 
-Pour `confidence_delta_suggested` d'une corroboration : `+5` (renforcement léger), `+10` (signal additionnel clair), `+15` (confluence forte).
+For `confidence_delta_suggested` on a corroboration: `+5` (light reinforcement), `+10` (clear additional signal), `+15` (strong confluence).
 
 ## Few-shot examples
 
-### Exemple 1 — `new_setups` valide
+### Example 1 — Valid `new_setups`
 
-Sur le graphe : double creux à 41800 séparés par 8 bougies, second creux avec rebond confirmé. Volume sur le second creux 1.8× la moyenne. RSI 32 (zone basse).
+On the chart: double bottom at 41800 separated by 8 candles, second bottom with confirmed bounce. Volume on second bottom 1.8× the average. RSI 32 (oversold zone).
 
-→ Output :
+→ Output:
 ```
 {
   "corroborations": [],
@@ -62,24 +62,24 @@ Sur le graphe : double creux à 41800 séparés par 8 bougies, second creux avec
       "direction": "LONG",
       "key_levels": { "entry": 42100, "invalidation": 41700, "target": 43500 },
       "initial_score": 30,
-      "raw_observation": "Double creux 41800 confirmé par volume 1.8x + RSI 32"
+      "raw_observation": "Double bottom at 41800 confirmed by 1.8x volume + RSI 32"
     }
   ],
   "ignore_reason": null
 }
 ```
 
-### Exemple 2 — Corroboration d'un setup vivant
+### Example 2 — Corroboration of an alive setup
 
-Le setup #abc7 est un `double_bottom` LONG, score 50, créé il y a 6 bougies. Sur le graphe maintenant : volume sur la dernière bougie 2.3× la moyenne, MACD croise au-dessus de zéro.
+Setup #abc7 is a `double_bottom` LONG, score 50, created 6 candles ago. On the chart now: volume on the latest candle is 2.3× the average, MACD crosses above zero.
 
-→ Output :
+→ Output:
 ```
 {
   "corroborations": [
     {
       "setup_id": "abc7",
-      "evidence": ["Volume 2.3x moyenne 20p", "MACD croise au-dessus zéro"],
+      "evidence": ["Volume 2.3x 20-period average", "MACD crosses above zero"],
       "confidence_delta_suggested": 10
     }
   ],
@@ -88,45 +88,45 @@ Le setup #abc7 est un `double_bottom` LONG, score 50, créé il y a 6 bougies. S
 }
 ```
 
-### Exemple 3 — Rien à signaler
+### Example 3 — Nothing to signal
 
-Marché en range, RSI 52, volume normal, aucun pattern visible, aucun setup vivant à corroborer.
+Sideways market, RSI 52, normal volume, no visible pattern, no alive setup to corroborate.
 
-→ Output :
+→ Output:
 ```
 {
   "corroborations": [],
   "new_setups": [],
-  "ignore_reason": "Range latéral sans signal — RSI neutre, volume normal, pas de structure exploitable"
+  "ignore_reason": "Sideways range with no signal — neutral RSI, normal volume, no exploitable structure"
 }
 ```
 
-## Règles de fail-closed
+## Fail-closed rules
 
-**En cas de doute, ne propose RIEN.** Mieux vaut rater une opportunité que générer un faux signal qui pollue le pipeline. Spécifiquement :
+**When in doubt, propose NOTHING.** Better to miss an opportunity than generate a false signal that pollutes the pipeline. Specifically:
 
-- Si tu vois un pattern mais sans confirmation (1 seul signal faible) → `ignore_reason`
-- Si le volume est anémique, peu importe le pattern → `ignore_reason`
-- Si tu n'arrives pas à fixer un niveau d'invalidation clair → ne propose pas le setup
+- If you see a pattern but without confirmation (1 weak signal only) → `ignore_reason`
+- If volume is anemic, regardless of the pattern → `ignore_reason`
+- If you cannot fix a clear invalidation level → do not propose the setup
 
-## Format de sortie
+## Output format
 
-Réponds avec un objet JSON strict (validé par Zod). Tous les champs nommés ci-dessus sont REQUIS. Si pas de corroborations, mets `[]`. Si pas de nouveaux setups, mets `[]`. Si les deux sont vides, MAIS et seulement dans ce cas, `ignore_reason` doit contenir une string explicative.
+Respond with a strict JSON object (validated by Zod). All named fields below are REQUIRED. If no corroborations, use `[]`. If no new setups, use `[]`. If both are empty, AND ONLY in that case, `ignore_reason` must contain an explanatory string.
 
-Schéma de réponse attendu :
+Expected response schema:
 
-| Champ | Type | Description |
+| Field | Type | Description |
 |-------|------|-------------|
-| `corroborations` | array | Setups vivants renforcés ce tick |
-| `corroborations[i].setup_id` | string | ID du setup vivant cité ci-dessus |
-| `corroborations[i].evidence` | array<string> | Liste d'observations chiffrées qui renforcent |
-| `corroborations[i].confidence_delta_suggested` | number entre 0 et 20 | Voir calibration ci-dessus |
-| `new_setups` | array | Nouveaux setups proposés |
-| `new_setups[i].type` | string | Label libre (ex: "double_bottom", "compression", "breakout") |
-| `new_setups[i].direction` | string | "LONG" ou "SHORT" |
-| `new_setups[i].key_levels.entry` | number optionnel | Prix d'entrée envisagé |
-| `new_setups[i].key_levels.invalidation` | number REQUIS | Niveau qui invalide le setup |
-| `new_setups[i].key_levels.target` | number optionnel | Cible de prix |
-| `new_setups[i].initial_score` | number entre 0 et 100 | Voir calibration |
-| `new_setups[i].raw_observation` | string | Explication concise de ce que tu vois |
-| `ignore_reason` | string ou null | Si rien à signaler, raison; sinon null |
+| `corroborations` | array | Alive setups reinforced this tick |
+| `corroborations[i].setup_id` | string | ID of an alive setup listed above |
+| `corroborations[i].evidence` | array<string> | List of quantified observations that reinforce |
+| `corroborations[i].confidence_delta_suggested` | number between 0 and 20 | See calibration above |
+| `new_setups` | array | New setups proposed |
+| `new_setups[i].type` | string | Free-form label (e.g. "double_bottom", "compression", "breakout") |
+| `new_setups[i].direction` | string | "LONG" or "SHORT" |
+| `new_setups[i].key_levels.entry` | number optional | Envisioned entry price |
+| `new_setups[i].key_levels.invalidation` | number REQUIRED | Level that invalidates the setup |
+| `new_setups[i].key_levels.target` | number optional | Price target |
+| `new_setups[i].initial_score` | number between 0 and 100 | See calibration |
+| `new_setups[i].raw_observation` | string | Concise explanation of what you see |
+| `ignore_reason` | string or null | If nothing to signal, the reason; otherwise null |
