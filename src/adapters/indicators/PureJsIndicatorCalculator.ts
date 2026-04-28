@@ -30,15 +30,30 @@ export class PureJsIndicatorCalculator implements IndicatorCalculator {
 
   private rsi(closes: number[], period: number): number {
     if (closes.length < period + 1) return 50;
-    let gains = 0;
-    let losses = 0;
-    for (let i = closes.length - period; i < closes.length; i++) {
+
+    // Step 1: initial average over the first `period` differences
+    // (closes[1] - closes[0], ..., closes[period] - closes[period-1])
+    let avgGain = 0;
+    let avgLoss = 0;
+    for (let i = 1; i <= period; i++) {
       const diff = closes[i]! - closes[i - 1]!;
-      if (diff > 0) gains += diff;
-      else losses -= diff;
+      if (diff > 0) avgGain += diff;
+      else avgLoss -= diff;
     }
-    const avgGain = gains / period;
-    const avgLoss = losses / period;
+    avgGain /= period;
+    avgLoss /= period;
+
+    // Step 2: Wilder's smoothing for each subsequent close.
+    // avgGain_new = (avgGain_prev * (period - 1) + currentGain) / period
+    // avgLoss_new = (avgLoss_prev * (period - 1) + currentLoss) / period
+    for (let i = period + 1; i < closes.length; i++) {
+      const diff = closes[i]! - closes[i - 1]!;
+      const gain = diff > 0 ? diff : 0;
+      const loss = diff < 0 ? -diff : 0;
+      avgGain = (avgGain * (period - 1) + gain) / period;
+      avgLoss = (avgLoss * (period - 1) + loss) / period;
+    }
+
     if (avgLoss === 0) return 100;
     const rs = avgGain / avgLoss;
     return 100 - 100 / (1 + rs);

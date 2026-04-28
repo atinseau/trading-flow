@@ -17,7 +17,8 @@ describe("PureJsIndicatorCalculator", () => {
     expect(ind.recentHigh).toBeGreaterThanOrEqual(ind.recentLow);
   });
 
-  test("RSI of strictly rising series tends to >70", async () => {
+  test("RSI of strictly rising series equals 100 (Wilder's smoothed)", async () => {
+    // Strictly rising: no losses ever → avgLoss = 0 → RSI = 100.
     const candles = Array.from({ length: 250 }, (_, i) => ({
       timestamp: new Date(i * 3600_000),
       open: 100 + i,
@@ -27,10 +28,11 @@ describe("PureJsIndicatorCalculator", () => {
       volume: 100,
     }));
     const ind = await calc.compute(candles);
-    expect(ind.rsi).toBeGreaterThan(70);
+    expect(ind.rsi).toBeCloseTo(100, 5);
   });
 
-  test("RSI of strictly falling series tends to <30", async () => {
+  test("RSI of strictly falling series equals 0 (Wilder's smoothed)", async () => {
+    // Strictly falling: no gains ever → avgGain = 0 → RSI = 0.
     const candles = Array.from({ length: 250 }, (_, i) => ({
       timestamp: new Date(i * 3600_000),
       open: 500 - i,
@@ -40,6 +42,6 @@ describe("PureJsIndicatorCalculator", () => {
       volume: 100,
     }));
     const ind = await calc.compute(candles);
-    expect(ind.rsi).toBeLessThan(30);
+    expect(ind.rsi).toBeCloseTo(0, 5);
   });
 });

@@ -19,13 +19,17 @@ function fromCloses(closes: number[]): Candle[] {
 }
 
 describe("PureJsIndicatorCalculator reference values", () => {
-  test("RSI(14) on classic Welles Wilder dataset", async () => {
+  test("RSI(14) on Investopedia worked example (after 200-pad warmup)", async () => {
     // Classic textbook example for RSI calculation.
     // Source: Investopedia RSI worked example, period 14.
-    // The exact RSI value depends on initialization (Wilder's smoothed average vs
-    // simple average for the first period). This calculator uses a simple-average
-    // RSI over the last `period` diffs, so we assert a reasonable range rather
-    // than a single textbook value (different libraries report 35-50 here).
+    // Implementation uses Wilder's smoothed average (TA-Lib / TradingView conformant).
+    //
+    // Note: the textbook RSI on the raw 33 closes is ~37.77, but our calculator
+    // requires 200+ closes for ema200, so we left-pad with the first close.
+    // Wilder's smoothing applied to the long flat prefix drives avgGain/avgLoss
+    // toward zero before the actual data kicks in, so the empirical RSI on this
+    // padded dataset is ~35.51 (not the textbook 37.77). Bounds are tight (±1)
+    // around this empirical value since Wilder's smoothing is deterministic.
     const closes = [
       44.34, 44.09, 44.15, 43.61, 44.33, 44.83, 45.1, 45.42, 45.84, 46.08, 45.89, 46.03, 45.61,
       46.28, 46.28, 46.0, 46.03, 46.41, 46.22, 45.64, 46.21, 46.25, 45.71, 46.45, 45.78, 45.35,
@@ -38,12 +42,26 @@ describe("PureJsIndicatorCalculator reference values", () => {
 
     const ind = await calc.compute(candles);
 
-    // The dataset oscillates and ends with a downtrend; RSI should be bounded
-    // away from extremes. Loose range absorbs initialization differences across
-    // RSI implementations (this calculator yields ~30 for this series; Wilder's
-    // smoothed RSI on the Investopedia worked example reports ~37).
-    expect(ind.rsi).toBeGreaterThan(20);
-    expect(ind.rsi).toBeLessThan(65);
+    // Empirical reference value: Wilder's smoothed RSI on this exact padded dataset.
+    expect(ind.rsi).toBeCloseTo(35.51, 1);
+  });
+
+  test("RSI(14) on strictly ascending series equals 100 (Wilder's no-loss case)", async () => {
+    // For a strictly ascending series with constant +1 step, all gains, no losses.
+    // Wilder's smoothed: avgLoss = 0 throughout → RSI = 100.
+    const closes = Array.from({ length: 220 }, (_, i) => 100 + i);
+    const candles = fromCloses(closes);
+    const ind = await calc.compute(candles);
+    expect(ind.rsi).toBeCloseTo(100, 5);
+  });
+
+  test("RSI(14) on alternating +1/-1 series approaches 50 (Wilder's balanced case)", async () => {
+    // Alternating +1 / -1 increments → equal smoothed gains and losses → RSI ≈ 50.
+    const closes = Array.from({ length: 220 }, (_, i) => 100 + (i % 2));
+    const candles = fromCloses(closes);
+    const ind = await calc.compute(candles);
+    // Empirical value is ~51.85 (slight asymmetry from initial period boundary).
+    expect(ind.rsi).toBeCloseTo(51.85, 1);
   });
 
   test("EMA(20) on a constant series equals the constant", async () => {
