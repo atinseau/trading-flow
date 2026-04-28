@@ -491,9 +491,12 @@ test/
 └── helpers/postgres.ts              # shared testcontainers helper
 
 prompts/                             # Handlebars templates versionnés
-├── detector.md.hbs                  # version: detector_v1
-├── reviewer.md.hbs                  # version: reviewer_v1
-└── finalizer.md.hbs                 # version: finalizer_v1
+├── detector.md.hbs                  # user prompt — version: detector_v1
+├── detector.system.md               # system prompt (persona, rules)
+├── reviewer.md.hbs                  # user prompt — version: reviewer_v1
+├── reviewer.system.md               # system prompt
+├── finalizer.md.hbs                 # user prompt — version: finalizer_v1
+└── finalizer.system.md              # system prompt
 
 config/
 ├── watches.yaml                     # ta config (gitignored)

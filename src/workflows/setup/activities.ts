@@ -132,7 +132,7 @@ export function buildSetupActivities(deps: ActivityDeps) {
       const result = await resolveAndCall(
         watch.analyzers.reviewer.provider,
         {
-          systemPrompt: "You refine an existing setup.",
+          systemPrompt: reviewerPrompt.systemPrompt,
           userPrompt,
           images: [{ sourceUri: snap.chartUri, mimeType: "image/png" }],
           model: watch.analyzers.reviewer.model,
@@ -196,7 +196,7 @@ export function buildSetupActivities(deps: ActivityDeps) {
       const result = await resolveAndCall(
         watch.analyzers.finalizer.provider,
         {
-          systemPrompt: "You make the final go/no-go call.",
+          systemPrompt: finalizerPrompt.systemPrompt,
           userPrompt,
           model: watch.analyzers.finalizer.model,
           maxTokens: watch.analyzers.finalizer.max_tokens,

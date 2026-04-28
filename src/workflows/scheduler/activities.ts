@@ -157,7 +157,7 @@ export function buildSchedulerActivities(deps: ActivityDeps) {
       const result = await resolveAndCall(
         watch.analyzers.detector.provider,
         {
-          systemPrompt: "You are a chart analyzer.",
+          systemPrompt: detectorPrompt.systemPrompt,
           userPrompt,
           images: [{ sourceUri: snap.chartUri, mimeType: "image/png" }],
           model: watch.analyzers.detector.model,

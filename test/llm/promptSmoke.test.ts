@@ -70,7 +70,7 @@ describe.skipIf(!runLlm)("LLM prompt smoke (real OpenRouter)", () => {
     });
 
     const result = await provider.complete({
-      systemPrompt: "You are a chart analyzer.",
+      systemPrompt: detector.systemPrompt,
       userPrompt,
       model: cheapModel,
       maxTokens: 1500,
@@ -129,7 +129,7 @@ describe.skipIf(!runLlm)("LLM prompt smoke (real OpenRouter)", () => {
     });
 
     const result = await provider.complete({
-      systemPrompt: "You refine an existing setup.",
+      systemPrompt: reviewer.systemPrompt,
       userPrompt,
       model: cheapModel,
       maxTokens: 1500,
@@ -165,7 +165,7 @@ describe.skipIf(!runLlm)("LLM prompt smoke (real OpenRouter)", () => {
     });
 
     const result = await provider.complete({
-      systemPrompt: "You make the final go/no-go call.",
+      systemPrompt: finalizer.systemPrompt,
       userPrompt,
       model: cheapModel,
       maxTokens: 2000,

@@ -38,3 +38,18 @@ test("loadPrompt is cached (same instance returned)", async () => {
   const b = await loadPrompt("detector");
   expect(a.render).toBe(b.render); // same compiled template
 });
+
+test("loadPrompt returns systemPrompt as well", async () => {
+  const result = await loadPrompt("detector");
+  expect(result.systemPrompt).toBeDefined();
+  expect(result.systemPrompt.length).toBeGreaterThan(20);
+  expect(typeof result.render).toBe("function");
+});
+
+test("each role has a distinct system prompt", async () => {
+  const detector = await loadPrompt("detector");
+  const reviewer = await loadPrompt("reviewer");
+  const finalizer = await loadPrompt("finalizer");
+  expect(detector.systemPrompt).not.toBe(reviewer.systemPrompt);
+  expect(reviewer.systemPrompt).not.toBe(finalizer.systemPrompt);
+});
