@@ -462,6 +462,7 @@ services:
       POSTGRES_SEEDS: postgres
       POSTGRES_DB: temporal
       POSTGRES_VISIBILITY_DB: temporal_visibility
+      BIND_ON_IP: 0.0.0.0          # required so localhost healthcheck below works
     ports:
       - "127.0.0.1:7233:7233"
     healthcheck:
@@ -472,7 +473,7 @@ services:
       start_period: 30s
 
   temporal-ui:
-    image: temporalio/ui:2.34
+    image: temporalio/ui:2.34.0    # full SemVer required by Docker Hub
     container_name: tf-temporal-ui
     restart: unless-stopped
     depends_on:
