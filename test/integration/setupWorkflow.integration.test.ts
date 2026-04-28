@@ -151,11 +151,13 @@ describe("SetupWorkflow integration (real Postgres + real activities)", () => {
 
     // Single fake LLM that dispatches based on systemPrompt to discriminate
     // reviewer vs finalizer roles (both use provider "fake" per watch config).
+    // Keys "Reviewer" / "Finalizer" come from the v3 English prompts in
+    // prompts/reviewer.system.md and prompts/finalizer.system.md.
     const dispatchingLLM: LLMProvider = new FakeLLMProvider({
       name: "fake",
       available: true,
       completeImpl: async (input) => {
-        if (input.systemPrompt.includes("refine")) {
+        if (input.systemPrompt.includes("Reviewer")) {
           return {
             content: "{}",
             parsed: {
@@ -170,7 +172,16 @@ describe("SetupWorkflow integration (real Postgres + real activities)", () => {
             completionTokens: 50,
           };
         }
-        if (input.systemPrompt.includes("go/no-go") || input.systemPrompt.includes("final")) {
+        if (input.systemPrompt.includes("Finalizer")) {
+          // Small artificial delay so the Strengthened persist (triggered by
+          // the review signal handler when it flips status to FINALIZING) has
+          // time to commit before the active loop calls nextSequence for the
+          // Confirmed event. Without this, both nextSequence calls can read
+          // the same MAX(sequence) value and produce a duplicate-key error
+          // ("ux_events_setup_seq"). The race is intentional in the workflow
+          // (status flips BEFORE persist to avoid a TTL race) but it surfaces
+          // when fakes resolve activities effectively instantly.
+          await new Promise((r) => setTimeout(r, 100));
           return {
             content: "{}",
             parsed: {
@@ -181,7 +192,7 @@ describe("SetupWorkflow integration (real Postgres + real activities)", () => {
               take_profit: [120, 130],
             },
             costUsd: 0.005,
-            latencyMs: 1,
+            latencyMs: 100,
             promptTokens: 200,
             completionTokens: 100,
           };
@@ -239,7 +250,11 @@ describe("SetupWorkflow integration (real Postgres + real activities)", () => {
       invalidationLevel: 95,
       initialScore: 25,
       ttlCandles: 50,
-      ttlExpiresAt: new Date(Date.now() + 50 * 3600_000).toISOString(),
+      // Use a 1-year TTL: TestWorkflowEnvironment.createTimeSkipping() fast-forwards
+      // simulated time when the workflow awaits, so a short TTL (e.g. 50h) can fire
+      // before signals are processed. A 1y TTL guarantees the timer never trips
+      // within the test scope.
+      ttlExpiresAt: new Date(Date.now() + 365 * 24 * 3600_000).toISOString(),
       scoreThresholdFinalizer: 80,
       scoreThresholdDead: 10,
       scoreMax: 100,
