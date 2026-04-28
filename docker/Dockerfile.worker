@@ -1,0 +1,26 @@
+FROM oven/bun:1.3-debian AS deps
+
+WORKDIR /app
+
+# Playwright system deps for Chromium
+RUN apt-get update && apt-get install -y \
+    libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 \
+    libcups2 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 \
+    libxfixes3 libxrandr2 libgbm1 libxshmfence1 libpango-1.0-0 \
+    libcairo2 libasound2 \
+ && rm -rf /var/lib/apt/lists/*
+
+COPY package.json bun.lock ./
+RUN bun install --frozen-lockfile
+
+RUN bun x playwright install chromium
+
+FROM deps AS runtime
+
+COPY src ./src
+COPY drizzle.config.ts biome.json tsconfig.json ./
+COPY config ./config
+COPY prompts ./prompts
+COPY migrations ./migrations
+
+ENV NODE_ENV=production
