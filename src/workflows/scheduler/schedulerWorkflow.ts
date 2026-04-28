@@ -12,19 +12,55 @@ import {
 import { type InitialEvidence, setupWorkflow } from "../setup/setupWorkflow";
 import type * as schedulerActivities from "./activities";
 
-const a = proxyActivities<ReturnType<typeof schedulerActivities.buildSchedulerActivities>>({
-  startToCloseTimeout: "60s",
+const SHARED_NON_RETRYABLE = [
+  "InvalidConfigError",
+  "AssetNotFoundError",
+  "LLMSchemaValidationError",
+  "PromptTooLargeError",
+  "NoProviderAvailableError",
+  "CircularFallbackError",
+  "StopRequestedError",
+];
+
+// Fetch (HTTP / Playwright render) — network is flaky, retry aggressively.
+const fetchActivities = proxyActivities<
+  ReturnType<typeof schedulerActivities.buildSchedulerActivities>
+>({
+  startToCloseTimeout: "30s",
+  retry: {
+    maximumAttempts: 5,
+    initialInterval: "1s",
+    maximumInterval: "30s",
+    backoffCoefficient: 2,
+    nonRetryableErrorTypes: SHARED_NON_RETRYABLE,
+  },
+});
+
+// LLM activities — fewer attempts, longer timeouts (LLM calls are slow + expensive).
+const llmActivities = proxyActivities<
+  ReturnType<typeof schedulerActivities.buildSchedulerActivities>
+>({
+  startToCloseTimeout: "120s",
   retry: {
     maximumAttempts: 3,
-    nonRetryableErrorTypes: [
-      "InvalidConfigError",
-      "AssetNotFoundError",
-      "LLMSchemaValidationError",
-      "PromptTooLargeError",
-      "NoProviderAvailableError",
-      "CircularFallbackError",
-      "StopRequestedError",
-    ],
+    initialInterval: "2s",
+    maximumInterval: "60s",
+    backoffCoefficient: 2,
+    nonRetryableErrorTypes: SHARED_NON_RETRYABLE,
+  },
+});
+
+// DB / pure-compute activities — many fast retries (transient DB blips).
+const dbActivities = proxyActivities<
+  ReturnType<typeof schedulerActivities.buildSchedulerActivities>
+>({
+  startToCloseTimeout: "10s",
+  retry: {
+    maximumAttempts: 5,
+    initialInterval: "100ms",
+    maximumInterval: "5s",
+    backoffCoefficient: 2,
+    nonRetryableErrorTypes: SHARED_NON_RETRYABLE,
   },
 });
 
@@ -57,7 +93,7 @@ export async function schedulerWorkflow(args: SchedulerArgs): Promise<void> {
     // `deps.watchById`) see the new configuration. Note: changes to
     // `temporal.address`, watch IDs, or schedule cron require a worker
     // restart or a Schedule update — they are not picked up here.
-    await a.reloadConfigFromDisk({});
+    await dbActivities.reloadConfigFromDisk({});
   });
   setHandler(getSchedulerStateQuery, () => ({ paused, lastTickAt }));
 
@@ -73,9 +109,9 @@ export async function schedulerWorkflow(args: SchedulerArgs): Promise<void> {
     try {
       const { costUsd } = await runOneTick(args.watchId, args.analysisTaskQueue);
       lastTickAt = new Date().toISOString();
-      await a.recordWatchTick({ watchId: args.watchId, status: "success", costUsd });
+      await dbActivities.recordWatchTick({ watchId: args.watchId, status: "success", costUsd });
     } catch {
-      await a.recordWatchTick({ watchId: args.watchId, status: "failed", costUsd: 0 });
+      await dbActivities.recordWatchTick({ watchId: args.watchId, status: "failed", costUsd: 0 });
     } finally {
       tickInProgress = false;
     }
@@ -90,14 +126,14 @@ async function runOneTick(
   watchId: string,
   analysisTaskQueue: string,
 ): Promise<{ costUsd: number }> {
-  const { ohlcvJson } = await a.fetchOHLCV({ watchId });
-  const { indicatorsJson } = await a.computeIndicators({ ohlcvJson });
-  const preFilter = await a.evaluatePreFilter({ ohlcvJson, indicatorsJson, watchId });
+  const { ohlcvJson } = await fetchActivities.fetchOHLCV({ watchId });
+  const { indicatorsJson } = await dbActivities.computeIndicators({ ohlcvJson });
+  const preFilter = await dbActivities.evaluatePreFilter({ ohlcvJson, indicatorsJson, watchId });
   if (!preFilter.passed) return { costUsd: 0 };
 
-  const { artifactUri: chartUri } = await a.renderChart({ ohlcvJson, watchId });
-  const { artifactUri: ohlcvUri } = await a.persistOHLCVArtifact({ ohlcvJson });
-  const { tickSnapshotId } = await a.createTickSnapshot({
+  const { artifactUri: chartUri } = await fetchActivities.renderChart({ ohlcvJson, watchId });
+  const { artifactUri: ohlcvUri } = await dbActivities.persistOHLCVArtifact({ ohlcvJson });
+  const { tickSnapshotId } = await dbActivities.createTickSnapshot({
     watchId,
     chartUri,
     ohlcvUri,
@@ -105,8 +141,8 @@ async function runOneTick(
     preFilterPass: preFilter.passed,
   });
 
-  const alive = await a.listAliveSetups({ watchId });
-  const { verdictJson, costUsd: detectorCost } = await a.runDetector({
+  const alive = await dbActivities.listAliveSetups({ watchId });
+  const { verdictJson, costUsd: detectorCost } = await llmActivities.runDetector({
     watchId,
     tickSnapshotId,
     aliveSetups: alive,
@@ -121,7 +157,7 @@ async function runOneTick(
     }[];
   };
 
-  const dedup = await a.dedupNewSetups({
+  const dedup = await dbActivities.dedupNewSetups({
     newSetupsJson: JSON.stringify(verdict.new_setups),
     aliveSetupsJson: JSON.stringify(alive),
     watchId,
@@ -140,7 +176,7 @@ async function runOneTick(
     });
   }
 
-  const watch = await a.loadWatchConfig({ watchId });
+  const watch = await dbActivities.loadWatchConfig({ watchId });
   if (!watch) return { costUsd: detectorCost };
   for (const newSetup of dedup.creates) {
     const setupId = uuid4();

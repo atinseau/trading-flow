@@ -3,7 +3,7 @@ import { LLMRateLimitError, LLMSchemaValidationError } from "@domain/errors";
 import type { LLMImageInput, LLMInput, LLMOutput, LLMProvider } from "@domain/ports/LLMProvider";
 import type { LLMUsageStore } from "@domain/ports/LLMUsageStore";
 import { getLogger } from "@observability/logger";
-import { z } from "zod";
+import { toJSONSchema, z } from "zod";
 
 const OpenRouterResponseSchema = z.object({
   choices: z
@@ -86,6 +86,22 @@ export class OpenRouterProvider implements LLMProvider {
       ? await buildMultipartContent(input.userPrompt, input.images)
       : input.userPrompt;
 
+    // Prefer strict json_schema mode for guaranteed conformance. Older models
+    // that don't support it will return 400; we fall back to json_object below.
+    const responseFormat: unknown = input.responseSchema
+      ? {
+          type: "json_schema",
+          json_schema: {
+            name: "response",
+            strict: true,
+            schema: toJSONSchema(input.responseSchema, {
+              target: "openapi-3.0",
+              unrepresentable: "any",
+            }),
+          },
+        }
+      : undefined;
+
     const body = {
       model: input.model,
       messages: [
@@ -94,21 +110,37 @@ export class OpenRouterProvider implements LLMProvider {
       ],
       max_tokens: input.maxTokens ?? 4096,
       temperature: input.temperature ?? 0.3,
-      ...(input.responseSchema ? { response_format: { type: "json_object" } } : {}),
     };
 
-    const response = await fetch(
-      `${this.config.baseUrl ?? "https://openrouter.ai/api/v1"}/chat/completions`,
-      {
+    const url = `${this.config.baseUrl ?? "https://openrouter.ai/api/v1"}/chat/completions`;
+    const headers = {
+      Authorization: `Bearer ${this.config.apiKey}`,
+      "Content-Type": "application/json",
+      "HTTP-Referer": "https://trading-flow.local",
+    };
+    const send = async (rf: unknown): Promise<Response> =>
+      fetch(url, {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${this.config.apiKey}`,
-          "Content-Type": "application/json",
-          "HTTP-Referer": "https://trading-flow.local",
-        },
-        body: JSON.stringify(body),
-      },
-    );
+        headers,
+        body: JSON.stringify({ ...body, ...(rf ? { response_format: rf } : {}) }),
+      });
+
+    let response = await send(responseFormat);
+
+    if (response.status === 400 && responseFormat) {
+      // Some models reject json_schema mode; fall back to json_object on a
+      // schema-related 400 (heuristic on the error body).
+      const errText = await response.text();
+      if (/response_format|schema/i.test(errText)) {
+        this.log.warn(
+          { model: input.model, errText: errText.slice(0, 200) },
+          "model rejected json_schema, falling back to json_object",
+        );
+        response = await send({ type: "json_object" });
+      } else {
+        throw new Error(`OpenRouter 400: ${errText}`);
+      }
+    }
 
     if (response.status === 429) {
       this.log.warn({ status: 429 }, "openrouter rate limited");

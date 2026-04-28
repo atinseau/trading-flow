@@ -1,19 +1,37 @@
 import { condition, defineSignal, proxyActivities, setHandler } from "@temporalio/workflow";
 import type * as activities from "./activities";
 
-const a = proxyActivities<ReturnType<typeof activities.buildSetupActivities>>({
-  startToCloseTimeout: "30s",
+const SHARED_NON_RETRYABLE = [
+  "InvalidConfigError",
+  "AssetNotFoundError",
+  "LLMSchemaValidationError",
+  "PromptTooLargeError",
+  "NoProviderAvailableError",
+  "CircularFallbackError",
+  "StopRequestedError",
+];
+
+// DB / persistence activities — many fast retries (transient DB blips).
+const dbActivities = proxyActivities<ReturnType<typeof activities.buildSetupActivities>>({
+  startToCloseTimeout: "10s",
+  retry: {
+    maximumAttempts: 5,
+    initialInterval: "100ms",
+    maximumInterval: "5s",
+    backoffCoefficient: 2,
+    nonRetryableErrorTypes: SHARED_NON_RETRYABLE,
+  },
+});
+
+// Notify (Telegram) — moderate retries, short timeout.
+const notifyActivities = proxyActivities<ReturnType<typeof activities.buildSetupActivities>>({
+  startToCloseTimeout: "15s",
   retry: {
     maximumAttempts: 3,
-    nonRetryableErrorTypes: [
-      "InvalidConfigError",
-      "AssetNotFoundError",
-      "LLMSchemaValidationError",
-      "PromptTooLargeError",
-      "NoProviderAvailableError",
-      "CircularFallbackError",
-      "StopRequestedError",
-    ],
+    initialInterval: "500ms",
+    maximumInterval: "10s",
+    backoffCoefficient: 2,
+    nonRetryableErrorTypes: SHARED_NON_RETRYABLE,
   },
 });
 
@@ -64,7 +82,7 @@ export async function trackingLoop(args: TrackingArgs): Promise<TrackingResult> 
   // Helper: get and increment sequence
   const nextSeq = async (setupId: string): Promise<number> => {
     if (nextSequenceNumber === 0) {
-      nextSequenceNumber = (await a.nextSequence({ setupId })).sequence;
+      nextSequenceNumber = (await dbActivities.nextSequence({ setupId })).sequence;
     } else {
       nextSequenceNumber++;
     }
@@ -91,7 +109,7 @@ export async function trackingLoop(args: TrackingArgs): Promise<TrackingResult> 
 
     if (slHit) {
       const seq = await nextSeq(args.setupId);
-      await a.persistEvent({
+      await dbActivities.persistEvent({
         event: {
           setupId: args.setupId,
           sequence: seq,
@@ -109,7 +127,7 @@ export async function trackingLoop(args: TrackingArgs): Promise<TrackingResult> 
         },
         setupUpdate: { score: args.scoreAtConfirmation, status: "CLOSED" },
       });
-      await a.notifyTelegramSLHit({
+      await notifyActivities.notifyTelegramSLHit({
         watchId: args.watchId,
         asset: args.asset,
         timeframe: args.timeframe,
@@ -130,7 +148,7 @@ export async function trackingLoop(args: TrackingArgs): Promise<TrackingResult> 
 
       const isFinalTp = nextTpIndex === sortedTPs.length - 1;
       const seq = await nextSeq(args.setupId);
-      await a.persistEvent({
+      await dbActivities.persistEvent({
         event: {
           setupId: args.setupId,
           sequence: seq,
@@ -155,7 +173,7 @@ export async function trackingLoop(args: TrackingArgs): Promise<TrackingResult> 
           status: isFinalTp ? "CLOSED" : "TRACKING",
         },
       });
-      await a.notifyTelegramTPHit({
+      await notifyActivities.notifyTelegramTPHit({
         watchId: args.watchId,
         asset: args.asset,
         timeframe: args.timeframe,
@@ -168,7 +186,7 @@ export async function trackingLoop(args: TrackingArgs): Promise<TrackingResult> 
       if (nextTpIndex === 0 && currentSL !== args.entry) {
         const newSL = args.entry;
         const trailSeq = await nextSeq(args.setupId);
-        await a.persistEvent({
+        await dbActivities.persistEvent({
           event: {
             setupId: args.setupId,
             sequence: trailSeq,
@@ -198,6 +216,6 @@ export async function trackingLoop(args: TrackingArgs): Promise<TrackingResult> 
     }
   }
 
-  await a.markSetupClosed({ setupId: args.setupId, finalStatus: "CLOSED" });
+  await dbActivities.markSetupClosed({ setupId: args.setupId, finalStatus: "CLOSED" });
   return "CLOSED";
 }

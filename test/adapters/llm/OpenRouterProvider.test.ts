@@ -100,4 +100,50 @@ describe("OpenRouterProvider", () => {
     usageStore.setSpent("or-durable", 1); // now under budget
     expect(await p.isAvailable()).toBe(true);
   });
+
+  test("response_format: json_schema is sent when responseSchema provided", async () => {
+    let capturedBody: {
+      response_format?: {
+        type: string;
+        json_schema?: { name?: string; strict?: boolean; schema?: unknown };
+      };
+    } | null = null;
+
+    const localServer = Bun.serve({
+      port: 0,
+      async fetch(req) {
+        if (new URL(req.url).pathname === "/chat/completions") {
+          capturedBody = (await req.json()) as typeof capturedBody;
+          return Response.json({
+            choices: [{ message: { content: '{"verdict":"NEUTRAL"}' } }],
+            usage: { prompt_tokens: 10, completion_tokens: 5, cost: 0.0001 },
+          });
+        }
+        return new Response("nf", { status: 404 });
+      },
+    });
+
+    try {
+      const p = new OpenRouterProvider("or", {
+        apiKey: "k",
+        baseUrl: `http://localhost:${localServer.port}`,
+      });
+      await p.complete({
+        systemPrompt: "s",
+        userPrompt: "u",
+        model: "test",
+        responseSchema: z.object({ verdict: z.string() }),
+      });
+
+      expect(capturedBody).not.toBeNull();
+      // biome-ignore lint/style/noNonNullAssertion: just asserted above
+      expect(capturedBody!.response_format?.type).toBe("json_schema");
+      // biome-ignore lint/style/noNonNullAssertion: just asserted above
+      expect(capturedBody!.response_format?.json_schema?.strict).toBe(true);
+      // biome-ignore lint/style/noNonNullAssertion: just asserted above
+      expect(capturedBody!.response_format?.json_schema?.name).toBe("response");
+    } finally {
+      localServer.stop();
+    }
+  });
 });

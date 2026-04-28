@@ -17,19 +17,49 @@ import { isActive } from "../../domain/state-machine/setupTransitions";
 import type * as activities from "./activities";
 import { trackingLoop } from "./trackingLoop";
 
-const a = proxyActivities<ReturnType<typeof activities.buildSetupActivities>>({
-  startToCloseTimeout: "60s",
+const SHARED_NON_RETRYABLE = [
+  "InvalidConfigError",
+  "AssetNotFoundError",
+  "LLMSchemaValidationError",
+  "PromptTooLargeError",
+  "NoProviderAvailableError",
+  "CircularFallbackError",
+  "StopRequestedError",
+];
+
+// LLM activities — fewer attempts, longer timeouts (LLM calls are slow + expensive).
+const llmActivities = proxyActivities<ReturnType<typeof activities.buildSetupActivities>>({
+  startToCloseTimeout: "120s",
   retry: {
     maximumAttempts: 3,
-    nonRetryableErrorTypes: [
-      "InvalidConfigError",
-      "AssetNotFoundError",
-      "LLMSchemaValidationError",
-      "PromptTooLargeError",
-      "NoProviderAvailableError",
-      "CircularFallbackError",
-      "StopRequestedError",
-    ],
+    initialInterval: "2s",
+    maximumInterval: "60s",
+    backoffCoefficient: 2,
+    nonRetryableErrorTypes: SHARED_NON_RETRYABLE,
+  },
+});
+
+// DB / persistence activities — many fast retries (transient DB blips).
+const dbActivities = proxyActivities<ReturnType<typeof activities.buildSetupActivities>>({
+  startToCloseTimeout: "10s",
+  retry: {
+    maximumAttempts: 5,
+    initialInterval: "100ms",
+    maximumInterval: "5s",
+    backoffCoefficient: 2,
+    nonRetryableErrorTypes: SHARED_NON_RETRYABLE,
+  },
+});
+
+// Notify (Telegram) — moderate retries, short timeout.
+const notifyActivities = proxyActivities<ReturnType<typeof activities.buildSetupActivities>>({
+  startToCloseTimeout: "15s",
+  retry: {
+    maximumAttempts: 3,
+    initialInterval: "500ms",
+    maximumInterval: "10s",
+    backoffCoefficient: 2,
+    nonRetryableErrorTypes: SHARED_NON_RETRYABLE,
   },
 });
 
@@ -138,7 +168,7 @@ export async function setupWorkflow(initial: InitialEvidence): Promise<SetupStat
 
   setHandler(reviewSignal, async (args) => {
     if (state.status !== "REVIEWING") return;
-    const reviewerResult = await a.runReviewer({
+    const reviewerResult = await llmActivities.runReviewer({
       setupId: initial.setupId,
       tickSnapshotId: args.tickSnapshotId,
       watchId: initial.watchId,
@@ -159,7 +189,7 @@ export async function setupWorkflow(initial: InitialEvidence): Promise<SetupStat
       scoreThresholdDead: initial.scoreThresholdDead,
     });
 
-    const seq = (await a.nextSequence({ setupId: initial.setupId })).sequence;
+    const seq = (await dbActivities.nextSequence({ setupId: initial.setupId })).sequence;
     const { type, payload } = verdictToEvent(verdict);
 
     // Update in-memory state BEFORE persisting so concurrent timer scopes
@@ -169,7 +199,7 @@ export async function setupWorkflow(initial: InitialEvidence): Promise<SetupStat
     state.score = next.score;
     state.invalidationLevel = next.invalidationLevel;
 
-    await a.persistEvent({
+    await dbActivities.persistEvent({
       event: {
         setupId: initial.setupId,
         sequence: seq,
@@ -202,12 +232,12 @@ export async function setupWorkflow(initial: InitialEvidence): Promise<SetupStat
     const newStatus: SetupStatus =
       newScore >= initial.scoreThresholdFinalizer ? "FINALIZING" : before.status;
 
-    const seq = (await a.nextSequence({ setupId: initial.setupId })).sequence;
+    const seq = (await dbActivities.nextSequence({ setupId: initial.setupId })).sequence;
     state.sequence = seq;
     state.score = newScore;
     state.status = newStatus;
 
-    await a.persistEvent({
+    await dbActivities.persistEvent({
       event: {
         setupId: initial.setupId,
         sequence: seq,
@@ -248,11 +278,11 @@ export async function setupWorkflow(initial: InitialEvidence): Promise<SetupStat
     if (!isActive(state.status)) return;
 
     const before = { status: state.status, score: state.score };
-    const seq = (await a.nextSequence({ setupId: initial.setupId })).sequence;
+    const seq = (await dbActivities.nextSequence({ setupId: initial.setupId })).sequence;
     state.sequence = seq;
     state.status = "INVALIDATED";
 
-    await a.persistEvent({
+    await dbActivities.persistEvent({
       event: {
         setupId: initial.setupId,
         sequence: seq,
@@ -280,7 +310,7 @@ export async function setupWorkflow(initial: InitialEvidence): Promise<SetupStat
     });
 
     if (everConfirmed) {
-      await a.notifyTelegramInvalidatedAfterConfirmed({
+      await notifyActivities.notifyTelegramInvalidatedAfterConfirmed({
         watchId: initial.watchId,
         asset: initial.asset,
         timeframe: initial.timeframe,
@@ -294,7 +324,7 @@ export async function setupWorkflow(initial: InitialEvidence): Promise<SetupStat
   });
 
   // Create the setup row first so subsequent events satisfy the FK.
-  await a.createSetup({
+  await dbActivities.createSetup({
     setupId: initial.setupId,
     watchId: initial.watchId,
     asset: initial.asset,
@@ -309,8 +339,8 @@ export async function setupWorkflow(initial: InitialEvidence): Promise<SetupStat
   });
 
   // Persist SetupCreated event
-  state.sequence = (await a.nextSequence({ setupId: initial.setupId })).sequence;
-  await a.persistEvent({
+  state.sequence = (await dbActivities.nextSequence({ setupId: initial.setupId })).sequence;
+  await dbActivities.persistEvent({
     event: {
       setupId: initial.setupId,
       sequence: state.sequence,
@@ -347,11 +377,11 @@ export async function setupWorkflow(initial: InitialEvidence): Promise<SetupStat
     .run(async () => {
       if (ttlMs > 0) await sleep(ttlMs);
       if (state.status === "REVIEWING" || state.status === "FINALIZING") {
-        const seq = (await a.nextSequence({ setupId: initial.setupId })).sequence;
+        const seq = (await dbActivities.nextSequence({ setupId: initial.setupId })).sequence;
         const before = state.status;
         state.sequence = seq;
         state.status = "EXPIRED";
-        await a.persistEvent({
+        await dbActivities.persistEvent({
           event: {
             setupId: initial.setupId,
             sequence: seq,
@@ -376,7 +406,7 @@ export async function setupWorkflow(initial: InitialEvidence): Promise<SetupStat
             invalidationLevel: state.invalidationLevel,
           },
         });
-        await a.notifyTelegramExpired({
+        await notifyActivities.notifyTelegramExpired({
           watchId: initial.watchId,
           asset: initial.asset,
           timeframe: initial.timeframe,
@@ -393,7 +423,7 @@ export async function setupWorkflow(initial: InitialEvidence): Promise<SetupStat
       await condition(() => !isActive(state.status) || state.status === "FINALIZING");
 
       if (state.status === "FINALIZING") {
-        const finalizerResult = await a.runFinalizer({
+        const finalizerResult = await llmActivities.runFinalizer({
           setupId: initial.setupId,
           watchId: initial.watchId,
         });
@@ -404,12 +434,12 @@ export async function setupWorkflow(initial: InitialEvidence): Promise<SetupStat
           stop_loss?: number;
           take_profit?: number[];
         };
-        const seq = (await a.nextSequence({ setupId: initial.setupId })).sequence;
+        const seq = (await dbActivities.nextSequence({ setupId: initial.setupId })).sequence;
         if (decision.go) {
           state.sequence = seq;
           state.status = "TRACKING";
           everConfirmed = true;
-          await a.persistEvent({
+          await dbActivities.persistEvent({
             event: {
               setupId: initial.setupId,
               sequence: seq,
@@ -441,7 +471,7 @@ export async function setupWorkflow(initial: InitialEvidence): Promise<SetupStat
               invalidationLevel: state.invalidationLevel,
             },
           });
-          await a.notifyTelegramConfirmed({
+          await notifyActivities.notifyTelegramConfirmed({
             watchId: initial.watchId,
             asset: initial.asset,
             timeframe: initial.timeframe,
@@ -468,7 +498,7 @@ export async function setupWorkflow(initial: InitialEvidence): Promise<SetupStat
         } else {
           state.sequence = seq;
           state.status = "REJECTED";
-          await a.persistEvent({
+          await dbActivities.persistEvent({
             event: {
               setupId: initial.setupId,
               sequence: seq,
@@ -494,7 +524,7 @@ export async function setupWorkflow(initial: InitialEvidence): Promise<SetupStat
               invalidationLevel: state.invalidationLevel,
             },
           });
-          await a.notifyTelegramRejected({
+          await notifyActivities.notifyTelegramRejected({
             watchId: initial.watchId,
             asset: initial.asset,
             timeframe: initial.timeframe,
@@ -507,7 +537,7 @@ export async function setupWorkflow(initial: InitialEvidence): Promise<SetupStat
     ttlScope.cancel();
   }
 
-  await a.markSetupClosed({ setupId: initial.setupId, finalStatus: state.status });
+  await dbActivities.markSetupClosed({ setupId: initial.setupId, finalStatus: state.status });
   return state.status;
 }
 
