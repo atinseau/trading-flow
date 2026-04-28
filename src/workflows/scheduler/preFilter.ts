@@ -1,5 +1,5 @@
 import type { Candle } from "@domain/schemas/Candle";
-import type { WatchConfig } from "@domain/schemas/Config";
+import type { WatchConfig } from "@domain/schemas/WatchesConfig";
 import type { Indicators } from "@domain/schemas/Indicators";
 
 export type PreFilterResult = { passed: boolean; reasons: string[] };
