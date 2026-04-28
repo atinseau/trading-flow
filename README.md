@@ -64,16 +64,20 @@ Détails complets :
 
 ## Tech Stack
 
-- **Runtime** : Bun
+- **Runtime** : Bun (YAML + file I/O natifs)
 - **Language** : TypeScript strict + Zod (validation aux frontières)
 - **ORM** : Drizzle (schema-as-code, migrations générées)
 - **Lint + Format** : Biome (single tool avec règles d'import hexagonal)
 - **Workflow engine** : Temporal
 - **Charting** : Playwright headless (Chromium) + lightweight-charts
-- **LLM** : `@anthropic-ai/claude-agent-sdk` (Claude Max) + OpenRouter (300+ modèles)
+- **Indicators** : Implémentation pure JS conforme TA-Lib (RSI Wilder's smoothed, EMA, ATR)
+- **LLM** : `@anthropic-ai/claude-agent-sdk` (Claude Max) + OpenRouter (300+ modèles via fallback graph)
+- **Prompts** : Handlebars templates **en anglais** (`prompts/*.md.hbs`) + system prompts (`prompts/*.system.md`), versionnés (v3)
 - **Notifier** : grammy (Telegram bot)
 - **Logging** : pino (JSON structuré + correlation IDs)
+- **Health endpoints** : `Bun.serve` sidecar par worker (ports 8081/82/83)
 - **DB** : Postgres 16
+- **Tests** : 4 niveaux (domain / adapters / workflows / integration) + e2e gated + LLM smoke gated
 
 ---
 
@@ -490,12 +494,12 @@ test/
 ├── fakes/                           # 11 InMemory* / Fake*
 └── helpers/postgres.ts              # shared testcontainers helper
 
-prompts/                             # Handlebars templates versionnés
-├── detector.md.hbs                  # user prompt — version: detector_v1
+prompts/                             # Handlebars templates versionnés (entièrement en anglais)
+├── detector.md.hbs                  # user prompt — version: detector_v3
 ├── detector.system.md               # system prompt (persona, rules)
-├── reviewer.md.hbs                  # user prompt — version: reviewer_v1
+├── reviewer.md.hbs                  # user prompt — version: reviewer_v3
 ├── reviewer.system.md               # system prompt
-├── finalizer.md.hbs                 # user prompt — version: finalizer_v1
+├── finalizer.md.hbs                 # user prompt — version: finalizer_v3
 └── finalizer.system.md              # system prompt
 
 config/
@@ -606,6 +610,36 @@ Utilise ce système à tes propres risques. Démarre toujours en
 
 - **Spec** : [`docs/superpowers/specs/2026-04-28-trading-flow-design.md`](docs/superpowers/specs/2026-04-28-trading-flow-design.md)
 - **Plan d'implémentation** : [`docs/superpowers/plans/2026-04-28-trading-flow-implementation.md`](docs/superpowers/plans/2026-04-28-trading-flow-implementation.md)
+
+---
+
+## Notes techniques
+
+### Conformance TA-Lib
+Le `PureJsIndicatorCalculator` implémente RSI avec **Wilder's smoothed average**
+(formule `avgGain = (avgGain_prev * (period - 1) + currentGain) / period`),
+conforme à TA-Lib / TradingView / Investopedia. Vérifié par tests :
+- Série strictement croissante → RSI = 100.0
+- Série strictement décroissante → RSI = 0.0
+- Série alternance ±1 → RSI ≈ 50.0
+
+### Sequence atomique
+Les events sont sequencés **atomiquement** dans la transaction Postgres
+(`MAX(sequence)+1` à l'INSERT, contrainte `UNIQUE(setup_id, sequence)` comme filet
+de sécurité). Le workflow consomme la sequence assignée depuis le retour de
+`persistEvent`. Pas de race possible entre concurrent appends.
+
+### Prompt versioning
+Chaque event LLM-driven persiste son `actor` = la version du prompt utilisée
+(`detector_v3`, `reviewer_v3`, `finalizer_v3`). Bumper un prompt = bumper son
+header `{{!-- version: --}}` ; les nouveaux events refléteront le nouveau version,
+les anciens events conservent leur version d'origine pour l'audit / replay.
+
+### Determinism Temporal
+Les workflows sont **strictement déterministes** : `uuid4` du SDK Temporal
+(jamais `crypto.randomUUID()`), pas de `Date.now()` direct, état porté par
+le workflow et persisté par Temporal. Validé par patterns de test
+TimeSkipping.
 
 ---
 
