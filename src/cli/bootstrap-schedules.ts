@@ -1,4 +1,5 @@
 import { loadConfig } from "@config/loadConfig";
+import { cronForTimeframe } from "@domain/services/cronForTimeframe";
 import { getLogger } from "@observability/logger";
 import { Client, Connection, ScheduleNotFoundError } from "@temporalio/client";
 import { pickPriceFeedAdapter } from "@workflows/price-monitor/activities";
@@ -14,6 +15,15 @@ const client = new Client({ connection, namespace: config.temporal.namespace });
 
 for (const watch of config.watches.filter((w) => w.enabled)) {
   const watchLog = log.child({ watchId: watch.id });
+  const cron = watch.schedule.detector_cron ?? cronForTimeframe(watch.timeframes.primary);
+  watchLog.info(
+    {
+      timeframe: watch.timeframes.primary,
+      cron,
+      derived: !watch.schedule.detector_cron,
+    },
+    "schedule cron",
+  );
   // Start SchedulerWorkflow (idempotent via workflowId)
   await client.workflow
     .start("schedulerWorkflow", {
@@ -50,7 +60,7 @@ for (const watch of config.watches.filter((w) => w.enabled)) {
     await handle.update((current) => ({
       ...current,
       spec: {
-        cronExpressions: [watch.schedule.detector_cron],
+        cronExpressions: [cron],
         timezone: watch.schedule.timezone ?? "UTC",
       },
     }));
@@ -60,7 +70,7 @@ for (const watch of config.watches.filter((w) => w.enabled)) {
       await client.schedule.create({
         scheduleId,
         spec: {
-          cronExpressions: [watch.schedule.detector_cron],
+          cronExpressions: [cron],
           timezone: watch.schedule.timezone ?? "UTC",
         },
         action: {

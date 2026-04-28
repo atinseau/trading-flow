@@ -36,7 +36,7 @@ watches:
     asset: { symbol: BTCUSDT, source: binance }
     timeframes: { primary: 1h, higher: [4h] }
     schedule:
-      detector_cron: "*/15 * * * *"
+      # detector_cron: "*/15 * * * *"     # optionnel — par défaut dérivé du timeframe primary
       timezone: UTC
     candles:
       detector_lookback: 200

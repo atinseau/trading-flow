@@ -160,7 +160,7 @@ watches:
       primary: 1h                  # 1m | 5m | 15m | 30m | 1h | 2h | 4h | 1d | 1w
       higher: [4h]                 # multi-timeframe pour confluence
     schedule:
-      detector_cron: "*/15 * * * *"
+      # detector_cron: "*/15 * * * *"  # optionnel — par défaut dérivé du timeframe primary
       timezone: UTC
     setup_lifecycle:
       ttl_candles: 50              # un setup vit max 50 bougies
@@ -181,6 +181,22 @@ watches:
 
 Tu peux multiplier les watches (BTC 1h + ETH 4h + AAPL 1d, etc.). Chaque watch
 tourne indépendamment.
+
+> **`detector_cron` est optionnel.** Si omis, dérivé automatiquement du
+> `timeframes.primary` pour aligner sur la fermeture des bougies :
+>
+> | Timeframe | Cron auto                |
+> |-----------|--------------------------|
+> | 1m        | `* * * * *`              |
+> | 5m        | `*/5 * * * *`            |
+> | 15m       | `*/15 * * * *`           |
+> | 1h        | `0 * * * *`              |
+> | 4h        | `0 */4 * * *`            |
+> | 1d        | `0 0 * * *`              |
+>
+> **Override possible** pour les cas avancés (multi-timeframe, news reactivity).
+> Min 1 minute (cron 5-field standard) — les expressions à 6 fields (avec
+> secondes) sont refusées au boot pour éviter les coûts LLM accidentels.
 
 ### 4. Lancer toute la stack
 

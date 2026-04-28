@@ -75,3 +75,15 @@ test("score thresholds in wrong order rejected", () => {
   cfg.watches[0].setup_lifecycle.score_threshold_dead = 50;
   expect(() => ConfigSchema.parse(cfg)).toThrow();
 });
+
+test("Config accepts watch with auto-derived cron (omitted)", () => {
+  const cfg = structuredClone(validMinimalConfig);
+  delete (cfg.watches[0].schedule as { detector_cron?: string }).detector_cron;
+  expect(() => ConfigSchema.parse(cfg)).not.toThrow();
+});
+
+test("Config rejects detector_cron with sub-minute resolution (6 fields)", () => {
+  const cfg = structuredClone(validMinimalConfig);
+  cfg.watches[0].schedule.detector_cron = "*/30 * * * * *";
+  expect(() => ConfigSchema.parse(cfg)).toThrow();
+});

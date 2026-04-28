@@ -1,3 +1,4 @@
+import { isValidFiveFieldCron } from "@domain/services/cronForTimeframe";
 import { z } from "zod";
 
 const TimeframeSchema = z.enum(["1m", "5m", "15m", "30m", "1h", "2h", "4h", "1d", "1w"]);
@@ -64,8 +65,19 @@ const WatchSchema = z.object({
     higher: z.array(TimeframeSchema).default([]),
   }),
   schedule: z.object({
-    detector_cron: z.string(),
-    reviewer_cron: z.string().optional(),
+    detector_cron: z
+      .string()
+      .optional()
+      .refine((cron) => cron === undefined || isValidFiveFieldCron(cron), {
+        message:
+          "detector_cron must be a 5-field cron (no seconds field — minimum 1-minute interval enforced)",
+      }),
+    reviewer_cron: z
+      .string()
+      .optional()
+      .refine((cron) => cron === undefined || isValidFiveFieldCron(cron), {
+        message: "reviewer_cron must be a 5-field cron",
+      }),
     timezone: z.string().default("UTC"),
   }),
   candles: z.object({
