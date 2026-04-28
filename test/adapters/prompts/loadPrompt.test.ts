@@ -7,7 +7,7 @@ afterEach(() => {
 
 test("loadPrompt('detector') returns rendered template + version", async () => {
   const result = await loadPrompt("detector");
-  expect(result.version).toBe("detector_v1");
+  expect(result.version).toBe("detector_v2");
   expect(typeof result.render).toBe("function");
 
   // Render with sample context
@@ -25,12 +25,12 @@ test("loadPrompt('detector') returns rendered template + version", async () => {
 
 test("loadPrompt('reviewer') extracts version", async () => {
   const result = await loadPrompt("reviewer");
-  expect(result.version).toBe("reviewer_v1");
+  expect(result.version).toBe("reviewer_v2");
 });
 
 test("loadPrompt('finalizer') extracts version", async () => {
   const result = await loadPrompt("finalizer");
-  expect(result.version).toBe("finalizer_v1");
+  expect(result.version).toBe("finalizer_v2");
 });
 
 test("loadPrompt is cached (same instance returned)", async () => {
