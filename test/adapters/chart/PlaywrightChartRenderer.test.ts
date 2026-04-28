@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdtemp, rm, stat } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PlaywrightChartRenderer } from "@adapters/chart/PlaywrightChartRenderer";
@@ -27,8 +27,7 @@ describe("PlaywrightChartRenderer", () => {
     expect(result.mimeType).toBe("image/png");
     expect(result.sha256).toMatch(/^[a-f0-9]{64}$/);
     expect(result.bytes).toBeGreaterThan(1000);
-    const stats = await stat(out.replace(/^file:\/\//, ""));
-    expect(stats.size).toBe(result.bytes);
+    expect(Bun.file(out.replace(/^file:\/\//, "")).size).toBe(result.bytes);
   }, 30_000);
 
   test("rendering twice produces consistent output sizes", async () => {

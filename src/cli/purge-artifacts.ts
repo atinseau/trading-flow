@@ -1,4 +1,3 @@
-import { unlink } from "node:fs/promises";
 import { artifacts, events, setups } from "@adapters/persistence/schema";
 import { TERMINAL_STATUSES } from "@domain/state-machine/setupTransitions";
 import { getLogger } from "@observability/logger";
@@ -81,7 +80,7 @@ for (const c of candidates) {
   if (c.uri.startsWith("file://")) {
     const path = c.uri.replace(/^file:\/\//, "");
     try {
-      await unlink(path);
+      await Bun.file(path).delete();
       deletedFiles++;
     } catch (err) {
       log.warn({ uri: c.uri, err: (err as Error).message }, "Could not delete file");

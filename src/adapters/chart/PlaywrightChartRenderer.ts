@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ChartRenderer, ChartRenderResult } from "@domain/ports/ChartRenderer";
@@ -22,7 +22,7 @@ export class PlaywrightChartRenderer implements ChartRenderer {
     const tplPath =
       this.opts.templatePath ??
       join(dirname(fileURLToPath(import.meta.url)), "chart-template.html");
-    this.templateHtml = await readFile(tplPath, "utf8");
+    this.templateHtml = await Bun.file(tplPath).text();
     for (let i = 0; i < size; i++) {
       const page = await this.browser.newPage({ viewport: { width: 1280, height: 720 } });
       await page.setContent(this.templateHtml);
@@ -61,7 +61,7 @@ export class PlaywrightChartRenderer implements ChartRenderer {
       const sha256 = createHash("sha256").update(buffer).digest("hex");
       const path = args.outputUri.replace(/^file:\/\//, "");
       await mkdir(dirname(path), { recursive: true });
-      await writeFile(path, buffer);
+      await Bun.write(path, buffer);
       return {
         uri: args.outputUri,
         sha256,

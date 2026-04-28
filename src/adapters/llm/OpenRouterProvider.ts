@@ -1,4 +1,3 @@
-import { readFile } from "node:fs/promises";
 import { LLMRateLimitError, LLMSchemaValidationError } from "@domain/errors";
 import type { LLMImageInput, LLMInput, LLMOutput, LLMProvider } from "@domain/ports/LLMProvider";
 import type { LLMUsageStore } from "@domain/ports/LLMUsageStore";
@@ -36,8 +35,8 @@ export type OpenRouterConfig = {
 async function buildMultipartContent(text: string, images: LLMImageInput[]): Promise<unknown[]> {
   const parts: unknown[] = [{ type: "text", text }];
   for (const img of images) {
-    const buffer = await readFile(img.sourceUri.replace(/^file:\/\//, ""));
-    const base64 = buffer.toString("base64");
+    const bytes = await Bun.file(img.sourceUri.replace(/^file:\/\//, "")).bytes();
+    const base64 = Buffer.from(bytes).toString("base64");
     parts.push({
       type: "image_url",
       image_url: { url: `data:${img.mimeType};base64,${base64}` },

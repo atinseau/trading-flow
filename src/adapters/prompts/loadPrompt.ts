@@ -1,4 +1,3 @@
-import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import Handlebars from "handlebars";
 
@@ -14,7 +13,7 @@ export async function loadPrompt(
 
   // Resolve from project root (works in dev + Docker since prompts/ is at /app/prompts in container)
   const path = join(process.cwd(), "prompts", `${name}.md.hbs`);
-  const source = await readFile(path, "utf8");
+  const source = await Bun.file(path).text();
   const versionMatch = source.match(VERSION_REGEX);
   const version = versionMatch?.[1] ?? `${name}_unknown`;
   const template = Handlebars.compile(source);

@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { ArtifactStore, StoredArtifact } from "@domain/ports/ArtifactStore";
 import { eq } from "drizzle-orm";
@@ -40,7 +40,7 @@ export class FilesystemArtifactStore implements ArtifactStore {
     const uri = `file://${fullPath}`;
 
     await mkdir(dirname(fullPath), { recursive: true });
-    await writeFile(fullPath, args.content);
+    await Bun.write(fullPath, args.content);
 
     const [row] = await this.db
       .insert(artifacts)
@@ -60,12 +60,15 @@ export class FilesystemArtifactStore implements ArtifactStore {
 
   async get(uri: string): Promise<Buffer> {
     const path = uri.replace(/^file:\/\//, "");
-    return await readFile(path);
+    const bytes = await Bun.file(path).bytes();
+    return Buffer.from(bytes);
   }
 
   async delete(uri: string): Promise<void> {
     const path = uri.replace(/^file:\/\//, "");
-    await unlink(path).catch(() => {});
+    await Bun.file(path)
+      .delete()
+      .catch(() => {});
     await this.db.delete(artifacts).where(eq(artifacts.uri, uri));
   }
 }

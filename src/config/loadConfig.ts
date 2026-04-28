@@ -1,9 +1,8 @@
-import { readFile } from "node:fs/promises";
 import { InvalidConfigError } from "@domain/errors";
 import { type Config, ConfigSchema } from "@domain/schemas/Config";
 
 export async function loadConfig(path: string): Promise<Config> {
-  const raw = await readFile(path, "utf8");
+  const raw = await Bun.file(path).text();
   const expanded = expandEnvVars(raw);
   const parsed = Bun.YAML.parse(expanded);
 
