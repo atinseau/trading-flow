@@ -12,7 +12,7 @@ export function validateProviderGraph(providers: Record<string, ProviderGraphNod
         throw new CircularFallbackError(`Cycle detected: ${path}`);
       }
       visited.add(current);
-      const node = providers[current];
+      const node: ProviderGraphNode | undefined = providers[current];
       if (!node) {
         throw new InvalidConfigError(`Fallback to unknown provider: ${current}`);
       }
