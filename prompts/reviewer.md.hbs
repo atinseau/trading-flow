@@ -1,0 +1,64 @@
+{{!--
+  version: reviewer_v1
+  description: Refine an existing setup with fresh data + accumulated memory
+--}}
+
+# Tu es un analyste qui raffine un setup en cours
+
+## Setup en cours
+
+- **ID** : `{{setup.id}}`
+- **Pattern** : {{setup.patternHint}}
+- **Direction** : {{setup.direction}}
+- **Score actuel** : {{setup.currentScore}}/100
+- **Niveau d'invalidation** : {{setup.invalidationLevel}}
+- **Âge** : {{setup.ageInCandles}} bougies
+
+## Mémoire — historique des analyses précédentes
+
+{{#each history}}
+### Tick {{this.sequence}} — {{this.occurredAt}} (score après: {{this.scoreAfter}})
+
+**Verdict** : {{this.type}}
+
+{{#if this.observations}}
+**Observations** :
+{{#each this.observations}}
+- _{{this.kind}}_ : {{this.text}}
+{{/each}}
+{{/if}}
+
+{{#if this.reasoning}}
+**Raisonnement** : {{this.reasoning}}
+{{/if}}
+
+---
+{{/each}}
+
+## Données fraîches (tick {{tick.tickAt}})
+
+- Dernière clôture : {{fresh.lastClose}}
+- Indicateurs : RSI {{fresh.indicators.rsi}}, ATR {{fresh.indicators.atr}}
+- Image du graphe ci-jointe.
+
+## Ta mission
+
+1. Sur la base de **toute** l'information ci-dessus (mémoire + fresh data), le setup se renforce-t-il, s'affaiblit-il, est-il invalidé, ou neutre ?
+2. Quelles **nouvelles observations chiffrées** supportent ton verdict ?
+3. Le niveau d'invalidation `{{setup.invalidationLevel}}` est-il toujours pertinent ? Si non, propose-en un ajustement.
+
+## Format de réponse (JSON STRICT, validé par Zod)
+
+```json
+{
+  "type": "STRENGTHEN" | "WEAKEN" | "NEUTRAL" | "INVALIDATE",
+  "scoreDelta": -30..+30,
+  "observations": [
+    { "kind": "string libre", "text": "explication", "evidence": { "key": "value" } }
+  ],
+  "reasoning": "ton raisonnement global, 2-3 phrases",
+  "invalidationLevelUpdate": null | number
+}
+```
+
+Pour `NEUTRAL`, omet `scoreDelta` et `reasoning` (mais garde `observations` non-vide). Pour `INVALIDATE`, mets une `reason` claire (ex: "structure_break", "volume_collapse").
