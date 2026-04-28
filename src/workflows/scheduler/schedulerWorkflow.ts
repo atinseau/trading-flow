@@ -71,9 +71,9 @@ export async function schedulerWorkflow(args: SchedulerArgs): Promise<void> {
     }
     tickInProgress = true;
     try {
-      await runOneTick(args.watchId, args.analysisTaskQueue);
+      const { costUsd } = await runOneTick(args.watchId, args.analysisTaskQueue);
       lastTickAt = new Date().toISOString();
-      await a.recordWatchTick({ watchId: args.watchId, status: "success", costUsd: 0 });
+      await a.recordWatchTick({ watchId: args.watchId, status: "success", costUsd });
     } catch {
       await a.recordWatchTick({ watchId: args.watchId, status: "failed", costUsd: 0 });
     } finally {
@@ -86,11 +86,14 @@ export async function schedulerWorkflow(args: SchedulerArgs): Promise<void> {
   await condition(() => false);
 }
 
-async function runOneTick(watchId: string, analysisTaskQueue: string): Promise<void> {
+async function runOneTick(
+  watchId: string,
+  analysisTaskQueue: string,
+): Promise<{ costUsd: number }> {
   const { ohlcvJson } = await a.fetchOHLCV({ watchId });
   const { indicatorsJson } = await a.computeIndicators({ ohlcvJson });
   const preFilter = await a.evaluatePreFilter({ ohlcvJson, indicatorsJson, watchId });
-  if (!preFilter.passed) return;
+  if (!preFilter.passed) return { costUsd: 0 };
 
   const { artifactUri: chartUri } = await a.renderChart({ ohlcvJson, watchId });
   const { artifactUri: ohlcvUri } = await a.persistOHLCVArtifact({ ohlcvJson });
@@ -103,7 +106,11 @@ async function runOneTick(watchId: string, analysisTaskQueue: string): Promise<v
   });
 
   const alive = await a.listAliveSetups({ watchId });
-  const { verdictJson } = await a.runDetector({ watchId, tickSnapshotId, aliveSetups: alive });
+  const { verdictJson, costUsd: detectorCost } = await a.runDetector({
+    watchId,
+    tickSnapshotId,
+    aliveSetups: alive,
+  });
   const verdict = JSON.parse(verdictJson) as {
     corroborations: { setup_id: string; confidence_delta_suggested: number; evidence: unknown }[];
     new_setups: {
@@ -134,7 +141,7 @@ async function runOneTick(watchId: string, analysisTaskQueue: string): Promise<v
   }
 
   const watch = await a.loadWatchConfig({ watchId });
-  if (!watch) return;
+  if (!watch) return { costUsd: detectorCost };
   for (const newSetup of dedup.creates) {
     const setupId = uuid4();
     const initial: InitialEvidence = {
@@ -171,6 +178,7 @@ async function runOneTick(watchId: string, analysisTaskQueue: string): Promise<v
       await getExternalWorkflowHandle(setup.workflowId).signal("review", { tickSnapshotId });
     }
   }
+  return { costUsd: detectorCost };
 }
 
 export const schedulerWorkflowId = (watchId: string) => `scheduler-${watchId}`;

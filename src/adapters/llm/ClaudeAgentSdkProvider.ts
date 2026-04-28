@@ -2,6 +2,7 @@ import { query } from "@anthropic-ai/claude-agent-sdk";
 import { LLMRateLimitError, LLMSchemaValidationError } from "@domain/errors";
 import type { LLMInput, LLMOutput, LLMProvider } from "@domain/ports/LLMProvider";
 import type { LLMUsageStore } from "@domain/ports/LLMUsageStore";
+import { getLogger } from "@observability/logger";
 
 export type ClaudeAgentSdkConfig = {
   workspaceDir: string;
@@ -46,6 +47,7 @@ export class ClaudeAgentSdkProvider implements LLMProvider {
   private callsToday = 0;
   private rateLimitedUntil: Date | null = null;
   private currentDay: string;
+  private log: ReturnType<typeof getLogger>;
 
   constructor(
     name: string,
@@ -54,6 +56,7 @@ export class ClaudeAgentSdkProvider implements LLMProvider {
     this.name = name;
     this.fallback = config.fallback ?? null;
     this.currentDay = new Date().toISOString().slice(0, 10);
+    this.log = getLogger({ component: "claude-agent-sdk-provider", provider: name });
   }
 
   async isAvailable(): Promise<boolean> {
@@ -71,6 +74,10 @@ export class ClaudeAgentSdkProvider implements LLMProvider {
   async complete(input: LLMInput): Promise<LLMOutput> {
     this.maybeResetCounters();
     const start = Date.now();
+    this.log.info(
+      { model: input.model, hasImages: !!input.images?.length },
+      "claude-agent-sdk call starting",
+    );
 
     let prompt = `${input.systemPrompt}\n\n${input.userPrompt}`;
     if (input.images?.length) {
@@ -116,8 +123,13 @@ export class ClaudeAgentSdkProvider implements LLMProvider {
     } catch (err) {
       if (isRateLimitError(err)) {
         this.rateLimitedUntil = new Date(Date.now() + 5 * 60_000);
+        this.log.warn(
+          { rateLimitedUntil: this.rateLimitedUntil.toISOString() },
+          "claude-agent-sdk rate limited",
+        );
         throw new LLMRateLimitError(`claude_max rate limited: ${(err as Error).message}`);
       }
+      this.log.error({ err: (err as Error).message }, "claude-agent-sdk call failed");
       throw err;
     }
 
@@ -131,6 +143,10 @@ export class ClaudeAgentSdkProvider implements LLMProvider {
       }
     }
 
+    this.log.info(
+      { promptTokens, completionTokens, cacheReadTokens, model: input.model },
+      "claude-agent-sdk call complete",
+    );
     return {
       content,
       parsed,

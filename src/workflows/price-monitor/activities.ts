@@ -1,6 +1,9 @@
 import { InvalidConfigError, StopRequestedError } from "@domain/errors";
+import { getLogger } from "@observability/logger";
 import { Context } from "@temporalio/activity";
 import type { ActivityDeps } from "@workflows/activityDependencies";
+
+const log = getLogger({ component: "price-monitor-activities" });
 
 const ADAPTER_BY_SOURCE: Record<string, string> = {
   binance: "binance_ws",
@@ -24,9 +27,11 @@ export function buildPriceMonitorActivities(deps: ActivityDeps) {
       adapter: string;
       assets: string[];
     }): Promise<void> {
+      const childLog = log.child({ watchId: input.watchId, adapter: input.adapter });
       const feed = deps.priceFeeds.get(input.adapter);
       if (!feed) throw new InvalidConfigError(`Unknown price feed adapter: ${input.adapter}`);
 
+      childLog.info({ assetCount: input.assets.length }, "subscribing to price feed");
       const stream = feed.subscribe({ watchId: input.watchId, assets: input.assets });
       let lastRefresh = Date.now();
       let cachedSetups = await deps.setupRepo.listAliveWithInvalidation(input.watchId);
@@ -51,9 +56,12 @@ export function buildPriceMonitorActivities(deps: ActivityDeps) {
                 currentPrice: tick.price,
                 observedAt: tick.timestamp.toISOString(),
               })
-              .catch(() => {
-                /* workflow may have closed; ignore */
-              });
+              .catch((err: Error) =>
+                childLog.warn(
+                  { workflowId: setup.workflowId, err: err.message },
+                  "trackingPrice signal failed (workflow may be closed)",
+                ),
+              );
             continue;
           }
 
@@ -69,9 +77,12 @@ export function buildPriceMonitorActivities(deps: ActivityDeps) {
                 currentPrice: tick.price,
                 observedAt: tick.timestamp.toISOString(),
               })
-              .catch(() => {
-                /* workflow may have closed; ignore */
-              });
+              .catch((err: Error) =>
+                childLog.warn(
+                  { workflowId: setup.workflowId, err: err.message },
+                  "priceCheck signal failed (workflow may be closed)",
+                ),
+              );
           }
         }
       }

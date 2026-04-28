@@ -1,0 +1,1 @@
+CREATE INDEX "idx_events_provider_time" ON "events" USING btree ("provider","occurred_at");

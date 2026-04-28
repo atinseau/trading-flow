@@ -2,7 +2,10 @@ import { AssetNotFoundError, ExchangeRateLimitError } from "@domain/errors";
 import type { MarketDataFetcher } from "@domain/ports/MarketDataFetcher";
 import type { Candle } from "@domain/schemas/Candle";
 import { CandleSchema } from "@domain/schemas/Candle";
+import { getLogger } from "@observability/logger";
 import { z } from "zod";
+
+const log = getLogger({ component: "yahoo-finance-fetcher" });
 
 const TIMEFRAME_MAP: Record<string, string> = {
   "1m": "1m",
@@ -75,9 +78,19 @@ export class YahooFinanceFetcher implements MarketDataFetcher {
     const response = await fetch(url, {
       headers: { "User-Agent": this.config.userAgent ?? "trading-flow/1.0" },
     });
-    if (response.status === 429) throw new ExchangeRateLimitError("yahoo 429");
-    if (response.status === 404) throw new AssetNotFoundError(args.asset);
-    if (!response.ok) throw new Error(`Yahoo ${response.status}: ${await response.text()}`);
+    if (response.status === 429) {
+      log.warn({ asset: args.asset, status: 429 }, "yahoo rate limited");
+      throw new ExchangeRateLimitError("yahoo 429");
+    }
+    if (response.status === 404) {
+      log.error({ asset: args.asset }, "yahoo asset not found");
+      throw new AssetNotFoundError(args.asset);
+    }
+    if (!response.ok) {
+      const body = await response.text();
+      log.error({ asset: args.asset, status: response.status }, "yahoo fetch failed");
+      throw new Error(`Yahoo ${response.status}: ${body}`);
+    }
 
     const data = ChartResponseSchema.parse(await response.json());
     const result = data.chart.result?.[0];

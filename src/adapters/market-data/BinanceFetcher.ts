@@ -2,7 +2,10 @@ import { AssetNotFoundError, ExchangeRateLimitError } from "@domain/errors";
 import type { MarketDataFetcher } from "@domain/ports/MarketDataFetcher";
 import type { Candle } from "@domain/schemas/Candle";
 import { CandleSchema } from "@domain/schemas/Candle";
+import { getLogger } from "@observability/logger";
 import { z } from "zod";
+
+const log = getLogger({ component: "binance-fetcher" });
 
 const TIMEFRAME_MAP: Record<string, string> = {
   "1m": "1m",
@@ -59,15 +62,22 @@ export class BinanceFetcher implements MarketDataFetcher {
 
     const response = await fetch(url);
     if (response.status === 418 || response.status === 429) {
+      log.warn({ asset: args.asset, status: response.status }, "binance rate limited");
       throw new ExchangeRateLimitError(`Binance rate limited: ${response.status}`);
     }
     if (response.status === 400) {
       const body = await response.text();
-      if (body.includes("Invalid symbol")) throw new AssetNotFoundError(args.asset);
+      if (body.includes("Invalid symbol")) {
+        log.error({ asset: args.asset }, "binance asset not found");
+        throw new AssetNotFoundError(args.asset);
+      }
+      log.error({ asset: args.asset, body }, "binance 400");
       throw new Error(`Binance 400: ${body}`);
     }
     if (!response.ok) {
-      throw new Error(`Binance ${response.status}: ${await response.text()}`);
+      const body = await response.text();
+      log.error({ asset: args.asset, status: response.status }, "binance fetch failed");
+      throw new Error(`Binance ${response.status}: ${body}`);
     }
 
     const raw = await response.json();

@@ -4,11 +4,14 @@ import { loadPrompt } from "@adapters/prompts/loadPrompt";
 import { loadConfig } from "@config/loadConfig";
 import { InvalidConfigError } from "@domain/errors";
 import { CandleSchema } from "@domain/schemas/Candle";
+import { getLogger } from "@observability/logger";
 import type { ActivityDeps } from "@workflows/activityDependencies";
 import { sql } from "drizzle-orm";
 import { z } from "zod";
 import { dedupNewSetups, type ProposedSetup } from "./dedup";
 import { evaluatePreFilter } from "./preFilter";
+
+const log = getLogger({ component: "scheduler-activities" });
 
 const DetectorVerdictSchema = z.object({
   corroborations: z.array(
@@ -129,6 +132,16 @@ export function buildSchedulerActivities(deps: ActivityDeps) {
       tickSnapshotId: string;
       aliveSetups: unknown;
     }): Promise<{ verdictJson: string; costUsd: number; promptVersion: string }> {
+      const childLog = log.child({
+        watchId: input.watchId,
+        tickSnapshotId: input.tickSnapshotId,
+      });
+      childLog.info(
+        {
+          aliveSetupCount: Array.isArray(input.aliveSetups) ? input.aliveSetups.length : 0,
+        },
+        "runDetector starting",
+      );
       const watch = deps.watchById(input.watchId);
       if (!watch) throw new InvalidConfigError(`Unknown watch: ${input.watchId}`);
       const snap = await deps.tickSnapshotStore.get(input.tickSnapshotId);
@@ -152,6 +165,14 @@ export function buildSchedulerActivities(deps: ActivityDeps) {
           responseSchema: DetectorVerdictSchema,
         },
         deps.llmProviders,
+      );
+      childLog.info(
+        {
+          costUsd: result.output.costUsd,
+          provider: result.usedProvider,
+          model: watch.analyzers.detector.model,
+        },
+        "runDetector complete",
       );
       return {
         verdictJson: JSON.stringify(result.output.parsed),
@@ -180,6 +201,8 @@ export function buildSchedulerActivities(deps: ActivityDeps) {
       status: string;
       costUsd: number;
     }): Promise<void> {
+      const childLog = log.child({ watchId: input.watchId });
+      childLog.info({ status: input.status, costUsd: input.costUsd }, "tick recorded");
       const now = deps.clock.now();
       const costStr = String(input.costUsd);
       await deps.db

@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { LLMRateLimitError, LLMSchemaValidationError } from "@domain/errors";
 import type { LLMImageInput, LLMInput, LLMOutput, LLMProvider } from "@domain/ports/LLMProvider";
 import type { LLMUsageStore } from "@domain/ports/LLMUsageStore";
+import { getLogger } from "@observability/logger";
 
 export type OpenRouterConfig = {
   apiKey: string;
@@ -29,6 +30,7 @@ export class OpenRouterProvider implements LLMProvider {
   readonly fallback: string | null;
   private spentUsdMtd = 0;
   private currentMonth: string;
+  private log: ReturnType<typeof getLogger>;
 
   constructor(
     name: string,
@@ -37,6 +39,7 @@ export class OpenRouterProvider implements LLMProvider {
     this.name = name;
     this.fallback = config.fallback ?? null;
     this.currentMonth = new Date().toISOString().slice(0, 7);
+    this.log = getLogger({ component: "openrouter-provider", provider: name });
   }
 
   async isAvailable(): Promise<boolean> {
@@ -53,6 +56,10 @@ export class OpenRouterProvider implements LLMProvider {
   async complete(input: LLMInput): Promise<LLMOutput> {
     this.maybeResetCounters();
     const start = Date.now();
+    this.log.info(
+      { model: input.model, hasImages: !!input.images?.length },
+      "openrouter call starting",
+    );
 
     const userContent = input.images?.length
       ? await buildMultipartContent(input.userPrompt, input.images)
@@ -82,8 +89,15 @@ export class OpenRouterProvider implements LLMProvider {
       },
     );
 
-    if (response.status === 429) throw new LLMRateLimitError("openrouter 429");
-    if (!response.ok) throw new Error(`OpenRouter ${response.status}: ${await response.text()}`);
+    if (response.status === 429) {
+      this.log.warn({ status: 429 }, "openrouter rate limited");
+      throw new LLMRateLimitError("openrouter 429");
+    }
+    if (!response.ok) {
+      const text = await response.text();
+      this.log.error({ status: response.status }, "openrouter call failed");
+      throw new Error(`OpenRouter ${response.status}: ${text}`);
+    }
 
     const data = (await response.json()) as {
       choices: { message: { content: string } }[];
@@ -109,6 +123,10 @@ export class OpenRouterProvider implements LLMProvider {
       }
     }
 
+    this.log.info(
+      { costUsd, promptTokens, completionTokens, model: input.model },
+      "openrouter call complete",
+    );
     return {
       content,
       parsed,

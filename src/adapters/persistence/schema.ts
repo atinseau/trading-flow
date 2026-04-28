@@ -80,6 +80,7 @@ export const events = pgTable(
     index("idx_events_type").on(t.type),
     uniqueIndex("ux_events_setup_seq").on(t.setupId, t.sequence),
     index("idx_events_input_hash").on(t.setupId, t.inputHash),
+    index("idx_events_provider_time").on(t.provider, t.occurredAt),
   ],
 );
 
