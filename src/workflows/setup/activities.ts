@@ -244,23 +244,23 @@ export function buildSetupActivities(deps: ActivityDeps) {
       const childLog = log.child({ watchId: input.watchId, asset: input.asset });
       const watch = deps.watchById(input.watchId);
       if (!watch) return null;
-      if (!watch.notifications.notify_on.includes("confirmed")) {
+      if (!watch.notify_on.includes("confirmed")) {
         childLog.debug({ event: "confirmed" }, "notification skipped (not in notify_on)");
         return null;
       }
 
       const arrow = input.direction === "LONG" ? "🟢 LONG" : "🔴 SHORT";
       const tpStr = input.takeProfit.length ? `\nTP: ${input.takeProfit.join(" / ")}` : "";
-      const reasoning = watch.notifications.include_reasoning ? `\n\n${input.reasoning}` : "";
+      const reasoning = watch.include_reasoning ? `\n\n${input.reasoning}` : "";
       const text = `${arrow} ${input.asset} ${input.timeframe}\nEntry: ${input.entry}\nSL: ${input.stopLoss}${tpStr}${reasoning}`;
 
       const images =
-        watch.notifications.include_chart_image && input.chartUri
+        watch.include_chart_image && input.chartUri
           ? [{ uri: input.chartUri }]
           : undefined;
 
       const result = await deps.notifier.send({
-        chatId: watch.notifications.telegram_chat_id,
+        chatId: deps.infra.notifications.telegram.chat_id,
         text,
         images,
       });
@@ -277,12 +277,12 @@ export function buildSetupActivities(deps: ActivityDeps) {
       const childLog = log.child({ watchId: input.watchId, asset: input.asset });
       const watch = deps.watchById(input.watchId);
       if (!watch) return null;
-      if (!watch.notifications.notify_on.includes("rejected")) {
+      if (!watch.notify_on.includes("rejected")) {
         childLog.debug({ event: "rejected" }, "notification skipped (not in notify_on)");
         return null;
       }
       const result = await deps.notifier.send({
-        chatId: watch.notifications.telegram_chat_id,
+        chatId: deps.infra.notifications.telegram.chat_id,
         text: `❌ Setup ${input.asset} ${input.timeframe} rejected\n\n${input.reasoning}`,
       });
       childLog.info({ event: "rejected" }, "telegram sent");
@@ -298,7 +298,7 @@ export function buildSetupActivities(deps: ActivityDeps) {
       const childLog = log.child({ watchId: input.watchId, asset: input.asset });
       const watch = deps.watchById(input.watchId);
       if (!watch) return null;
-      if (!watch.notifications.notify_on.includes("invalidated_after_confirmed")) {
+      if (!watch.notify_on.includes("invalidated_after_confirmed")) {
         childLog.debug(
           { event: "invalidated_after_confirmed" },
           "notification skipped (not in notify_on)",
@@ -306,7 +306,7 @@ export function buildSetupActivities(deps: ActivityDeps) {
         return null;
       }
       const result = await deps.notifier.send({
-        chatId: watch.notifications.telegram_chat_id,
+        chatId: deps.infra.notifications.telegram.chat_id,
         text: `⚠️ ${input.asset} ${input.timeframe} invalidated post-confirmation\nReason: ${input.reason}`,
       });
       childLog.info({ event: "invalidated_after_confirmed" }, "telegram sent");
@@ -324,14 +324,14 @@ export function buildSetupActivities(deps: ActivityDeps) {
       const childLog = log.child({ watchId: input.watchId, asset: input.asset });
       const watch = deps.watchById(input.watchId);
       if (!watch) return null;
-      if (!watch.notifications.notify_on.includes("tp_hit")) {
+      if (!watch.notify_on.includes("tp_hit")) {
         childLog.debug({ event: "tp_hit" }, "notification skipped (not in notify_on)");
         return null;
       }
       const tpLabel = `TP${input.index + 1}`;
       const finalStr = input.isFinal ? " (final, position closed)" : "";
       const result = await deps.notifier.send({
-        chatId: watch.notifications.telegram_chat_id,
+        chatId: deps.infra.notifications.telegram.chat_id,
         text: `🎯 ${tpLabel} hit on ${input.asset} ${input.timeframe} @ ${input.level}${finalStr}`,
       });
       childLog.info(
@@ -350,12 +350,12 @@ export function buildSetupActivities(deps: ActivityDeps) {
       const childLog = log.child({ watchId: input.watchId, asset: input.asset });
       const watch = deps.watchById(input.watchId);
       if (!watch) return null;
-      if (!watch.notifications.notify_on.includes("sl_hit")) {
+      if (!watch.notify_on.includes("sl_hit")) {
         childLog.debug({ event: "sl_hit" }, "notification skipped (not in notify_on)");
         return null;
       }
       const result = await deps.notifier.send({
-        chatId: watch.notifications.telegram_chat_id,
+        chatId: deps.infra.notifications.telegram.chat_id,
         text: `🛑 SL hit on ${input.asset} ${input.timeframe} @ ${input.level} — position closed`,
       });
       childLog.info({ event: "sl_hit", level: input.level }, "telegram sent");
@@ -370,12 +370,12 @@ export function buildSetupActivities(deps: ActivityDeps) {
       const childLog = log.child({ watchId: input.watchId, asset: input.asset });
       const watch = deps.watchById(input.watchId);
       if (!watch) return null;
-      if (!watch.notifications.notify_on.includes("expired")) {
+      if (!watch.notify_on.includes("expired")) {
         childLog.debug({ event: "expired" }, "notification skipped (not in notify_on)");
         return null;
       }
       const result = await deps.notifier.send({
-        chatId: watch.notifications.telegram_chat_id,
+        chatId: deps.infra.notifications.telegram.chat_id,
         text: `⏱ Setup expired (TTL reached) on ${input.asset} ${input.timeframe}`,
       });
       childLog.info({ event: "expired" }, "telegram sent");

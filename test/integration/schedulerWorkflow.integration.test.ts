@@ -10,7 +10,7 @@ import { tickSnapshots } from "@adapters/persistence/schema";
 import { SystemClock } from "@adapters/time/SystemClock";
 import { parseTimeframeToMs } from "@domain/ports/Clock";
 import type { LLMProvider } from "@domain/ports/LLMProvider";
-import type { Config, WatchConfig } from "@domain/schemas/Config";
+import type { WatchConfig, WatchesConfig } from "@domain/schemas/WatchesConfig";
 import { TestWorkflowEnvironment } from "@temporalio/testing";
 import { Worker } from "@temporalio/worker";
 import { FakeChartRenderer } from "@test-fakes/FakeChartRenderer";
@@ -64,29 +64,20 @@ function makeWatch(id: string): WatchConfig {
       finalizer: { provider: "fake", model: "fake", max_tokens: 2000 },
     },
     optimization: { reviewer_skip_when_detector_corroborated: true },
-    notifications: {
-      telegram_chat_id: "test-chat",
-      notify_on: ["confirmed", "rejected", "tp_hit", "sl_hit", "invalidated_after_confirmed"],
-      include_chart_image: false,
-      include_reasoning: true,
-    },
+    notify_on: ["confirmed", "rejected", "tp_hit", "sl_hit", "invalidated_after_confirmed"],
+    include_chart_image: false,
+    include_reasoning: true,
     budget: { pause_on_budget_exceeded: false },
   };
 }
 
-function makeConfig(watch: WatchConfig): Config {
+function makeConfig(watch: WatchConfig): WatchesConfig {
   return {
     version: 1,
-    market_data: { binance: {} },
+    market_data: ["fake"],
     llm_providers: {},
     artifacts: { type: "filesystem", retention: { keep_days: 30, keep_for_active_setups: true } },
-    notifications: { telegram: { bot_token: "fake", default_chat_id: "test-chat" } },
-    database: { url: "fake", pool_size: 10, ssl: false },
-    temporal: {
-      address: "fake",
-      namespace: "default",
-      task_queues: { scheduler: "scheduler", analysis: "analysis", notifications: "notifications" },
-    },
+    notifications: { telegram: false },
     watches: [watch],
   };
 }
@@ -137,6 +128,14 @@ async function buildDeps(
     tickSnapshotStore,
     clock: new SystemClock(),
     config: makeConfig(watch),
+    infra: {
+      database: { url: "x", pool_size: 1, ssl: false },
+      temporal: { address: "x", namespace: "default", task_queues: { scheduler: "s", analysis: "a", notifications: "n" } },
+      notifications: { telegram: { bot_token: "test-token", chat_id: "test-chat" } },
+      llm: { openrouter_api_key: null },
+      artifacts: { base_dir: "/tmp" },
+      claude: { workspace_dir: "/tmp" },
+    },
     watchById: (id) => (id === watchId ? watch : undefined),
     temporalClient: env.client,
     db,

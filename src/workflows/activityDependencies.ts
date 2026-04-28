@@ -1,3 +1,4 @@
+import type { InfraConfig } from "@config/InfraConfig";
 import type { ArtifactStore } from "@domain/ports/ArtifactStore";
 import type { ChartRenderer } from "@domain/ports/ChartRenderer";
 import type { Clock } from "@domain/ports/Clock";
@@ -9,7 +10,7 @@ import type { Notifier } from "@domain/ports/Notifier";
 import type { PriceFeed } from "@domain/ports/PriceFeed";
 import type { SetupRepository } from "@domain/ports/SetupRepository";
 import type { TickSnapshotStore } from "@domain/ports/TickSnapshotStore";
-import type { Config, WatchConfig } from "@domain/schemas/Config";
+import type { WatchConfig, WatchesConfig } from "@domain/schemas/WatchesConfig";
 import type { Client } from "@temporalio/client";
 import type { drizzle } from "drizzle-orm/node-postgres";
 
@@ -25,7 +26,8 @@ export type ActivityDeps = {
   artifactStore: ArtifactStore;
   tickSnapshotStore: TickSnapshotStore;
   clock: Clock;
-  config: Config;
+  config: WatchesConfig;
+  infra: InfraConfig;
   watchById: (id: string) => WatchConfig | undefined;
   temporalClient: Client;
   db: ReturnType<typeof drizzle>;
