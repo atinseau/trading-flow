@@ -401,6 +401,9 @@ export async function setupWorkflow(initial: InitialEvidence): Promise<SetupStat
             reasoning: decision.reasoning,
           });
           await trackingLoop(initial.setupId, initial.watchId);
+          // trackingLoop updates DB to CLOSED but not workflow state — sync here
+          // so the active loop exits cleanly instead of blocking on `condition`.
+          state.status = "CLOSED";
         } else {
           state.sequence = seq;
           state.status = "REJECTED";

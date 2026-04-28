@@ -120,7 +120,10 @@ describe("PostgresEventStore", () => {
     expect(found?.type).toBe("Strengthened");
   });
 
-  test("UNIQUE(setupId, sequence) prevents duplicates", async () => {
+  test("append auto-assigns monotonically increasing sequences", async () => {
+    // append() computes sequence atomically inside the transaction (MAX+1)
+    // so concurrent callers cannot collide on the unique (setup_id, sequence)
+    // constraint. The caller-supplied sequence is ignored.
     const id = await createTestSetup();
     const evt = {
       setupId: id,
@@ -143,8 +146,10 @@ describe("PostgresEventStore", () => {
         },
       },
     };
-    await store.append(evt, { score: 25, status: "REVIEWING" });
-    await expect(store.append(evt, { score: 25, status: "REVIEWING" })).rejects.toThrow();
+    const first = await store.append(evt, { score: 25, status: "REVIEWING" });
+    const second = await store.append(evt, { score: 25, status: "REVIEWING" });
+    expect(first.sequence).toBe(1);
+    expect(second.sequence).toBe(2);
   });
 
   test("append updates setups state in same transaction", async () => {

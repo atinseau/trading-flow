@@ -10,11 +10,23 @@ export class PostgresEventStore implements EventStore {
 
   async append(event: NewEvent, setupUpdate: SetupStateUpdate): Promise<StoredEvent> {
     return await this.db.transaction(async (tx) => {
+      // Compute sequence atomically inside the transaction so that concurrent
+      // appends (e.g. main workflow path + signal handler racing) cannot
+      // collide on the unique (setup_id, sequence) constraint. We ignore the
+      // caller-supplied event.sequence in favor of MAX+1 read under the same
+      // tx — this preserves monotonic ordering without the workflow having
+      // to serialize calls itself.
+      const [seqRow] = await tx
+        .select({ max: sql<number>`COALESCE(MAX(${events.sequence}), 0)` })
+        .from(events)
+        .where(eq(events.setupId, event.setupId));
+      const sequence = Number(seqRow?.max ?? 0) + 1;
+
       const [stored] = await tx
         .insert(events)
         .values({
           setupId: event.setupId,
-          sequence: event.sequence,
+          sequence,
           stage: event.stage,
           actor: event.actor,
           type: event.type,
