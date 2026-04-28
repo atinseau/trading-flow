@@ -878,7 +878,7 @@ import { z } from "zod";
 export const ObservationSchema = z.object({
   kind: z.string().min(1),
   text: z.string().min(1),
-  evidence: z.record(z.unknown()).optional(),
+  evidence: z.record(z.string(), z.unknown()).optional(),
 });
 export type Observation = z.infer<typeof ObservationSchema>;
 
@@ -1928,7 +1928,7 @@ const LLMProviderConfigSchema = z.discriminatedUnion("type", [
 
 export const ConfigSchema = z.object({
   version: z.literal(1),
-  market_data: z.record(z.unknown()),
+  market_data: z.record(z.string(), z.unknown()),
   llm_providers: z.record(LLMProviderConfigSchema),
   artifacts: z.object({
     type: z.enum(["filesystem", "s3"]),
