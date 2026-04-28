@@ -7,6 +7,9 @@ import { z } from "zod";
 
 const log = getLogger({ component: "yahoo-finance-fetcher" });
 
+const YAHOO_BASE_URL = "https://query1.finance.yahoo.com";
+const YAHOO_USER_AGENT = "trading-flow/1.0";
+
 const TIMEFRAME_MAP: Record<string, string> = {
   "1m": "1m",
   "5m": "5m",
@@ -57,8 +60,6 @@ const ChartResponseSchema = z.object({
 export class YahooFinanceFetcher implements MarketDataFetcher {
   readonly source = "yahoo";
 
-  constructor(private config: { userAgent?: string }) {}
-
   async fetchOHLCV(args: {
     asset: string;
     timeframe: string;
@@ -70,13 +71,13 @@ export class YahooFinanceFetcher implements MarketDataFetcher {
     const range = RANGE_BY_TIMEFRAME[args.timeframe];
 
     const url = new URL(
-      `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(args.asset)}`,
+      `${YAHOO_BASE_URL}/v8/finance/chart/${encodeURIComponent(args.asset)}`,
     );
     url.searchParams.set("interval", interval);
     if (range) url.searchParams.set("range", range);
 
     const response = await fetch(url, {
-      headers: { "User-Agent": this.config.userAgent ?? "trading-flow/1.0" },
+      headers: { "User-Agent": YAHOO_USER_AGENT },
     });
     if (response.status === 429) {
       log.warn({ asset: args.asset, status: 429 }, "yahoo rate limited");

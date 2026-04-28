@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { YahooFinanceFetcher } from "@adapters/market-data/YahooFinanceFetcher";
 
 describe("YahooFinanceFetcher", () => {
-  const fetcher = new YahooFinanceFetcher({});
+  const fetcher = new YahooFinanceFetcher();
 
   test("fetches AAPL daily candles", async () => {
     const candles = await fetcher.fetchOHLCV({ asset: "AAPL", timeframe: "1d", limit: 30 });
@@ -20,4 +20,10 @@ describe("YahooFinanceFetcher", () => {
   test("isAssetSupported(GHOST_TICKER_XYZ123) returns false", async () => {
     expect(await fetcher.isAssetSupported("GHOST_TICKER_XYZ123")).toBe(false);
   }, 15_000);
+
+  test("constructs with no args", () => {
+    const f = new YahooFinanceFetcher();
+    expect(f).toBeDefined();
+    expect(f.source).toBe("yahoo");
+  });
 });

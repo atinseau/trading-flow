@@ -71,7 +71,7 @@ export async function buildContainer(config: Config, role: WorkerRole): Promise<
     if (config.market_data.yahoo) {
       marketDataFetchers.set(
         "yahoo",
-        new YahooFinanceFetcher(config.market_data.yahoo as { userAgent?: string }),
+        new YahooFinanceFetcher(),
       );
     }
   }
