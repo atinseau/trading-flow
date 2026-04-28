@@ -256,8 +256,29 @@ describe("SetupWorkflow integration (real Postgres + real activities)", () => {
 
       // Send a review signal pointing at the seeded tickSnapshot.
       // This will trigger STRENGTHEN +60 -> score 85 -> FINALIZING -> finalizer GO
-      // -> TRACKING -> trackingLoop sleeps 24h (time-skipped) -> CLOSED.
+      // -> TRACKING -> trackingLoop awaits trackingPrice signals.
       await handle.signal("review", { tickSnapshotId: tickSnap.id });
+
+      // Wait for the workflow to enter TRACKING phase before driving prices.
+      // Poll the state via the durable workflow query.
+      const { getStateQuery } = await import("@workflows/setup/setupWorkflow");
+      const start = Date.now();
+      while (Date.now() - start < 10_000) {
+        const state = await handle.query(getStateQuery);
+        if (state.status === "TRACKING") break;
+        await new Promise((r) => setTimeout(r, 50));
+      }
+
+      // Drive both TPs: finalizer returned take_profit: [120, 130].
+      // First signal hits TP1 (also moves SL to breakeven), second hits TP2 (final).
+      await handle.signal("trackingPrice", {
+        currentPrice: 120,
+        observedAt: new Date().toISOString(),
+      });
+      await handle.signal("trackingPrice", {
+        currentPrice: 130,
+        observedAt: new Date().toISOString(),
+      });
 
       finalStatus = await handle.result();
     });
@@ -281,6 +302,8 @@ describe("SetupWorkflow integration (real Postgres + real activities)", () => {
     expect(types).toContain("SetupCreated");
     expect(types).toContain("Strengthened");
     expect(types).toContain("Confirmed");
+    expect(types).toContain("TPHit");
+    expect(types).toContain("TrailingMoved");
 
     // ASSERTION 3: telegram notification fired on Confirmed
     expect(fakeNotifier.sentMessages.length).toBeGreaterThanOrEqual(1);

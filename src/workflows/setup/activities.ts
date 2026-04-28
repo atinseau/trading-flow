@@ -268,6 +268,40 @@ export function buildSetupActivities(deps: ActivityDeps) {
         text: `⚠️ ${input.asset} ${input.timeframe} invalidated post-confirmation\nReason: ${input.reason}`,
       });
     },
+
+    async notifyTelegramTPHit(input: {
+      watchId: string;
+      asset: string;
+      timeframe: string;
+      level: number;
+      index: number;
+      isFinal: boolean;
+    }): Promise<{ messageId: number } | null> {
+      const watch = deps.watchById(input.watchId);
+      if (!watch) return null;
+      if (!watch.notifications.notify_on.includes("tp_hit")) return null;
+      const tpLabel = `TP${input.index + 1}`;
+      const finalStr = input.isFinal ? " (final, position closed)" : "";
+      return deps.notifier.send({
+        chatId: watch.notifications.telegram_chat_id,
+        text: `🎯 ${tpLabel} hit on ${input.asset} ${input.timeframe} @ ${input.level}${finalStr}`,
+      });
+    },
+
+    async notifyTelegramSLHit(input: {
+      watchId: string;
+      asset: string;
+      timeframe: string;
+      level: number;
+    }): Promise<{ messageId: number } | null> {
+      const watch = deps.watchById(input.watchId);
+      if (!watch) return null;
+      if (!watch.notifications.notify_on.includes("sl_hit")) return null;
+      return deps.notifier.send({
+        chatId: watch.notifications.telegram_chat_id,
+        text: `🛑 SL hit on ${input.asset} ${input.timeframe} @ ${input.level} — position closed`,
+      });
+    },
   };
 }
 

@@ -40,15 +40,38 @@ export function buildPriceMonitorActivities(deps: ActivityDeps) {
         }
 
         for (const setup of cachedSetups) {
-          if (setup.asset !== tick.asset || setup.invalidationLevel == null) continue;
+          if (setup.asset !== tick.asset) continue;
+
+          // TRACKING phase: forward every tick to the trackingLoop's signal so
+          // it can detect TP/SL hits. Level comparison happens inside the loop.
+          if (setup.status === "TRACKING") {
+            await deps.temporalClient.workflow
+              .getHandle(setup.workflowId)
+              .signal("trackingPrice", {
+                currentPrice: tick.price,
+                observedAt: tick.timestamp.toISOString(),
+              })
+              .catch(() => {
+                /* workflow may have closed; ignore */
+              });
+            continue;
+          }
+
+          // REVIEWING/FINALIZING: only signal on invalidation breach.
+          if (setup.invalidationLevel == null) continue;
           const breached =
             (setup.direction === "LONG" && tick.price < setup.invalidationLevel) ||
             (setup.direction === "SHORT" && tick.price > setup.invalidationLevel);
           if (breached) {
-            await deps.temporalClient.workflow.getHandle(setup.workflowId).signal("priceCheck", {
-              currentPrice: tick.price,
-              observedAt: tick.timestamp.toISOString(),
-            });
+            await deps.temporalClient.workflow
+              .getHandle(setup.workflowId)
+              .signal("priceCheck", {
+                currentPrice: tick.price,
+                observedAt: tick.timestamp.toISOString(),
+              })
+              .catch(() => {
+                /* workflow may have closed; ignore */
+              });
           }
         }
       }

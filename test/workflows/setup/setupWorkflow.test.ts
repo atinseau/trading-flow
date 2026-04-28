@@ -128,6 +128,172 @@ describe("SetupWorkflow", () => {
     });
   }, 30_000);
 
+  test("STRENGTHEN -> FINALIZING -> GO -> TRACKING -> all TPs hit -> CLOSED", async () => {
+    let seqCounter = 0;
+    const tpHitNotifications: Array<{ index: number; isFinal: boolean }> = [];
+    const slHitNotifications: number[] = [];
+    const persistedTypes: string[] = [];
+
+    const fakeActivities = {
+      createSetup: async () => ({}),
+      nextSequence: async () => ({ sequence: ++seqCounter }),
+      persistEvent: async (input: { event: { type: string } }) => {
+        persistedTypes.push(input.event.type);
+        return { id: `evt-${persistedTypes.length}` };
+      },
+      runReviewer: async () =>
+        baseRunReviewerReturn({
+          type: "STRENGTHEN",
+          scoreDelta: 60,
+          observations: [],
+          reasoning: "looks strong",
+        }),
+      runFinalizer: async () => ({
+        decisionJson: JSON.stringify({
+          go: true,
+          reasoning: "ok",
+          entry: 100,
+          stop_loss: 95,
+          take_profit: [105, 110],
+        }),
+        costUsd: 0,
+      }),
+      markSetupClosed: async () => {},
+      listEventsForSetup: async () => [],
+      loadSetup: async () => null,
+      notifyTelegramConfirmed: async () => null,
+      notifyTelegramRejected: async () => null,
+      notifyTelegramInvalidatedAfterConfirmed: async () => null,
+      notifyTelegramTPHit: async (input: { index: number; isFinal: boolean }) => {
+        tpHitNotifications.push({ index: input.index, isFinal: input.isFinal });
+        return null;
+      },
+      notifyTelegramSLHit: async (input: { level: number }) => {
+        slHitNotifications.push(input.level);
+        return null;
+      },
+    };
+    const worker = await Worker.create({
+      connection: env.nativeConnection,
+      taskQueue: "test",
+      workflowsPath: require.resolve("@workflows/setup/setupWorkflow"),
+      activities: fakeActivities,
+    });
+    await worker.runUntil(async () => {
+      const handle = await env.client.workflow.start(setupWorkflow, {
+        args: [{ ...baseInitial, setupId: "test-tracking-tp" }],
+        workflowId: "test-tracking-tp",
+        taskQueue: "test",
+      });
+      await handle.signal("review", { tickSnapshotId: "snap-1" });
+
+      // Wait until TRACKING phase is entered before sending prices.
+      const start = Date.now();
+      while (Date.now() - start < 10_000) {
+        const state = await handle.query(getStateQuery);
+        if (state.status === "TRACKING") break;
+        await new Promise((r) => setTimeout(r, 50));
+      }
+
+      // TP1 hit (also moves SL to breakeven)
+      await handle.signal("trackingPrice", {
+        currentPrice: 105,
+        observedAt: new Date().toISOString(),
+      });
+      // TP2 hit (final)
+      await handle.signal("trackingPrice", {
+        currentPrice: 110,
+        observedAt: new Date().toISOString(),
+      });
+
+      const result = await handle.result();
+      expect(result).toBe("CLOSED");
+    });
+
+    expect(persistedTypes).toContain("TPHit");
+    expect(persistedTypes).toContain("TrailingMoved");
+    expect(tpHitNotifications.length).toBeGreaterThanOrEqual(2);
+    expect(tpHitNotifications.some((n) => n.isFinal)).toBe(true);
+    expect(slHitNotifications.length).toBe(0);
+  }, 30_000);
+
+  test("STRENGTHEN -> FINALIZING -> GO -> TRACKING -> SL hit -> CLOSED", async () => {
+    let seqCounter = 0;
+    const slHitNotifications: number[] = [];
+    const persistedTypes: string[] = [];
+
+    const fakeActivities = {
+      createSetup: async () => ({}),
+      nextSequence: async () => ({ sequence: ++seqCounter }),
+      persistEvent: async (input: { event: { type: string } }) => {
+        persistedTypes.push(input.event.type);
+        return { id: `evt-${persistedTypes.length}` };
+      },
+      runReviewer: async () =>
+        baseRunReviewerReturn({
+          type: "STRENGTHEN",
+          scoreDelta: 60,
+          observations: [],
+          reasoning: "looks strong",
+        }),
+      runFinalizer: async () => ({
+        decisionJson: JSON.stringify({
+          go: true,
+          reasoning: "ok",
+          entry: 100,
+          stop_loss: 95,
+          take_profit: [110, 120],
+        }),
+        costUsd: 0,
+      }),
+      markSetupClosed: async () => {},
+      listEventsForSetup: async () => [],
+      loadSetup: async () => null,
+      notifyTelegramConfirmed: async () => null,
+      notifyTelegramRejected: async () => null,
+      notifyTelegramInvalidatedAfterConfirmed: async () => null,
+      notifyTelegramTPHit: async () => null,
+      notifyTelegramSLHit: async (input: { level: number }) => {
+        slHitNotifications.push(input.level);
+        return null;
+      },
+    };
+    const worker = await Worker.create({
+      connection: env.nativeConnection,
+      taskQueue: "test",
+      workflowsPath: require.resolve("@workflows/setup/setupWorkflow"),
+      activities: fakeActivities,
+    });
+    await worker.runUntil(async () => {
+      const handle = await env.client.workflow.start(setupWorkflow, {
+        args: [{ ...baseInitial, setupId: "test-tracking-sl" }],
+        workflowId: "test-tracking-sl",
+        taskQueue: "test",
+      });
+      await handle.signal("review", { tickSnapshotId: "snap-1" });
+
+      // Wait until TRACKING phase
+      const start = Date.now();
+      while (Date.now() - start < 10_000) {
+        const state = await handle.query(getStateQuery);
+        if (state.status === "TRACKING") break;
+        await new Promise((r) => setTimeout(r, 50));
+      }
+
+      // SL hit at 90 (below stop_loss 95)
+      await handle.signal("trackingPrice", {
+        currentPrice: 90,
+        observedAt: new Date().toISOString(),
+      });
+
+      const result = await handle.result();
+      expect(result).toBe("CLOSED");
+    });
+
+    expect(persistedTypes).toContain("SLHit");
+    expect(slHitNotifications).toContain(95);
+  }, 30_000);
+
   test("priceCheck below invalidation -> INVALIDATED", async () => {
     const fakeActivities = {
       createSetup: async () => ({}),

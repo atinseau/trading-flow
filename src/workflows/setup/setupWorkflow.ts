@@ -236,6 +236,11 @@ export async function setupWorkflow(initial: InitialEvidence): Promise<SetupStat
   });
 
   setHandler(priceCheckSignal, async (args) => {
+    // In TRACKING phase, the trackingLoop has its own `trackingPrice` handler.
+    // The priceMonitor activity dispatches signal name based on status, but if a
+    // stale priceCheck arrives during TRACKING we no-op (no invalidation logic).
+    if (state.status === "TRACKING") return;
+
     const breached =
       (state.direction === "LONG" && args.currentPrice < state.invalidationLevel) ||
       (state.direction === "SHORT" && args.currentPrice > state.invalidationLevel);
@@ -411,7 +416,17 @@ export async function setupWorkflow(initial: InitialEvidence): Promise<SetupStat
             takeProfit: decision.take_profit ?? [],
             reasoning: decision.reasoning,
           });
-          await trackingLoop(initial.setupId, initial.watchId);
+          await trackingLoop({
+            setupId: initial.setupId,
+            watchId: initial.watchId,
+            asset: initial.asset,
+            timeframe: initial.timeframe,
+            direction: initial.direction,
+            entry: decision.entry ?? 0,
+            stopLoss: decision.stop_loss ?? 0,
+            takeProfit: decision.take_profit ?? [],
+            scoreAtConfirmation: state.score,
+          });
           // trackingLoop updates DB to CLOSED but not workflow state — sync here
           // so the active loop exits cleanly instead of blocking on `condition`.
           state.status = "CLOSED";
