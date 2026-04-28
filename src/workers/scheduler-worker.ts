@@ -14,7 +14,7 @@ const worker = await Worker.create({
   connection,
   namespace: config.temporal.namespace,
   taskQueue: config.temporal.task_queues.scheduler,
-  workflowsPath: require.resolve("../workflows/scheduler/schedulerWorkflow.ts"),
+  workflowsPath: require.resolve("../workflows/scheduler/index.ts"),
   activities: {
     ...buildSchedulerActivities(container.deps),
     ...buildPriceMonitorActivities(container.deps),

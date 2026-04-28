@@ -10,6 +10,7 @@ import type { PriceFeed } from "@domain/ports/PriceFeed";
 import type { SetupRepository } from "@domain/ports/SetupRepository";
 import type { TickSnapshotStore } from "@domain/ports/TickSnapshotStore";
 import type { Config, WatchConfig } from "@domain/schemas/Config";
+import type { Client } from "@temporalio/client";
 
 export type ActivityDeps = {
   marketDataFetchers: Map<string, MarketDataFetcher>;
@@ -25,4 +26,5 @@ export type ActivityDeps = {
   clock: Clock;
   config: Config;
   watchById: (id: string) => WatchConfig | undefined;
+  temporalClient: Client;
 };

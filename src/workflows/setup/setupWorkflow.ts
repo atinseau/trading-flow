@@ -58,9 +58,7 @@ export type SetupWorkflowState = {
 
 export const getStateQuery = defineQuery<SetupWorkflowState>("getState");
 
-function verdictToEvent(
-  verdict: Verdict,
-): { type: EventTypeName; payload: EventPayload } {
+function verdictToEvent(verdict: Verdict): { type: EventTypeName; payload: EventPayload } {
   switch (verdict.type) {
     case "STRENGTHEN":
       return {
@@ -118,6 +116,10 @@ export async function setupWorkflow(initial: InitialEvidence): Promise<SetupStat
     direction: initial.direction,
     sequence: 0,
   };
+
+  // Tracks whether this setup ever transitioned to TRACKING (i.e. was confirmed)
+  // so we can fire the post-confirmation invalidation notification only when due.
+  let everConfirmed = false;
 
   // Register handlers before any await so signals/queries received during
   // workflow startup are not dropped.
@@ -260,6 +262,15 @@ export async function setupWorkflow(initial: InitialEvidence): Promise<SetupStat
         invalidationLevel: state.invalidationLevel,
       },
     });
+
+    if (everConfirmed) {
+      await a.notifyTelegramInvalidatedAfterConfirmed({
+        watchId: initial.watchId,
+        asset: initial.asset,
+        timeframe: initial.timeframe,
+        reason: "price_below_invalidation",
+      });
+    }
   });
 
   setHandler(closeSignal, () => {
@@ -346,6 +357,7 @@ export async function setupWorkflow(initial: InitialEvidence): Promise<SetupStat
         if (decision.go) {
           state.sequence = seq;
           state.status = "TRACKING";
+          everConfirmed = true;
           await a.persistEvent({
             event: {
               setupId: initial.setupId,
@@ -378,6 +390,16 @@ export async function setupWorkflow(initial: InitialEvidence): Promise<SetupStat
               invalidationLevel: state.invalidationLevel,
             },
           });
+          await a.notifyTelegramConfirmed({
+            watchId: initial.watchId,
+            asset: initial.asset,
+            timeframe: initial.timeframe,
+            direction: initial.direction,
+            entry: decision.entry ?? 0,
+            stopLoss: decision.stop_loss ?? 0,
+            takeProfit: decision.take_profit ?? [],
+            reasoning: decision.reasoning,
+          });
           await trackingLoop(initial.setupId, initial.watchId);
         } else {
           state.sequence = seq;
@@ -407,6 +429,12 @@ export async function setupWorkflow(initial: InitialEvidence): Promise<SetupStat
               status: "REJECTED",
               invalidationLevel: state.invalidationLevel,
             },
+          });
+          await a.notifyTelegramRejected({
+            watchId: initial.watchId,
+            asset: initial.asset,
+            timeframe: initial.timeframe,
+            reasoning: decision.reasoning,
           });
         }
       }

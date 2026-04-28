@@ -1,4 +1,4 @@
-import { condition, defineSignal, proxyActivities, setHandler, sleep } from "@temporalio/workflow";
+import { defineSignal, proxyActivities, setHandler, sleep } from "@temporalio/workflow";
 import type * as activities from "./activities";
 
 const a = proxyActivities<ReturnType<typeof activities.buildPriceMonitorActivities>>({
@@ -37,9 +37,6 @@ export async function priceMonitorWorkflow(args: PriceMonitorArgs): Promise<void
       await sleep(5_000);
     }
   }
-
-  // Final wait to satisfy lint about unused condition import.
-  await condition(() => stop || !stop);
 }
 
 export const priceMonitorWorkflowId = (watchId: string) => `price-monitor-${watchId}`;

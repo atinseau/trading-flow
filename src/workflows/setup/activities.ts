@@ -173,5 +173,67 @@ Decision: GO or NO_GO? If GO, provide entry/SL/TP.`;
     async loadSetup(input: { setupId: string }) {
       return deps.setupRepo.get(input.setupId);
     },
+
+    async notifyTelegramConfirmed(input: {
+      watchId: string;
+      asset: string;
+      timeframe: string;
+      direction: "LONG" | "SHORT";
+      entry: number;
+      stopLoss: number;
+      takeProfit: number[];
+      reasoning: string;
+      chartUri?: string;
+    }): Promise<{ messageId: number } | null> {
+      const watch = deps.watchById(input.watchId);
+      if (!watch) return null;
+      if (!watch.notifications.notify_on.includes("confirmed")) return null;
+
+      const arrow = input.direction === "LONG" ? "🟢 LONG" : "🔴 SHORT";
+      const tpStr = input.takeProfit.length ? `\nTP: ${input.takeProfit.join(" / ")}` : "";
+      const reasoning = watch.notifications.include_reasoning ? `\n\n${input.reasoning}` : "";
+      const text = `${arrow} ${input.asset} ${input.timeframe}\nEntry: ${input.entry}\nSL: ${input.stopLoss}${tpStr}${reasoning}`;
+
+      const images =
+        watch.notifications.include_chart_image && input.chartUri
+          ? [{ uri: input.chartUri }]
+          : undefined;
+
+      return deps.notifier.send({
+        chatId: watch.notifications.telegram_chat_id,
+        text,
+        images,
+      });
+    },
+
+    async notifyTelegramRejected(input: {
+      watchId: string;
+      asset: string;
+      timeframe: string;
+      reasoning: string;
+    }): Promise<{ messageId: number } | null> {
+      const watch = deps.watchById(input.watchId);
+      if (!watch) return null;
+      if (!watch.notifications.notify_on.includes("rejected")) return null;
+      return deps.notifier.send({
+        chatId: watch.notifications.telegram_chat_id,
+        text: `❌ Setup ${input.asset} ${input.timeframe} rejected\n\n${input.reasoning}`,
+      });
+    },
+
+    async notifyTelegramInvalidatedAfterConfirmed(input: {
+      watchId: string;
+      asset: string;
+      timeframe: string;
+      reason: string;
+    }): Promise<{ messageId: number } | null> {
+      const watch = deps.watchById(input.watchId);
+      if (!watch) return null;
+      if (!watch.notifications.notify_on.includes("invalidated_after_confirmed")) return null;
+      return deps.notifier.send({
+        chatId: watch.notifications.telegram_chat_id,
+        text: `⚠️ ${input.asset} ${input.timeframe} invalidated post-confirmation\nReason: ${input.reason}`,
+      });
+    },
   };
 }

@@ -15,6 +15,7 @@ import { parseTimeframeToMs } from "@domain/ports/Clock";
 import type { MarketDataFetcher } from "@domain/ports/MarketDataFetcher";
 import type { PriceFeed } from "@domain/ports/PriceFeed";
 import type { Config } from "@domain/schemas/Config";
+import { Client, Connection } from "@temporalio/client";
 import type { ActivityDeps } from "@workflows/activityDependencies";
 import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
@@ -70,6 +71,14 @@ export async function buildContainer(config: Config): Promise<Container> {
 
   const watchById = (id: string) => config.watches.find((w) => w.id === id);
 
+  // Temporal Client (for activities that need to signal external workflows,
+  // e.g. priceMonitor signalling setupWorkflow on invalidation breach).
+  const tempConnection = await Connection.connect({ address: config.temporal.address });
+  const temporalClient = new Client({
+    connection: tempConnection,
+    namespace: config.temporal.namespace,
+  });
+
   const deps: ActivityDeps = {
     marketDataFetchers,
     chartRenderer,
@@ -84,6 +93,7 @@ export async function buildContainer(config: Config): Promise<Container> {
     clock,
     config,
     watchById,
+    temporalClient,
   };
 
   return {
@@ -92,6 +102,7 @@ export async function buildContainer(config: Config): Promise<Container> {
     chartRenderer,
     async shutdown() {
       await chartRenderer.dispose();
+      await tempConnection.close();
       await pool.end();
     },
   };

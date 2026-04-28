@@ -32,7 +32,7 @@ export const getSchedulerStateQuery = defineQuery<{
 export async function schedulerWorkflow(args: SchedulerArgs): Promise<void> {
   let paused = false;
   let lastTickAt: string | null = null;
-  const stop = false;
+  let tickInProgress = false;
 
   setHandler(pauseSignal, () => {
     paused = true;
@@ -46,17 +46,28 @@ export async function schedulerWorkflow(args: SchedulerArgs): Promise<void> {
   setHandler(getSchedulerStateQuery, () => ({ paused, lastTickAt }));
 
   setHandler(doTickSignal, async () => {
-    if (paused || stop) return;
+    if (paused) return;
+    if (tickInProgress) {
+      // Skip overlapping tick — Temporal Schedule's overlap_policy:SKIP is the
+      // canonical solution but we add this defense in case the schedule isn't
+      // configured that way.
+      return;
+    }
+    tickInProgress = true;
     try {
       await runOneTick(args.watchId);
       lastTickAt = new Date().toISOString();
       await a.recordWatchTick({ watchId: args.watchId, status: "success", costUsd: 0 });
     } catch {
       await a.recordWatchTick({ watchId: args.watchId, status: "failed", costUsd: 0 });
+    } finally {
+      tickInProgress = false;
     }
   });
 
-  await condition(() => stop);
+  // Workflow stays alive forever, responding to signals; only terminated by
+  // external cancellation (e.g. namespace shutdown).
+  await condition(() => false);
 }
 
 async function runOneTick(watchId: string): Promise<void> {

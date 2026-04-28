@@ -55,8 +55,7 @@ describe("SetupWorkflow", () => {
       createSetup: async () => ({}),
       nextSequence: async () => ({ sequence: 1 }),
       persistEvent: async () => ({ id: "evt-1" }),
-      runReviewer: async () =>
-        baseRunReviewerReturn({ type: "NEUTRAL", observations: [] }),
+      runReviewer: async () => baseRunReviewerReturn({ type: "NEUTRAL", observations: [] }),
       runFinalizer: async () => ({
         decisionJson: JSON.stringify({ go: false, reasoning: "x" }),
         costUsd: 0,
@@ -64,6 +63,9 @@ describe("SetupWorkflow", () => {
       markSetupClosed: async () => {},
       listEventsForSetup: async () => [],
       loadSetup: async () => null,
+      notifyTelegramConfirmed: async () => null,
+      notifyTelegramRejected: async () => null,
+      notifyTelegramInvalidatedAfterConfirmed: async () => null,
     };
     const worker = await Worker.create({
       connection: env.nativeConnection,
@@ -104,6 +106,9 @@ describe("SetupWorkflow", () => {
       markSetupClosed: async () => {},
       listEventsForSetup: async () => [],
       loadSetup: async () => null,
+      notifyTelegramConfirmed: async () => null,
+      notifyTelegramRejected: async () => null,
+      notifyTelegramInvalidatedAfterConfirmed: async () => null,
     };
     const worker = await Worker.create({
       connection: env.nativeConnection,
@@ -128,8 +133,7 @@ describe("SetupWorkflow", () => {
       createSetup: async () => ({}),
       nextSequence: async () => ({ sequence: 1 }),
       persistEvent: async () => ({ id: "evt-1" }),
-      runReviewer: async () =>
-        baseRunReviewerReturn({ type: "NEUTRAL", observations: [] }),
+      runReviewer: async () => baseRunReviewerReturn({ type: "NEUTRAL", observations: [] }),
       runFinalizer: async () => ({
         decisionJson: JSON.stringify({ go: false, reasoning: "x" }),
         costUsd: 0,
@@ -137,6 +141,9 @@ describe("SetupWorkflow", () => {
       markSetupClosed: async () => {},
       listEventsForSetup: async () => [],
       loadSetup: async () => null,
+      notifyTelegramConfirmed: async () => null,
+      notifyTelegramRejected: async () => null,
+      notifyTelegramInvalidatedAfterConfirmed: async () => null,
     };
     const worker = await Worker.create({
       connection: env.nativeConnection,

@@ -45,7 +45,10 @@ export function buildPriceMonitorActivities(deps: ActivityDeps) {
             (setup.direction === "LONG" && tick.price < setup.invalidationLevel) ||
             (setup.direction === "SHORT" && tick.price > setup.invalidationLevel);
           if (breached) {
-            console.log("[price invalidated]", setup.id, tick.price);
+            await deps.temporalClient.workflow.getHandle(setup.workflowId).signal("priceCheck", {
+              currentPrice: tick.price,
+              observedAt: tick.timestamp.toISOString(),
+            });
           }
         }
       }
