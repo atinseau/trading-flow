@@ -65,7 +65,7 @@ export async function buildContainer(config: Config, role: WorkerRole): Promise<
     if (config.market_data.binance) {
       marketDataFetchers.set(
         "binance",
-        new BinanceFetcher(config.market_data.binance as { baseUrl?: string }),
+        new BinanceFetcher(),
       );
     }
     if (config.market_data.yahoo) {
