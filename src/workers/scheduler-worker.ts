@@ -1,8 +1,11 @@
 import { loadConfig } from "@config/loadConfig";
+import { getLogger } from "@observability/logger";
 import { NativeConnection, Worker } from "@temporalio/worker";
 import { buildPriceMonitorActivities } from "@workflows/price-monitor/activities";
 import { buildSchedulerActivities } from "@workflows/scheduler/activities";
 import { buildContainer } from "./buildContainer";
+
+const log = getLogger({ component: "scheduler-worker" });
 
 const configPath = process.argv[2] ?? "config/watches.yaml";
 const config = await loadConfig(configPath);
@@ -21,9 +24,9 @@ const worker = await Worker.create({
   },
 });
 
-console.log(`[scheduler-worker] starting on queue=${config.temporal.task_queues.scheduler}`);
+log.info({ taskQueue: config.temporal.task_queues.scheduler }, "starting");
 process.on("SIGTERM", async () => {
-  console.log("[scheduler-worker] shutting down");
+  log.info("shutting down");
   worker.shutdown();
   await container.shutdown();
 });

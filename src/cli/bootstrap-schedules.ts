@@ -1,8 +1,11 @@
 import { loadConfig } from "@config/loadConfig";
+import { getLogger } from "@observability/logger";
 import { Client, Connection, ScheduleNotFoundError } from "@temporalio/client";
 import { pickPriceFeedAdapter } from "@workflows/price-monitor/activities";
 import { priceMonitorWorkflowId } from "@workflows/price-monitor/priceMonitorWorkflow";
 import { schedulerWorkflowId } from "@workflows/scheduler/schedulerWorkflow";
+
+const log = getLogger({ component: "bootstrap-schedules" });
 
 const configPath = process.argv[2] ?? "config/watches.yaml";
 const config = await loadConfig(configPath);
@@ -10,6 +13,7 @@ const connection = await Connection.connect({ address: config.temporal.address }
 const client = new Client({ connection, namespace: config.temporal.namespace });
 
 for (const watch of config.watches.filter((w) => w.enabled)) {
+  const watchLog = log.child({ watchId: watch.id });
   // Start SchedulerWorkflow (idempotent via workflowId)
   await client.workflow
     .start("schedulerWorkflow", {
@@ -50,7 +54,7 @@ for (const watch of config.watches.filter((w) => w.enabled)) {
         timezone: watch.schedule.timezone ?? "UTC",
       },
     }));
-    console.log(`[bootstrap] updated schedule for ${watch.id}`);
+    watchLog.info("updated schedule");
   } catch (err) {
     if (err instanceof ScheduleNotFoundError) {
       await client.schedule.create({
@@ -67,10 +71,10 @@ for (const watch of config.watches.filter((w) => w.enabled)) {
           args: [{ watchId: watch.id }],
         },
       });
-      console.log(`[bootstrap] created schedule for ${watch.id}`);
+      watchLog.info("created schedule");
     } else throw err;
   }
 }
 
-console.log("[bootstrap] done");
+log.info("done");
 process.exit(0);

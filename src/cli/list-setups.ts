@@ -1,11 +1,14 @@
 import { setups } from "@adapters/persistence/schema";
+import { getLogger } from "@observability/logger";
 import { desc, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
 
+const log = getLogger({ component: "list-setups" });
+
 const url = process.env.DATABASE_URL;
 if (!url) {
-  console.error("DATABASE_URL not set");
+  log.error("DATABASE_URL not set");
   process.exit(1);
 }
 

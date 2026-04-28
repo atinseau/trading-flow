@@ -1,9 +1,12 @@
+import { getLogger } from "@observability/logger";
 import { Client, Connection } from "@temporalio/client";
+
+const log = getLogger({ component: "pause-watch" });
 
 const watchId = process.argv[2];
 const action = process.argv[3] ?? "pause";
 if (!watchId || !["pause", "resume"].includes(action)) {
-  console.error("Usage: pause-watch <watch-id> [pause|resume]");
+  log.error("Usage: pause-watch <watch-id> [pause|resume]");
   process.exit(1);
 }
 
@@ -13,5 +16,5 @@ const connection = await Connection.connect({
 const client = new Client({ connection });
 
 await client.workflow.getHandle(`scheduler-${watchId}`).signal(action);
-console.log(`[${action}-watch] sent ${action} signal to scheduler-${watchId}`);
+log.info({ watchId, action }, "sent signal");
 process.exit(0);

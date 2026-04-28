@@ -1,8 +1,11 @@
+import { getLogger } from "@observability/logger";
 import { Client, Connection } from "@temporalio/client";
+
+const log = getLogger({ component: "force-tick" });
 
 const watchId = process.argv[2];
 if (!watchId) {
-  console.error("Usage: force-tick <watch-id>");
+  log.error("Usage: force-tick <watch-id>");
   process.exit(1);
 }
 
@@ -12,5 +15,5 @@ const connection = await Connection.connect({
 const client = new Client({ connection });
 
 await client.workflow.getHandle(`scheduler-${watchId}`).signal("doTick");
-console.log(`[force-tick] sent doTick signal to scheduler-${watchId}`);
+log.info({ watchId }, "sent doTick signal");
 process.exit(0);

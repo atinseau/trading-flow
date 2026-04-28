@@ -22,6 +22,7 @@
       "@adapters/*": ["./src/adapters/*"],
       "@workflows/*": ["./src/workflows/*"],
       "@config/*": ["./src/config/*"],
+      "@observability/*": ["./src/observability/*"],
       "@test-fakes/*": ["./test/fakes/*"]
     }
   },

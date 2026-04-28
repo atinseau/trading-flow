@@ -1,7 +1,10 @@
 import { loadConfig } from "@config/loadConfig";
+import { getLogger } from "@observability/logger";
 import { NativeConnection, Worker } from "@temporalio/worker";
 import { buildNotificationActivities } from "@workflows/notification/activities";
 import { buildContainer } from "./buildContainer";
+
+const log = getLogger({ component: "notification-worker" });
 
 const configPath = process.argv[2] ?? "config/watches.yaml";
 const config = await loadConfig(configPath);
@@ -16,8 +19,9 @@ const worker = await Worker.create({
   activities: buildNotificationActivities(container.deps),
 });
 
-console.log(`[notification-worker] starting on queue=${config.temporal.task_queues.notifications}`);
+log.info({ taskQueue: config.temporal.task_queues.notifications }, "starting");
 process.on("SIGTERM", async () => {
+  log.info("shutting down");
   worker.shutdown();
   await container.shutdown();
 });
