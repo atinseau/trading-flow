@@ -1,12 +1,11 @@
 import { readFile } from "node:fs/promises";
 import { InvalidConfigError } from "@domain/errors";
 import { type Config, ConfigSchema } from "@domain/schemas/Config";
-import { parse } from "yaml";
 
 export async function loadConfig(path: string): Promise<Config> {
   const raw = await readFile(path, "utf8");
   const expanded = expandEnvVars(raw);
-  const parsed = parse(expanded);
+  const parsed = Bun.YAML.parse(expanded);
 
   const result = ConfigSchema.safeParse(parsed);
   if (!result.success) {
