@@ -22,7 +22,20 @@ export class PlaywrightChartRenderer implements ChartRenderer {
     const tplPath =
       this.opts.templatePath ??
       join(dirname(fileURLToPath(import.meta.url)), "chart-template.html");
-    this.templateHtml = await Bun.file(tplPath).text();
+    const rawTemplate = await Bun.file(tplPath).text();
+    // Inline the lightweight-charts bundle to remove the CDN dependency — eliminates
+    // network flake when chromium fetches the script during setContent.
+    const pkgJsonPath = require.resolve("lightweight-charts/package.json");
+    const libPath = join(
+      dirname(pkgJsonPath),
+      "dist",
+      "lightweight-charts.standalone.production.js",
+    );
+    const libSource = await Bun.file(libPath).text();
+    this.templateHtml = rawTemplate.replace(
+      "<!-- {{LIGHTWEIGHT_CHARTS_INLINE}} - replaced by PlaywrightChartRenderer at warmUp -->",
+      `<script>${libSource}</script>`,
+    );
     for (let i = 0; i < size; i++) {
       const page = await this.browser.newPage({ viewport: { width: 1280, height: 720 } });
       await page.setContent(this.templateHtml);

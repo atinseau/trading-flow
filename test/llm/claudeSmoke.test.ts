@@ -1,12 +1,13 @@
 import { describe, expect, test } from "bun:test";
-import { OpenRouterProvider } from "@adapters/llm/OpenRouterProvider";
+import { mkdtemp } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { ClaudeAgentSdkProvider } from "@adapters/llm/ClaudeAgentSdkProvider";
 import { loadPrompt } from "@adapters/prompts/loadPrompt";
 import { VerdictSchema } from "@domain/schemas/Verdict";
 import { z } from "zod";
 
-const runLlm =
-  Boolean(process.env.RUN_LLM_OPENROUTER ?? process.env.RUN_LLM) &&
-  Boolean(process.env.OPENROUTER_API_KEY);
+const runLlm = Boolean(process.env.RUN_LLM_CLAUDE) && Boolean(process.env.ANTHROPIC_API_KEY);
 
 const DetectorVerdictSchema = z.object({
   corroborations: z.array(
@@ -40,17 +41,20 @@ const FinalizerOutputSchema = z.object({
   take_profit: z.array(z.number()).optional(),
 });
 
-describe.skipIf(!runLlm)("LLM prompt smoke (real OpenRouter)", () => {
-  // Use a cheap model for smoke tests — we just want to validate format, not quality.
-  // Verify the model name is still current at https://openrouter.ai/models if this fails.
-  const cheapModel = "anthropic/claude-haiku-4.5";
+describe.skipIf(!runLlm)("LLM prompt smoke (real Claude SDK)", () => {
+  // Cheap model for smoke tests — validating format, not quality.
+  const cheapModel = "claude-haiku-4-5";
 
-  const provider = new OpenRouterProvider("openrouter", {
-    apiKey: process.env.OPENROUTER_API_KEY ?? "",
-    monthlyBudgetUsd: 1, // hard cap to prevent runaway in CI
-  });
+  // Each test gets its own throwaway workspace dir — claude-agent-sdk needs cwd
+  // and may create transient files there.
+  let workspaceDir: string;
+  const setupWorkspace = async () => {
+    workspaceDir = await mkdtemp(join(tmpdir(), "tf-claude-smoke-"));
+  };
 
-  test("Detector prompt → real LLM → valid JSON parsed by Zod", async () => {
+  test("Detector prompt → real Claude → valid JSON parsed by Zod", async () => {
+    await setupWorkspace();
+    const provider = new ClaudeAgentSdkProvider("claude_max", { workspaceDir });
     const detector = await loadPrompt("detector");
     const userPrompt = detector.render({
       asset: "BTCUSDT",
@@ -80,22 +84,18 @@ describe.skipIf(!runLlm)("LLM prompt smoke (real OpenRouter)", () => {
       responseSchema: DetectorVerdictSchema,
     });
 
-    // The provider already parses and throws LLMSchemaValidationError on failure.
-    // If we got here, the response is valid.
     expect(result.parsed).toBeDefined();
-    expect(result.costUsd).toBeGreaterThan(0);
-    expect(result.costUsd).toBeLessThan(0.5); // reasonable cap
-
     const parsed = result.parsed as z.infer<typeof DetectorVerdictSchema>;
-    // At least one of: corroborations, new_setups, or ignore_reason is set
     const hasContent =
       parsed.corroborations.length > 0 ||
       parsed.new_setups.length > 0 ||
       parsed.ignore_reason !== null;
     expect(hasContent).toBe(true);
-  }, 60_000);
+  }, 120_000);
 
-  test("Reviewer prompt → real LLM → valid Verdict", async () => {
+  test("Reviewer prompt → real Claude → valid Verdict", async () => {
+    await setupWorkspace();
+    const provider = new ClaudeAgentSdkProvider("claude_max", { workspaceDir });
     const reviewer = await loadPrompt("reviewer");
     const userPrompt = reviewer.render({
       setup: {
@@ -121,9 +121,9 @@ describe.skipIf(!runLlm)("LLM prompt smoke (real OpenRouter)", () => {
           scoreAfter: 35,
           type: "Strengthened",
           observations: [
-            { kind: "volume_confirmation", text: "Volume 1.8x avg, confirme l'achat" },
+            { kind: "volume_confirmation", text: "Volume 1.8x avg confirms buying pressure" },
           ],
-          reasoning: "Le double bottom voit son volume se confirmer",
+          reasoning: "The double bottom is gaining volume confirmation",
         },
       ],
       tick: { tickAt: "2026-04-28T14:00:00Z" },
@@ -142,10 +142,11 @@ describe.skipIf(!runLlm)("LLM prompt smoke (real OpenRouter)", () => {
     expect(result.parsed).toBeDefined();
     const verdict = result.parsed as z.infer<typeof VerdictSchema>;
     expect(["STRENGTHEN", "WEAKEN", "NEUTRAL", "INVALIDATE"]).toContain(verdict.type);
-    expect(result.costUsd).toBeGreaterThan(0);
-  }, 60_000);
+  }, 120_000);
 
-  test("Finalizer prompt → real LLM → valid GO/NO_GO", async () => {
+  test("Finalizer prompt → real Claude → valid GO/NO_GO", async () => {
+    await setupWorkspace();
+    const provider = new ClaudeAgentSdkProvider("claude_max", { workspaceDir });
     const finalizer = await loadPrompt("finalizer");
     const userPrompt = finalizer.render({
       setup: {
@@ -184,5 +185,5 @@ describe.skipIf(!runLlm)("LLM prompt smoke (real OpenRouter)", () => {
       expect(decision.stop_loss).toBeDefined();
       expect(decision.take_profit?.length).toBeGreaterThan(0);
     }
-  }, 60_000);
+  }, 120_000);
 });

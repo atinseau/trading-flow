@@ -430,25 +430,46 @@ setup ou voir les events.
 
 ## Testing
 
+### Suite par défaut (offline, gratuite)
+
 ```bash
-# Domain pur (zéro dep, ultra-rapide)
-bun test test/domain                          # ~100ms
+bun test                          # tout sauf live tests, ~15s
 
-# Adapters (testcontainers Postgres + mocks HTTP)
-bun test test/adapters                        # ~30s
-
-# Workflows (TestWorkflowEnvironment time-skipping)
-bun test test/workflows                       # ~10s
-
-# Intégration (Postgres réel + activities + workflow lifecycle)
-bun test test/integration                    # ~10s
-
-# E2E (full stack docker-compose)
-RUN_E2E=1 bun test test/e2e                  # ~2 min
-
-# Tout
-bun test                                      # ~15s sans E2E
+# Ciblé
+bun test test/domain              # ~100ms — domain pur
+bun test test/adapters            # ~30s   — testcontainers Postgres + mocks
+bun test test/workflows           # ~10s   — TestWorkflowEnvironment
+bun test test/integration         # ~10s   — Postgres réel + workflow lifecycle
 ```
+
+### Live tests (opt-in — coûte de l'argent ou nécessite des services réels)
+
+Tous les tests live sont **gates par variable d'environnement**, donc ils sont skippés
+silencieusement par `bun test`. Ils ne s'activent que si tu mets le flag explicitement
+(via une variable d'env ou un script `npm`).
+
+| Suite | Flag | Coût | Prérequis |
+|---|---|---|---|
+| OpenRouter prompts (3 tests) | `RUN_LLM_OPENROUTER=1` | <$0.01 | `OPENROUTER_API_KEY` |
+| Claude SDK prompts (3 tests) | `RUN_LLM_CLAUDE=1`     | <$0.01 | `ANTHROPIC_API_KEY` |
+| Telegram (1 test live)       | `RUN_LIVE_TELEGRAM=1`  | gratuit | `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID` |
+| E2E full stack (4 tests)     | `RUN_E2E=1`            | gratuit | `docker compose up -d` lancé avant |
+
+```bash
+# Scripts pré-cablés (lisent .env)
+bun run test:llm:openrouter    # prompts → OpenRouter (Haiku 4.5)
+bun run test:llm:claude        # prompts → Claude SDK (Haiku 4.5)
+bun run test:llm               # les deux providers
+bun run test:telegram          # envoi réel Telegram
+bun run test:e2e               # docker-compose smoke tests
+
+# Tout, y compris live (à lancer quand toutes les clés sont prêtes + stack up)
+bun run test:full
+```
+
+> **Note** : les tests Claude SDK utilisent le **CLI agent** local, donc nécessitent
+> `claude-agent-sdk` configuré dans l'environnement (clé API + cwd writable).
+> Voir `.env.example` pour la liste complète des flags.
 
 ---
 

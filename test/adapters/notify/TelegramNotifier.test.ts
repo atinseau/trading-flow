@@ -2,7 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { TelegramNotifier } from "@adapters/notify/TelegramNotifier";
 
 const liveTestEnabled =
-  Boolean(process.env.TELEGRAM_BOT_TOKEN) && Boolean(process.env.TELEGRAM_CHAT_ID);
+  Boolean(process.env.RUN_LIVE_TELEGRAM) &&
+  Boolean(process.env.TELEGRAM_BOT_TOKEN) &&
+  Boolean(process.env.TELEGRAM_CHAT_ID);
 
 describe.skipIf(!liveTestEnabled)("TelegramNotifier (live)", () => {
   test("send text message returns messageId", async () => {
