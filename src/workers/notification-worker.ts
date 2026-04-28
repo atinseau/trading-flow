@@ -26,10 +26,25 @@ const worker = await Worker.create({
 });
 
 log.info({ taskQueue: config.temporal.task_queues.notifications }, "starting");
+
+const healthTick = setInterval(() => {
+  const runState = worker.getState();
+  if (runState === "FAILED" || runState === "STOPPED") {
+    health.setStatus("down", { workerStatus: runState });
+  } else if (runState === "DRAINING" || runState === "DRAINED" || runState === "STOPPING") {
+    health.setStatus("degraded", { workerStatus: runState });
+  } else {
+    health.setStatus("ok", { workerStatus: runState });
+  }
+  health.setActivity();
+}, 5_000);
+
 process.on("SIGTERM", async () => {
   log.info("shutting down");
-  worker.shutdown();
+  clearInterval(healthTick);
+  health.setStatus("down");
   await health.stop();
+  worker.shutdown();
   await container.shutdown();
 });
 await worker.run();

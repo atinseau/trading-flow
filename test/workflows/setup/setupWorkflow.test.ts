@@ -66,6 +66,7 @@ describe("SetupWorkflow", () => {
       notifyTelegramConfirmed: async () => null,
       notifyTelegramRejected: async () => null,
       notifyTelegramInvalidatedAfterConfirmed: async () => null,
+      notifyTelegramExpired: async () => null,
     };
     const worker = await Worker.create({
       connection: env.nativeConnection,
@@ -109,6 +110,7 @@ describe("SetupWorkflow", () => {
       notifyTelegramConfirmed: async () => null,
       notifyTelegramRejected: async () => null,
       notifyTelegramInvalidatedAfterConfirmed: async () => null,
+      notifyTelegramExpired: async () => null,
     };
     const worker = await Worker.create({
       connection: env.nativeConnection,
@@ -164,6 +166,7 @@ describe("SetupWorkflow", () => {
       notifyTelegramConfirmed: async () => null,
       notifyTelegramRejected: async () => null,
       notifyTelegramInvalidatedAfterConfirmed: async () => null,
+      notifyTelegramExpired: async () => null,
       notifyTelegramTPHit: async (input: { index: number; isFinal: boolean }) => {
         tpHitNotifications.push({ index: input.index, isFinal: input.isFinal });
         return null;
@@ -252,6 +255,7 @@ describe("SetupWorkflow", () => {
       notifyTelegramConfirmed: async () => null,
       notifyTelegramRejected: async () => null,
       notifyTelegramInvalidatedAfterConfirmed: async () => null,
+      notifyTelegramExpired: async () => null,
       notifyTelegramTPHit: async () => null,
       notifyTelegramSLHit: async (input: { level: number }) => {
         slHitNotifications.push(input.level);
@@ -310,6 +314,7 @@ describe("SetupWorkflow", () => {
       notifyTelegramConfirmed: async () => null,
       notifyTelegramRejected: async () => null,
       notifyTelegramInvalidatedAfterConfirmed: async () => null,
+      notifyTelegramExpired: async () => null,
     };
     const worker = await Worker.create({
       connection: env.nativeConnection,

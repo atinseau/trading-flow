@@ -51,8 +51,13 @@ export async function schedulerWorkflow(args: SchedulerArgs): Promise<void> {
   setHandler(resumeSignal, () => {
     paused = false;
   });
-  setHandler(reloadConfigSignal, () => {
-    /* config rebuild on next tick via activity */
+  setHandler(reloadConfigSignal, async () => {
+    // Reload watches.yaml from disk and mutate the worker-level config
+    // in place, so subsequent activity invocations (which call
+    // `deps.watchById`) see the new configuration. Note: changes to
+    // `temporal.address`, watch IDs, or schedule cron require a worker
+    // restart or a Schedule update — they are not picked up here.
+    await a.reloadConfigFromDisk({});
   });
   setHandler(getSchedulerStateQuery, () => ({ paused, lastTickAt }));
 
@@ -88,10 +93,11 @@ async function runOneTick(watchId: string, analysisTaskQueue: string): Promise<v
   if (!preFilter.passed) return;
 
   const { artifactUri: chartUri } = await a.renderChart({ ohlcvJson, watchId });
+  const { artifactUri: ohlcvUri } = await a.persistOHLCVArtifact({ ohlcvJson });
   const { tickSnapshotId } = await a.createTickSnapshot({
     watchId,
     chartUri,
-    ohlcvUri: chartUri,
+    ohlcvUri,
     indicatorsJson,
     preFilterPass: preFilter.passed,
   });

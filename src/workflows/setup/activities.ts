@@ -302,6 +302,20 @@ export function buildSetupActivities(deps: ActivityDeps) {
         text: `🛑 SL hit on ${input.asset} ${input.timeframe} @ ${input.level} — position closed`,
       });
     },
+
+    async notifyTelegramExpired(input: {
+      watchId: string;
+      asset: string;
+      timeframe: string;
+    }): Promise<{ messageId: number } | null> {
+      const watch = deps.watchById(input.watchId);
+      if (!watch) return null;
+      if (!watch.notifications.notify_on.includes("expired")) return null;
+      return deps.notifier.send({
+        chatId: watch.notifications.telegram_chat_id,
+        text: `⏱ Setup expired (TTL reached) on ${input.asset} ${input.timeframe}`,
+      });
+    },
   };
 }
 

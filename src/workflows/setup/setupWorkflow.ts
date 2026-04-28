@@ -346,7 +346,42 @@ export async function setupWorkflow(initial: InitialEvidence): Promise<SetupStat
   ttlScope
     .run(async () => {
       if (ttlMs > 0) await sleep(ttlMs);
-      if (state.status === "REVIEWING") state.status = "EXPIRED";
+      if (state.status === "REVIEWING" || state.status === "FINALIZING") {
+        const seq = (await a.nextSequence({ setupId: initial.setupId })).sequence;
+        const before = state.status;
+        state.sequence = seq;
+        state.status = "EXPIRED";
+        await a.persistEvent({
+          event: {
+            setupId: initial.setupId,
+            sequence: seq,
+            stage: "system",
+            actor: "ttl",
+            type: "Expired",
+            scoreDelta: 0,
+            scoreAfter: state.score,
+            statusBefore: before,
+            statusAfter: "EXPIRED",
+            payload: {
+              type: "Expired",
+              data: {
+                reason: "ttl_reached",
+                ttlExpiresAt: initial.ttlExpiresAt,
+              },
+            },
+          },
+          setupUpdate: {
+            score: state.score,
+            status: "EXPIRED",
+            invalidationLevel: state.invalidationLevel,
+          },
+        });
+        await a.notifyTelegramExpired({
+          watchId: initial.watchId,
+          asset: initial.asset,
+          timeframe: initial.timeframe,
+        });
+      }
     })
     .catch(() => {
       /* cancelled */

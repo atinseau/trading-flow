@@ -50,3 +50,17 @@ test("HealthServer responds 404 on unknown paths", async () => {
   const res = await fetch(`http://localhost:${server.actualPort}/unknown`);
   expect(res.status).toBe(404);
 });
+
+test("setActivity updates lastActivityAt timestamp", async () => {
+  server = new HealthServer("test-component", 0);
+  server.start();
+  const before = (await fetch(`http://localhost:${server.actualPort}/health`).then((r) =>
+    r.json(),
+  )) as { lastActivityAt: string | null };
+  expect(before.lastActivityAt).toBeNull();
+  server.setActivity();
+  const after = (await fetch(`http://localhost:${server.actualPort}/health`).then((r) =>
+    r.json(),
+  )) as { lastActivityAt: string | null };
+  expect(after.lastActivityAt).not.toBeNull();
+});

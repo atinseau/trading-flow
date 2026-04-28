@@ -69,10 +69,7 @@ export class HealthServer {
         return new Response("not found", { status: 404 });
       },
     });
-    log.info(
-      { port: this.actualPort, component: this.state.component },
-      "health server started",
-    );
+    log.info({ port: this.actualPort, component: this.state.component }, "health server started");
   }
 
   setStatus(status: HealthStatus, metadata?: Record<string, unknown>): void {

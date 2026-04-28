@@ -1,6 +1,7 @@
 import { resolveAndCall } from "@adapters/llm/resolveAndCall";
 import { watchStates } from "@adapters/persistence/schema";
 import { loadPrompt } from "@adapters/prompts/loadPrompt";
+import { loadConfig } from "@config/loadConfig";
 import { InvalidConfigError } from "@domain/errors";
 import { CandleSchema } from "@domain/schemas/Candle";
 import type { ActivityDeps } from "@workflows/activityDependencies";
@@ -203,6 +204,28 @@ export function buildSchedulerActivities(deps: ActivityDeps) {
 
     async loadWatchConfig(input: { watchId: string }) {
       return deps.watchById(input.watchId);
+    },
+
+    async persistOHLCVArtifact(input: {
+      ohlcvJson: string;
+    }): Promise<{ artifactUri: string; sha256: string }> {
+      const stored = await deps.artifactStore.put({
+        kind: "ohlcv_snapshot",
+        content: Buffer.from(input.ohlcvJson, "utf8"),
+        mimeType: "application/json",
+      });
+      return { artifactUri: stored.uri, sha256: stored.sha256 };
+    },
+
+    async reloadConfigFromDisk(_input: Record<string, never>): Promise<{ reloaded: boolean }> {
+      const path = process.env.WATCHES_CONFIG_PATH ?? "config/watches.yaml";
+      const newConfig = await loadConfig(path);
+      // Mutate the captured config object in place so the watchById closure
+      // and any other references see the new data without rebuilding deps.
+      Object.assign(deps.config, newConfig);
+      deps.config.watches.length = 0;
+      for (const w of newConfig.watches) deps.config.watches.push(w);
+      return { reloaded: true };
     },
   };
 }
