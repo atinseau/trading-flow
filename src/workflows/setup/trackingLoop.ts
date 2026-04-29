@@ -252,5 +252,8 @@ export async function trackingLoop(args: TrackingArgs): Promise<TrackingResult> 
   }
 
   await dbActivities.markSetupClosed({ setupId: args.setupId, finalStatus: "CLOSED" });
-  return { reason: closeReason ?? "all_tps_hit" };
+  if (closeReason === null) {
+    throw new Error("trackingLoop closed without a reason");
+  }
+  return { reason: closeReason };
 }
