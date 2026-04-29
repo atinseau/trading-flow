@@ -1,0 +1,63 @@
+{{!-- version: feedback_v1 --}}
+
+# Retrospective trade analysis
+
+## Trade outcome
+
+- **Close reason**: `{{closeOutcome.reason}}`
+- **Score at close**: {{scoreAtClose}}/100
+- **Watch pool — active lessons by category**:
+  - detecting: {{poolStats.detecting}}
+  - reviewing: {{poolStats.reviewing}}
+  - finalizing: {{poolStats.finalizing}}
+- **Cap per category**: {{maxActivePerCategory}}
+
+## Active lessons in this watch's pool (do not duplicate)
+
+{{#each existingLessons}}
+### Lesson `{{this.id}}` — category `{{this.category}}` — reinforced {{this.timesReinforced}}×
+
+**{{this.title}}**
+
+{{this.body}}
+
+---
+{{/each}}
+
+{{#if (eq existingLessons.length 0)}}
+_First cycle for this watch — no active lessons yet._
+{{/if}}
+
+## Context for analysis
+
+{{#each contextChunks}}
+## {{this.title}}
+
+{{#if (eq this.content.kind "markdown")}}
+{{{this.content.value}}}
+{{/if}}
+{{#if (eq this.content.kind "image")}}
+_Image attached: {{this.title}}_
+{{/if}}
+
+{{/each}}
+
+## Decision rules for `actions`
+
+You may return between 0 and 5 actions. Each action is one of:
+
+| Type | When to use | Required fields |
+|---|---|---|
+| `CREATE` | A new generic principle this trade reveals | `category`, `title`, `body`, `rationale` |
+| `REINFORCE` | An existing lesson cleanly applies; this trade is more evidence | `lessonId`, `reason` |
+| `REFINE` | Existing lesson right but incomplete; rewrite it | `lessonId`, `newTitle`, `newBody`, `rationale` |
+| `DEPRECATE` | Existing lesson contradicted by this trade in its own scope | `lessonId`, `reason` |
+
+## Output format
+
+```json
+{
+  "summary": "1-2 sentence retrospective, free-form, not stored as a lesson",
+  "actions": [...]
+}
+```
