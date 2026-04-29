@@ -63,7 +63,7 @@ export async function priceMonitorWorkflow(args: PriceMonitorArgs): Promise<void
       });
       // The activity returned without throwing — that means the alive set
       // drained inside the activity. Re-check at the top of the loop; will exit.
-    } catch (err) {
+    } catch (_err) {
       // Feed errored (network, etc). The proxy already retried up to limits.
       // Re-check the alive set at the top of the loop and decide.
       if (stop) return;
