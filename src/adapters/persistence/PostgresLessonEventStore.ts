@@ -27,7 +27,7 @@ function rowToStored(row: Row): StoredLessonEvent {
     model: row.model,
     promptVersion: row.promptVersion,
     inputHash: row.inputHash,
-    costUsd: row.costUsd ? Number(row.costUsd) : null,
+    costUsd: row.costUsd != null ? Number(row.costUsd) : null,
     latencyMs: row.latencyMs,
   };
 }
@@ -37,6 +37,11 @@ export class PostgresLessonEventStore implements LessonEventStore {
 
   async append(input: AppendLessonEventInput): Promise<StoredLessonEvent> {
     return await this.db.transaction(async (tx) => {
+      // Intentionally non-locking SELECT under READ COMMITTED: concurrent
+      // appends are serialized by the UNIQUE(watch_id, sequence) index, and
+      // the losing transaction surfaces a Postgres unique_violation (23505)
+      // which the calling Temporal activity treats as a transient retry.
+      // SELECT … FOR UPDATE would serialize all writes — explicitly avoided.
       const seqRows = await tx.execute<{ next: number }>(sql`
         SELECT COALESCE(MAX(sequence), 0) + 1 AS next
         FROM lesson_events

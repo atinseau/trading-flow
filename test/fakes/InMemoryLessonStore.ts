@@ -75,8 +75,8 @@ export class InMemoryLessonStore implements LessonStore {
   }
 
   async refineSupersede(input: RefineLessonInput) {
-    const old = await this.getById(input.oldLessonId);
-    if (!old) throw new Error("old lesson not found");
+    // Match Postgres lenience: no FK on supersedes_lesson_id, so we don't reject
+    // a missing old lesson. Caller is responsible for passing a valid id.
     const newLesson = await this.create({
       id: input.newId,
       watchId: input.watchId,
