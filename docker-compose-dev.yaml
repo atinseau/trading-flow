@@ -1,0 +1,42 @@
+# Dev overlay for tf-web — overrides the prod service to bind-mount the source,
+# run Tailwind in --watch mode, and use `bun --hot` for React + server HMR.
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose-dev.yaml up -d --build
+#
+# Or via the convenience script:
+#   bun run compose:dev
+#
+# Services from docker-compose.yml not listed here (postgres, temporal, workers)
+# run unchanged. The override only affects tf-web.
+
+services:
+  tf-web:
+    environment:
+      NODE_ENV: development
+    volumes:
+      # Bind-mount the source tree so hot-reload picks up host file changes.
+      # The named volumes below are merged with the base file's mounts.
+      - ./src:/app/src
+      - ./tsconfig.json:/app/tsconfig.json:ro
+      - ./bunfig.toml:/app/bunfig.toml:ro
+      - ./components.json:/app/components.json:ro
+      # Re-state the base mounts here because Compose REPLACES volumes (it
+      # does not deep-merge lists). Without this the config/prompts/artifacts
+      # mounts from docker-compose.yml would be dropped.
+      - ./config:/app/config:ro
+      - ./prompts:/app/prompts:ro
+      - artifacts_data:/data/artifacts:ro
+    # 1. Initial Tailwind compile (synchronous — index.html needs globals.compiled.css)
+    # 2. Tailwind --watch in background for live CSS rebuilds
+    # 3. bun --hot for React + server hot-reload
+    command:
+      - sh
+      - -c
+      - |
+        bunx @tailwindcss/cli -i src/client/globals.css -o src/client/globals.compiled.css
+        bunx @tailwindcss/cli -i src/client/globals.css -o src/client/globals.compiled.css --watch &
+        exec bun --hot src/client/server.ts
+    healthcheck:
+      # Longer start_period — first build of node_modules + initial CSS take a few seconds.
+      start_period: 30s
