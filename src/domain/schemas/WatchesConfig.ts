@@ -72,9 +72,9 @@ export const FeedbackAnalyzerSchema = z.object({
 
 export const FeedbackConfigSchema = z.object({
   enabled: z.boolean().default(true),
-  maxActiveLessonsPerCategory: z.number().int().min(1).max(200).default(30),
+  max_active_lessons_per_category: z.number().int().min(1).max(200).default(30),
   injection: FeedbackInjectionSchema.default({ detector: true, reviewer: true, finalizer: true }),
-  contextProvidersDisabled: z.array(z.enum(KNOWN_PROVIDER_IDS)).default([]),
+  context_providers_disabled: z.array(z.enum(KNOWN_PROVIDER_IDS)).default([]),
   analyzer: FeedbackAnalyzerSchema.optional(),
 });
 

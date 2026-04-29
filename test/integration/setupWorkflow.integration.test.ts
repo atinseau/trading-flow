@@ -71,9 +71,9 @@ const testWatch: WatchConfig = {
   budget: { pause_on_budget_exceeded: false },
   feedback: {
     enabled: true,
-    maxActiveLessonsPerCategory: 30,
+    max_active_lessons_per_category: 30,
     injection: { detector: true, reviewer: true, finalizer: true },
-    contextProvidersDisabled: [],
+    context_providers_disabled: [],
   },
 };
 
