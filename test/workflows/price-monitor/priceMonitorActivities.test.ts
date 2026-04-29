@@ -58,7 +58,7 @@ describe("priceMonitor activity dispatch", () => {
       priceFeeds: new Map([["fake", priceFeed]]),
       temporalClient: mockClient.client,
       clock: new SystemClock(),
-      watchById: (_id: string) => fakeWatch,
+      watchById: async (_id: string) => fakeWatch,
     } as unknown as ActivityDeps;
 
     activities = buildPriceMonitorActivities(deps);
@@ -188,7 +188,7 @@ describe("priceMonitor activity market-hours gate", () => {
       priceFeeds: new Map([["fake", priceFeed]]),
       temporalClient: mockClient.client,
       clock,
-      watchById: (_id: string) => fakeWatch,
+      watchById: async (_id: string) => fakeWatch,
     } as unknown as ActivityDeps;
 
     const activities = buildPriceMonitorActivities(deps);
@@ -243,7 +243,7 @@ describe("priceMonitor activity market-hours gate", () => {
       priceFeeds: new Map([["fake", priceFeed]]),
       temporalClient: mockClient.client,
       clock,
-      watchById: (_id: string) => fakeWatch,
+      watchById: async (_id: string) => fakeWatch,
     } as unknown as ActivityDeps;
 
     const activities = buildPriceMonitorActivities(deps);

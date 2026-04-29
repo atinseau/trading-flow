@@ -137,7 +137,7 @@ async function buildDeps(
       artifacts: { base_dir: "/tmp" },
       claude: { workspace_dir: "/tmp" },
     },
-    watchById: (id) => (id === watchId ? watch : undefined),
+    watchById: async (id) => (id === watchId ? watch : null),
     temporalClient: env.client,
     scheduleController: { pause: async () => {}, unpause: async () => {} },
     db,

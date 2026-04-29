@@ -32,7 +32,7 @@ export function buildPriceMonitorActivities(deps: ActivityDeps) {
       const feed = deps.priceFeeds.get(input.adapter);
       if (!feed) throw new InvalidConfigError(`Unknown price feed adapter: ${input.adapter}`);
 
-      const watch = deps.watchById(input.watchId);
+      const watch = await deps.watchById(input.watchId);
       if (!watch) throw new InvalidConfigError(`Unknown watch: ${input.watchId}`);
       const session = getSession(watch);
 

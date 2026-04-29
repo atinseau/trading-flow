@@ -93,7 +93,7 @@ export async function buildContainer(
       clock,
       config: null as unknown as WatchesConfig,
       infra,
-      watchById: () => undefined,
+      watchById: (id: string) => watchRepo.findById(id),
       temporalClient: null as unknown as Client,
       scheduleController: null as unknown as ScheduleController,
       db,
@@ -154,8 +154,6 @@ export async function buildContainer(
     priceFeeds.set("yahoo_polling", new YahooPollingPriceFeed());
   }
 
-  const watchById = (id: string) => watches.watches.find((w) => w.id === id);
-
   let temporalConnection: Connection | null = null;
   let temporalClient: Client | null = null;
   if (role === "scheduler") {
@@ -186,7 +184,7 @@ export async function buildContainer(
     clock,
     config: watches,
     infra,
-    watchById,
+    watchById: (id: string) => watchRepo.findById(id),
     temporalClient: temporalClient ?? (null as unknown as Client),
     scheduleController,
     db,

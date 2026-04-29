@@ -31,7 +31,7 @@ export type ActivityDeps = {
   clock: Clock;
   config: WatchesConfig;
   infra: InfraConfig;
-  watchById: (id: string) => WatchConfig | undefined;
+  watchById: (id: string) => Promise<WatchConfig | null>;
   temporalClient: Client;
   scheduleController: ScheduleController;
   db: ReturnType<typeof drizzle>;

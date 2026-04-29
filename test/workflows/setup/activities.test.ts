@@ -104,7 +104,7 @@ function makeDeps(
 
   return {
     clock,
-    watchById: (id) => (id === watch.id ? watch : undefined),
+    watchById: async (id) => (id === watch.id ? watch : null),
     setupRepo,
     eventStore,
     artifactStore,

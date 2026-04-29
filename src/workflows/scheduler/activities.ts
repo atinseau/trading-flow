@@ -48,7 +48,7 @@ function dateReviver(_key: string, value: unknown): unknown {
 export function buildSchedulerActivities(deps: ActivityDeps) {
   return {
     async fetchOHLCV(input: { watchId: string }): Promise<{ ohlcvJson: string }> {
-      const watch = deps.watchById(input.watchId);
+      const watch = await deps.watchById(input.watchId);
       if (!watch) throw new InvalidConfigError(`Unknown watch: ${input.watchId}`);
       const fetcher = deps.marketDataFetchers.get(watch.asset.source);
       if (!fetcher) throw new InvalidConfigError(`No fetcher for source ${watch.asset.source}`);
@@ -64,7 +64,7 @@ export function buildSchedulerActivities(deps: ActivityDeps) {
       ohlcvJson: string;
       watchId: string;
     }): Promise<{ artifactUri: string; sha256: string }> {
-      const watch = deps.watchById(input.watchId);
+      const watch = await deps.watchById(input.watchId);
       if (!watch) throw new InvalidConfigError(`Unknown watch: ${input.watchId}`);
       const candles = z.array(CandleSchema).parse(JSON.parse(input.ohlcvJson, dateReviver));
       const slice = candles.slice(-watch.candles.reviewer_chart_window);
@@ -94,7 +94,7 @@ export function buildSchedulerActivities(deps: ActivityDeps) {
       indicatorsJson: string;
       watchId: string;
     }): Promise<{ passed: boolean; reasons: string[] }> {
-      const watch = deps.watchById(input.watchId);
+      const watch = await deps.watchById(input.watchId);
       if (!watch) throw new InvalidConfigError(`Unknown watch: ${input.watchId}`);
       const candles = z.array(CandleSchema).parse(JSON.parse(input.ohlcvJson, dateReviver));
       const ind = JSON.parse(input.indicatorsJson);
@@ -108,7 +108,7 @@ export function buildSchedulerActivities(deps: ActivityDeps) {
       indicatorsJson: string;
       preFilterPass: boolean;
     }): Promise<{ tickSnapshotId: string }> {
-      const watch = deps.watchById(input.watchId);
+      const watch = await deps.watchById(input.watchId);
       if (!watch) throw new InvalidConfigError(`Unknown watch: ${input.watchId}`);
       const snap = await deps.tickSnapshotStore.create({
         watchId: input.watchId,
@@ -142,7 +142,7 @@ export function buildSchedulerActivities(deps: ActivityDeps) {
         },
         "runDetector starting",
       );
-      const watch = deps.watchById(input.watchId);
+      const watch = await deps.watchById(input.watchId);
       if (!watch) throw new InvalidConfigError(`Unknown watch: ${input.watchId}`);
       const snap = await deps.tickSnapshotStore.get(input.tickSnapshotId);
       if (!snap) throw new Error(`TickSnapshot ${input.tickSnapshotId} not found`);
@@ -186,7 +186,7 @@ export function buildSchedulerActivities(deps: ActivityDeps) {
       aliveSetupsJson: string;
       watchId: string;
     }) {
-      const watch = deps.watchById(input.watchId);
+      const watch = await deps.watchById(input.watchId);
       if (!watch) throw new InvalidConfigError(`Unknown watch: ${input.watchId}`);
       const newSetups = JSON.parse(input.newSetupsJson) as ProposedSetup[];
       const alive = JSON.parse(input.aliveSetupsJson);
@@ -244,8 +244,10 @@ export function buildSchedulerActivities(deps: ActivityDeps) {
       const path = process.env.WATCHES_CONFIG_PATH ?? "config/watches.yaml";
       const newConfig = await loadWatchesConfig(path);
       if (!newConfig) return { reloaded: false };
-      // Mutate the captured config object in place so the watchById closure
-      // and any other references see the new data without rebuilding deps.
+      // Note: watchById now queries the DB live, so this reload is only needed
+      // for fields on deps.config used by other parts of the scheduler
+      // (e.g. market_data, notifications). Watch-level config is always
+      // fetched fresh from the DB per activity call.
       Object.assign(deps.config, newConfig);
       deps.config.watches.length = 0;
       for (const w of newConfig.watches) deps.config.watches.push(w);

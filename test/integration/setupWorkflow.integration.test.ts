@@ -219,7 +219,7 @@ describe("SetupWorkflow integration (real Postgres + real activities)", () => {
       clock: new SystemClock(),
       config: testConfig,
       infra,
-      watchById: (id) => (id === watchId ? testWatch : undefined),
+      watchById: async (id) => (id === watchId ? testWatch : null),
       temporalClient: env.client,
       scheduleController: { pause: async () => {}, unpause: async () => {} },
       db,

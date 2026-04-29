@@ -72,7 +72,7 @@ export function buildSetupActivities(deps: ActivityDeps) {
     }> {
       const childLog = log.child({ setupId: input.setupId, watchId: input.watchId });
       childLog.info({ tickSnapshotId: input.tickSnapshotId }, "runReviewer starting");
-      const watch = deps.watchById(input.watchId);
+      const watch = await deps.watchById(input.watchId);
       if (!watch) throw new InvalidConfigError(`Unknown watch: ${input.watchId}`);
 
       let marketState: ReturnType<typeof getSessionState> | null = null;
@@ -197,7 +197,7 @@ export function buildSetupActivities(deps: ActivityDeps) {
     }> {
       const childLog = log.child({ setupId: input.setupId, watchId: input.watchId });
       childLog.info({}, "runFinalizer starting");
-      const watch = deps.watchById(input.watchId);
+      const watch = await deps.watchById(input.watchId);
       if (!watch) throw new InvalidConfigError(`Unknown watch: ${input.watchId}`);
 
       let marketState: ReturnType<typeof getSessionState> | null = null;
@@ -300,7 +300,7 @@ export function buildSetupActivities(deps: ActivityDeps) {
       chartUri?: string;
     }): Promise<{ messageId: number } | null> {
       const childLog = log.child({ watchId: input.watchId, asset: input.asset });
-      const watch = deps.watchById(input.watchId);
+      const watch = await deps.watchById(input.watchId);
       if (!watch) return null;
       if (!watch.notify_on.includes("confirmed")) {
         childLog.debug({ event: "confirmed" }, "notification skipped (not in notify_on)");
@@ -331,7 +331,7 @@ export function buildSetupActivities(deps: ActivityDeps) {
       reasoning: string;
     }): Promise<{ messageId: number } | null> {
       const childLog = log.child({ watchId: input.watchId, asset: input.asset });
-      const watch = deps.watchById(input.watchId);
+      const watch = await deps.watchById(input.watchId);
       if (!watch) return null;
       if (!watch.notify_on.includes("rejected")) {
         childLog.debug({ event: "rejected" }, "notification skipped (not in notify_on)");
@@ -352,7 +352,7 @@ export function buildSetupActivities(deps: ActivityDeps) {
       reason: string;
     }): Promise<{ messageId: number } | null> {
       const childLog = log.child({ watchId: input.watchId, asset: input.asset });
-      const watch = deps.watchById(input.watchId);
+      const watch = await deps.watchById(input.watchId);
       if (!watch) return null;
       if (!watch.notify_on.includes("invalidated_after_confirmed")) {
         childLog.debug(
@@ -378,7 +378,7 @@ export function buildSetupActivities(deps: ActivityDeps) {
       isFinal: boolean;
     }): Promise<{ messageId: number } | null> {
       const childLog = log.child({ watchId: input.watchId, asset: input.asset });
-      const watch = deps.watchById(input.watchId);
+      const watch = await deps.watchById(input.watchId);
       if (!watch) return null;
       if (!watch.notify_on.includes("tp_hit")) {
         childLog.debug({ event: "tp_hit" }, "notification skipped (not in notify_on)");
@@ -404,7 +404,7 @@ export function buildSetupActivities(deps: ActivityDeps) {
       level: number;
     }): Promise<{ messageId: number } | null> {
       const childLog = log.child({ watchId: input.watchId, asset: input.asset });
-      const watch = deps.watchById(input.watchId);
+      const watch = await deps.watchById(input.watchId);
       if (!watch) return null;
       if (!watch.notify_on.includes("sl_hit")) {
         childLog.debug({ event: "sl_hit" }, "notification skipped (not in notify_on)");
@@ -424,7 +424,7 @@ export function buildSetupActivities(deps: ActivityDeps) {
       timeframe: string;
     }): Promise<{ messageId: number } | null> {
       const childLog = log.child({ watchId: input.watchId, asset: input.asset });
-      const watch = deps.watchById(input.watchId);
+      const watch = await deps.watchById(input.watchId);
       if (!watch) return null;
       if (!watch.notify_on.includes("expired")) {
         childLog.debug({ event: "expired" }, "notification skipped (not in notify_on)");
