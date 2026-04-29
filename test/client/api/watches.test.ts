@@ -1,6 +1,6 @@
-import { startTestPostgres } from "@test-helpers/postgres";
-import { makeWatchesApi } from "@client/api/watches";
 import { describe, expect, mock, test } from "bun:test";
+import { makeWatchesApi } from "@client/api/watches";
+import { startTestPostgres } from "@test-helpers/postgres";
 
 const validBody = {
   id: "btc-1h",

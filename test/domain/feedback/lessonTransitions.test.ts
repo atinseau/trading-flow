@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { canTransition, isAutoActionAllowed } from "@domain/feedback/lessonTransitions";
 import type { LessonStatus } from "@domain/feedback/lessonAction";
+import { canTransition, isAutoActionAllowed } from "@domain/feedback/lessonTransitions";
 
 describe("canTransition", () => {
   test("PENDING → ACTIVE is allowed", () => {

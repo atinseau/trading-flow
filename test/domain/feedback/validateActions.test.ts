@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { AutoRejectReason, LessonAction } from "@domain/feedback/lessonAction";
-import { validateActions, type PoolSnapshot } from "@domain/feedback/validateActions";
+import { type PoolSnapshot, validateActions } from "@domain/feedback/validateActions";
 
 const lessonId = "11111111-1111-1111-1111-111111111111";
 const otherWatchLessonId = "22222222-2222-2222-2222-222222222222";

@@ -1,5 +1,5 @@
-import { TelegramNotifier } from "@adapters/notify/TelegramNotifier";
 import { describe, expect, test } from "bun:test";
+import { TelegramNotifier } from "@adapters/notify/TelegramNotifier";
 
 class FakeBot {
   api = {

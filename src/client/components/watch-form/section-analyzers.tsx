@@ -1,5 +1,10 @@
 import {
-  FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage,
+  FormControl,
+  FormDescription,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
 } from "@client/components/ui/form";
 import { Input } from "@client/components/ui/input";
 import { useFormContext } from "react-hook-form";
@@ -23,20 +28,32 @@ export function SectionAnalyzers() {
       {ROLES.map(({ key, label }) => (
         <div key={key} className="space-y-2 border-l-2 border-border pl-4">
           <p className="text-xs uppercase tracking-wide text-muted-foreground">{label}</p>
-          <FormField control={f.control} name={`analyzers.${key}.provider`} render={({ field }) => (
-            <FormItem>
-              <FormLabel>Provider</FormLabel>
-              <FormControl><Input {...field} /></FormControl>
-              <FormMessage />
-            </FormItem>
-          )} />
-          <FormField control={f.control} name={`analyzers.${key}.model`} render={({ field }) => (
-            <FormItem>
-              <FormLabel>Modèle</FormLabel>
-              <FormControl><Input {...field} /></FormControl>
-              <FormMessage />
-            </FormItem>
-          )} />
+          <FormField
+            control={f.control}
+            name={`analyzers.${key}.provider`}
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Provider</FormLabel>
+                <FormControl>
+                  <Input {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={f.control}
+            name={`analyzers.${key}.model`}
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Modèle</FormLabel>
+                <FormControl>
+                  <Input {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
         </div>
       ))}
     </section>

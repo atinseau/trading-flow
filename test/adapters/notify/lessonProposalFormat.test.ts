@@ -1,9 +1,9 @@
+import { describe, expect, test } from "bun:test";
 import {
   encodeCallbackData,
   formatLessonProposalMessage,
   parseCallbackData,
 } from "@adapters/notify/lessonProposalFormat";
-import { describe, expect, test } from "bun:test";
 
 describe("callback_data encoding", () => {
   test("round-trips for approve", () => {

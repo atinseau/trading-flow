@@ -1,6 +1,6 @@
 import { EventDetailModal } from "@client/components/event-detail-modal";
-import { Badge } from "@client/components/ui/badge";
 import type { SetupEvent } from "@client/components/setup/events-timeline";
+import { Badge } from "@client/components/ui/badge";
 import { api } from "@client/lib/api";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";

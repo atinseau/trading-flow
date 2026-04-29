@@ -116,8 +116,7 @@ export function buildFeedbackActivities(deps: ActivityDeps) {
       // Fall back to the projection (`setup.currentScore`) and finally 0 if
       // neither is available — events are already loaded for `confirmedEvent`
       // detection so this is free.
-      const scoreAtClose =
-        events[events.length - 1]?.scoreAfter ?? setup.currentScore ?? 0;
+      const scoreAtClose = events[events.length - 1]?.scoreAfter ?? setup.currentScore ?? 0;
 
       const scope = {
         setupId: setup.id,
@@ -312,10 +311,7 @@ export function buildFeedbackActivities(deps: ActivityDeps) {
       // hit (cached: true → actions: []), bail early with a clear log line so
       // the empty-input case is observable rather than silently doing zero work.
       if (input.proposedActions.length === 0) {
-        childLog.info(
-          { inputHash: input.inputHash },
-          "applyLessonChanges: no actions to apply",
-        );
+        childLog.info({ inputHash: input.inputHash }, "applyLessonChanges: no actions to apply");
         return {
           changesApplied: 0,
           pendingApprovalsCreated: 0,

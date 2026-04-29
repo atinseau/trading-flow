@@ -80,7 +80,9 @@ export function EventsTimeline({ events }: { events: SetupEvent[] }) {
                     </p>
                     <ul className="space-y-1">
                       {e.payload.data.observations.map((o, i) => (
-                        <li key={i} className="border-l-2 border-primary pl-2 text-[11px]">{o}</li>
+                        <li key={i} className="border-l-2 border-primary pl-2 text-[11px]">
+                          {o}
+                        </li>
                       ))}
                     </ul>
                   </div>
@@ -91,8 +93,8 @@ export function EventsTimeline({ events }: { events: SetupEvent[] }) {
                       Données fraîches
                     </p>
                     <p className="font-mono text-[11px]">
-                      Last close: {e.payload.data.freshDataSummary.lastClose} · Candles since creation:{" "}
-                      {e.payload.data.freshDataSummary.candlesSinceCreation}
+                      Last close: {e.payload.data.freshDataSummary.lastClose} · Candles since
+                      creation: {e.payload.data.freshDataSummary.candlesSinceCreation}
                     </p>
                   </div>
                 )}

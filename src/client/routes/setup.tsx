@@ -1,10 +1,10 @@
-import { Badge } from "@client/components/ui/badge";
-import { Button } from "@client/components/ui/button";
-import { ConfirmAction } from "@client/components/shared/confirm-action";
 import { EventsTimeline, type SetupEvent } from "@client/components/setup/events-timeline";
 import { KeyLevels } from "@client/components/setup/key-levels";
 import { ScoreChart } from "@client/components/setup/score-chart";
-import { TVChart, type Candle, type Level } from "@client/components/setup/tv-chart";
+import { type Candle, type Level, TVChart } from "@client/components/setup/tv-chart";
+import { ConfirmAction } from "@client/components/shared/confirm-action";
+import { Badge } from "@client/components/ui/badge";
+import { Button } from "@client/components/ui/button";
 import { useAdminAction } from "@client/hooks/useAdminAction";
 import { api } from "@client/lib/api";
 import { useQuery } from "@tanstack/react-query";
@@ -85,7 +85,11 @@ export function Component() {
         <ConfirmAction
           title={`Tuer le setup ${setup.data.id.slice(0, 8)} ?`}
           description="Le workflow Setup est terminé. L'historique reste en DB."
-          trigger={<Button size="sm" variant="destructive" className="ml-auto">Kill setup</Button>}
+          trigger={
+            <Button size="sm" variant="destructive" className="ml-auto">
+              Kill setup
+            </Button>
+          }
           onConfirm={() => killSetup.mutate({ setupId: id! })}
           destructive
         />
@@ -105,7 +109,9 @@ export function Component() {
             entry={cp?.entry}
             sl={cp?.stopLoss}
             tp={cp?.takeProfit}
-            invalidation={setup.data.invalidationLevel ? Number(setup.data.invalidationLevel) : null}
+            invalidation={
+              setup.data.invalidationLevel ? Number(setup.data.invalidationLevel) : null
+            }
           />
         </div>
 

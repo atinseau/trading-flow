@@ -1,7 +1,7 @@
-import { events, setups } from "@adapters/persistence/schema";
-import { startTestPostgres } from "@test-helpers/postgres";
-import { makeEventsApi } from "@client/api/events";
 import { describe, expect, test } from "bun:test";
+import { events, setups } from "@adapters/persistence/schema";
+import { makeEventsApi } from "@client/api/events";
+import { startTestPostgres } from "@test-helpers/postgres";
 
 describe("events API", () => {
   test("GET /api/events paginates with ?since cursor", async () => {
@@ -9,16 +9,27 @@ describe("events API", () => {
     try {
       const setupId = crypto.randomUUID();
       await tp.db.insert(setups).values({
-        id: setupId, watchId: "btc-1h", asset: "BTCUSDT", timeframe: "1h",
-        status: "REVIEWING", currentScore: "0",
-        ttlCandles: 50, ttlExpiresAt: new Date(Date.now() + 1e9), workflowId: "wf-1",
+        id: setupId,
+        watchId: "btc-1h",
+        asset: "BTCUSDT",
+        timeframe: "1h",
+        status: "REVIEWING",
+        currentScore: "0",
+        ttlCandles: 50,
+        ttlExpiresAt: new Date(Date.now() + 1e9),
+        workflowId: "wf-1",
       });
 
       for (let i = 1; i <= 5; i++) {
         await tp.db.insert(events).values({
-          setupId, sequence: i, stage: "REVIEWER", actor: "x",
-          type: "Strengthened", scoreAfter: String(20 + i * 5),
-          statusBefore: "REVIEWING", statusAfter: "REVIEWING",
+          setupId,
+          sequence: i,
+          stage: "REVIEWER",
+          actor: "x",
+          type: "Strengthened",
+          scoreAfter: String(20 + i * 5),
+          statusBefore: "REVIEWING",
+          statusAfter: "REVIEWING",
           payload: {} as never,
         });
         // small delay so occurredAt differs
@@ -36,6 +47,8 @@ describe("events API", () => {
       );
       const more = (await next.json()) as unknown[];
       expect(more.length).toBe(2);
-    } finally { await tp.cleanup(); }
+    } finally {
+      await tp.cleanup();
+    }
   });
 });

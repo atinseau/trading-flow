@@ -1,5 +1,5 @@
 import { events, setups } from "@adapters/persistence/schema";
-import { ValidationError, safeHandler } from "@client/api/safeHandler";
+import { safeHandler, ValidationError } from "@client/api/safeHandler";
 import { and, eq, gte, lte, sql } from "drizzle-orm";
 import type { drizzle } from "drizzle-orm/node-postgres";
 
@@ -25,10 +25,14 @@ export function makeCostsApi(deps: { db: DB }) {
 
       const keyExpr = (() => {
         switch (groupBy) {
-          case "watch": return setups.watchId;
-          case "provider": return events.provider;
-          case "model": return events.model;
-          case "day": return sql<string>`to_char(${events.occurredAt}, 'YYYY-MM-DD')`;
+          case "watch":
+            return setups.watchId;
+          case "provider":
+            return events.provider;
+          case "model":
+            return events.model;
+          case "day":
+            return sql<string>`to_char(${events.occurredAt}, 'YYYY-MM-DD')`;
         }
       })();
 

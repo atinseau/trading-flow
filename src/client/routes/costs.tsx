@@ -1,5 +1,8 @@
 import {
-  ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig,
+  type ChartConfig,
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
 } from "@client/components/ui/chart";
 import { Tabs, TabsList, TabsTrigger } from "@client/components/ui/tabs";
 import { api } from "@client/lib/api";

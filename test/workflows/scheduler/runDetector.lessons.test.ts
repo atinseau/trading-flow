@@ -1,14 +1,14 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import { clearPromptCache } from "@adapters/prompts/loadPrompt";
-import type { LLMProvider } from "@domain/ports/LLMProvider";
 import type { TickSnapshot } from "@domain/entities/TickSnapshot";
+import type { LLMProvider } from "@domain/ports/LLMProvider";
 import type { WatchConfig, WatchesConfig } from "@domain/schemas/WatchesConfig";
-import type { ActivityDeps } from "@workflows/activityDependencies";
-import { buildSchedulerActivities } from "@workflows/scheduler/activities";
 import { FakeLLMProvider } from "@test-fakes/FakeLLMProvider";
 import { InMemoryArtifactStore } from "@test-fakes/InMemoryArtifactStore";
 import { InMemoryLessonStore } from "@test-fakes/InMemoryLessonStore";
 import { InMemoryTickSnapshotStore } from "@test-fakes/InMemoryTickSnapshotStore";
+import type { ActivityDeps } from "@workflows/activityDependencies";
+import { buildSchedulerActivities } from "@workflows/scheduler/activities";
 
 const watchId = "btc-1h";
 

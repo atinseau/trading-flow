@@ -1,8 +1,8 @@
-import { startTestPostgres } from "@test-helpers/postgres";
-import { watchConfigs, watchConfigRevisions } from "@adapters/persistence/schema";
-import { seedWatchesFromYaml } from "@cli/seedWatchesFromYaml.lib";
-import { eq } from "drizzle-orm";
 import { describe, expect, test } from "bun:test";
+import { watchConfigRevisions, watchConfigs } from "@adapters/persistence/schema";
+import { seedWatchesFromYaml } from "@cli/seedWatchesFromYaml.lib";
+import { startTestPostgres } from "@test-helpers/postgres";
+import { eq } from "drizzle-orm";
 
 const yaml = `
 version: 1

@@ -19,10 +19,7 @@ export async function tearDownWatch(input: { client: Client; watchId: string }):
     throw err;
   };
 
-  await client.schedule
-    .getHandle(`tick-${watchId}`)
-    .delete()
-    .catch(ignoreNotFound);
+  await client.schedule.getHandle(`tick-${watchId}`).delete().catch(ignoreNotFound);
 
   await client.workflow
     .getHandle(schedulerWorkflowId(watchId))

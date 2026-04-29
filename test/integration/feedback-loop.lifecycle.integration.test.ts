@@ -468,10 +468,7 @@ describe("feedback loop lifecycle scenarios", () => {
     await runFeedbackPipeline(deps, setupId, watchId);
 
     // Pinned lesson unchanged.
-    const [unchanged] = await tp.db
-      .select()
-      .from(lessons)
-      .where(eq(lessons.id, pinnedLessonId));
+    const [unchanged] = await tp.db.select().from(lessons).where(eq(lessons.id, pinnedLessonId));
     expect(unchanged?.status).toBe("ACTIVE");
     expect(unchanged?.pinned).toBe(true);
 

@@ -281,9 +281,7 @@ export function buildSetupActivities(deps: ActivityDeps) {
       const text = `${arrow} ${input.asset} ${input.timeframe}\nEntry: ${input.entry}\nSL: ${input.stopLoss}${tpStr}${reasoning}`;
 
       const images =
-        watch.include_chart_image && input.chartUri
-          ? [{ uri: input.chartUri }]
-          : undefined;
+        watch.include_chart_image && input.chartUri ? [{ uri: input.chartUri }] : undefined;
 
       const result = await deps.notifier.send({
         chatId: deps.infra.notifications.telegram.chat_id,

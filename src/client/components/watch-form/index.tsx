@@ -7,9 +7,9 @@ import { SectionBudget } from "@client/components/watch-form/section-budget";
 import { SectionLifecycle } from "@client/components/watch-form/section-lifecycle";
 import { SectionNotifications } from "@client/components/watch-form/section-notifications";
 import { SectionSchedule } from "@client/components/watch-form/section-schedule";
-import { WatchSchema, type WatchConfig } from "@domain/schemas/WatchesConfig";
+import { type WatchConfig, WatchSchema } from "@domain/schemas/WatchesConfig";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm, type SubmitHandler } from "react-hook-form";
+import { type SubmitHandler, useForm } from "react-hook-form";
 import type { z } from "zod";
 
 type WatchFormInput = z.input<typeof WatchSchema>;

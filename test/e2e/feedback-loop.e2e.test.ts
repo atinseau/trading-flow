@@ -29,9 +29,7 @@ describe.skipIf(!runE2E)("feedback loop e2e (docker-compose stack)", () => {
     for (const name of required) {
       const svc = services.find((s) => s.Name === name);
       if (!svc) {
-        throw new Error(
-          `E2E precondition: ${name} not running. Run 'docker compose up -d' first.`,
-        );
+        throw new Error(`E2E precondition: ${name} not running. Run 'docker compose up -d' first.`);
       }
       if (!/running|healthy/.test(svc.State)) {
         throw new Error(

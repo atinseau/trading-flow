@@ -1,10 +1,10 @@
-import { tickSnapshots } from "@adapters/persistence/schema";
-import { startTestPostgres } from "@test-helpers/postgres";
-import { makeTicksApi } from "@client/api/ticks";
 import { describe, expect, test } from "bun:test";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { tickSnapshots } from "@adapters/persistence/schema";
+import { makeTicksApi } from "@client/api/ticks";
+import { startTestPostgres } from "@test-helpers/postgres";
 
 describe("ticks API", () => {
   test("GET /api/ticks?watchId=X returns ordered ticks", async () => {
@@ -12,16 +12,24 @@ describe("ticks API", () => {
     try {
       await tp.db.insert(tickSnapshots).values([
         {
-          watchId: "btc-1h", tickAt: new Date(Date.now() - 60_000),
-          asset: "BTCUSDT", timeframe: "1h",
-          ohlcvUri: "file:///x", chartUri: "file:///x",
-          indicators: {} as never, preFilterPass: true,
+          watchId: "btc-1h",
+          tickAt: new Date(Date.now() - 60_000),
+          asset: "BTCUSDT",
+          timeframe: "1h",
+          ohlcvUri: "file:///x",
+          chartUri: "file:///x",
+          indicators: {} as never,
+          preFilterPass: true,
         },
         {
-          watchId: "btc-1h", tickAt: new Date(),
-          asset: "BTCUSDT", timeframe: "1h",
-          ohlcvUri: "file:///y", chartUri: "file:///y",
-          indicators: {} as never, preFilterPass: false,
+          watchId: "btc-1h",
+          tickAt: new Date(),
+          asset: "BTCUSDT",
+          timeframe: "1h",
+          ohlcvUri: "file:///y",
+          chartUri: "file:///y",
+          indicators: {} as never,
+          preFilterPass: false,
         },
       ]);
       const api = makeTicksApi({ db: tp.db });
@@ -29,7 +37,9 @@ describe("ticks API", () => {
       const items = (await res.json()) as { preFilterPass: boolean }[];
       expect(items.length).toBe(2);
       expect(items[0]!.preFilterPass).toBe(false); // most recent first
-    } finally { await tp.cleanup(); }
+    } finally {
+      await tp.cleanup();
+    }
   });
 
   test("GET /api/ticks without watchId returns 400", async () => {
@@ -38,7 +48,9 @@ describe("ticks API", () => {
       const api = makeTicksApi({ db: tp.db });
       const res = await api.list(new Request("http://x/api/ticks"));
       expect(res.status).toBe(400);
-    } finally { await tp.cleanup(); }
+    } finally {
+      await tp.cleanup();
+    }
   });
 
   test("GET /api/ticks/:id/chart.png streams the chart PNG", async () => {
@@ -49,17 +61,26 @@ describe("ticks API", () => {
       const png = join(dir, "chart.png");
       writeFileSync(png, Uint8Array.from([0x89, 0x50, 0x4e, 0x47]));
 
-      const [tick] = await tp.db.insert(tickSnapshots).values({
-        watchId: "btc-1h", tickAt: new Date(),
-        asset: "BTCUSDT", timeframe: "1h",
-        ohlcvUri: `file://${png}`, chartUri: `file://${png}`,
-        indicators: {} as never, preFilterPass: true,
-      }).returning();
+      const [tick] = await tp.db
+        .insert(tickSnapshots)
+        .values({
+          watchId: "btc-1h",
+          tickAt: new Date(),
+          asset: "BTCUSDT",
+          timeframe: "1h",
+          ohlcvUri: `file://${png}`,
+          chartUri: `file://${png}`,
+          indicators: {} as never,
+          preFilterPass: true,
+        })
+        .returning();
 
       const api = makeTicksApi({ db: tp.db });
       const res = await api.chartPng(new Request("http://x"), { id: tick!.id });
       expect(res.status).toBe(200);
       expect(res.headers.get("content-type")).toBe("image/png");
-    } finally { await tp.cleanup(); }
+    } finally {
+      await tp.cleanup();
+    }
   });
 });

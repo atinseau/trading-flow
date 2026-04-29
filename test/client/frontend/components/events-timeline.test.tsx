@@ -1,10 +1,11 @@
 import { ensureHappyDom } from "../setup";
+
 ensureHappyDom();
 
+import { describe, expect, test } from "bun:test";
+import { EventsTimeline } from "@client/components/setup/events-timeline";
 import { render } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { EventsTimeline } from "@client/components/setup/events-timeline";
-import { describe, expect, test } from "bun:test";
 
 const events = [
   {

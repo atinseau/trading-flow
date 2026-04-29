@@ -1,5 +1,5 @@
-import { computeFeedbackInputHash } from "@domain/services/feedbackInputHash";
 import { describe, expect, test } from "bun:test";
+import { computeFeedbackInputHash } from "@domain/services/feedbackInputHash";
 
 describe("computeFeedbackInputHash", () => {
   test("is deterministic for same inputs", () => {

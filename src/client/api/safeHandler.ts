@@ -40,10 +40,7 @@ export function safeHandler(handler: Handler): Handler {
           { status: 400, headers: { "x-request-id": requestId } },
         );
       }
-      log.error(
-        { err: (err as Error).message, stack: (err as Error).stack },
-        "unhandled error",
-      );
+      log.error({ err: (err as Error).message, stack: (err as Error).stack }, "unhandled error");
       return Response.json(
         { error: (err as Error).message ?? "internal error" },
         { status: 500, headers: { "x-request-id": requestId } },

@@ -1,10 +1,10 @@
-import { isAutoActionAllowed } from "@domain/feedback/lessonTransitions";
 import type {
   AutoRejectReason,
   LessonAction,
   LessonCategory,
   LessonStatus,
 } from "@domain/feedback/lessonAction";
+import { isAutoActionAllowed } from "@domain/feedback/lessonTransitions";
 
 export type PoolLesson = {
   id: string;

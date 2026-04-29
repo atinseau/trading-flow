@@ -1,4 +1,8 @@
 #!/usr/bin/env bun
+import {
+  type KnownProviderId,
+  PROVIDER_CANONICAL_ORDER,
+} from "@adapters/feedback-context/FeedbackContextProviderRegistry";
 /**
  * Re-run the feedback pipeline (gather → analyze → optionally apply) for a
  * single setup. Dry-run by default; pass `--apply` to persist results.
@@ -10,10 +14,6 @@
 import { deriveCloseOutcome, shouldTriggerFeedback } from "@domain/feedback/closeOutcome";
 import type { SetupStatus } from "@domain/state-machine/setupTransitions";
 import { buildFeedbackActivities } from "@workflows/feedback/activities";
-import {
-  PROVIDER_CANONICAL_ORDER,
-  type KnownProviderId,
-} from "@adapters/feedback-context/FeedbackContextProviderRegistry";
 import { wireFeedbackActivitiesForCli } from "./_feedback-adapters";
 
 async function main() {

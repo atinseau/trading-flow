@@ -1,5 +1,5 @@
-import { Button } from "@client/components/ui/button";
 import { ConfirmAction } from "@client/components/shared/confirm-action";
+import { Button } from "@client/components/ui/button";
 import { WatchForm } from "@client/components/watch-form";
 import { api } from "@client/lib/api";
 import type { WatchConfig } from "@domain/schemas/WatchesConfig";
@@ -8,7 +8,9 @@ import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
 
 type WatchDetail = {
-  id: string; enabled: boolean; version: number;
+  id: string;
+  enabled: boolean;
+  version: number;
   config: WatchConfig;
   state: { lastTickAt: string | null } | null;
 };

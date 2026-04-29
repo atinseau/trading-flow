@@ -1,12 +1,12 @@
+import { describe, expect, test } from "bun:test";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { watchConfigs } from "@adapters/persistence/schema";
 import { loadWatchesConfig } from "@config/loadWatchesConfig";
 import { loadWatchesFromDb } from "@config/loadWatchesFromDb";
 import type { WatchConfig } from "@domain/schemas/WatchesConfig";
 import { startTestPostgres } from "@test-helpers/postgres";
-import { describe, expect, test } from "bun:test";
-import { mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 
 const FULL_WATCH = {
   id: "btc-1h",

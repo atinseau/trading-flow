@@ -1,8 +1,8 @@
 import type { LessonCategory, LessonStatus } from "@domain/feedback/lessonAction";
 import type {
   CreateLessonInput,
-  ListActiveQuery,
   LessonStore,
+  ListActiveQuery,
   RefineLessonInput,
   StoredLesson,
   UpdateLessonStatusInput,

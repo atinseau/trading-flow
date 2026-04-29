@@ -1,6 +1,6 @@
-import { Broadcaster } from "@client/lib/broadcaster";
-import { makeStreamHandler } from "@client/api/stream";
 import { describe, expect, test } from "bun:test";
+import { makeStreamHandler } from "@client/api/stream";
+import { Broadcaster } from "@client/lib/broadcaster";
 
 const decode = (chunk: Uint8Array) => new TextDecoder().decode(chunk);
 

@@ -1,4 +1,4 @@
-import { watchConfigs, watchConfigRevisions } from "@adapters/persistence/schema";
+import { watchConfigRevisions, watchConfigs } from "@adapters/persistence/schema";
 import { WatchSchema } from "@domain/schemas/WatchesConfig";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";

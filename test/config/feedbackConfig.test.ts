@@ -41,10 +41,7 @@ describe("FeedbackConfigSchema", () => {
     const parsed = FeedbackConfigSchema.parse({
       context_providers_disabled: ["chart-post-mortem", "post-mortem-ohlcv"],
     });
-    expect(parsed.context_providers_disabled).toEqual([
-      "chart-post-mortem",
-      "post-mortem-ohlcv",
-    ]);
+    expect(parsed.context_providers_disabled).toEqual(["chart-post-mortem", "post-mortem-ohlcv"]);
   });
 
   test("analyzer is optional", () => {

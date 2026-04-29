@@ -1,5 +1,5 @@
-import { buildLessonApprovalUseCase } from "@domain/feedback/lessonApprovalUseCase";
 import { describe, expect, test } from "bun:test";
+import { buildLessonApprovalUseCase } from "@domain/feedback/lessonApprovalUseCase";
 import { InMemoryLessonEventStore } from "../../fakes/InMemoryLessonEventStore";
 import { InMemoryLessonStore } from "../../fakes/InMemoryLessonStore";
 

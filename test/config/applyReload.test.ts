@@ -1,6 +1,6 @@
 import { describe, expect, mock, test } from "bun:test";
 import { applyReload } from "@config/applyReload";
-import { WatchSchema, type WatchConfig } from "@domain/schemas/WatchesConfig";
+import { type WatchConfig, WatchSchema } from "@domain/schemas/WatchesConfig";
 
 const baseWatch = (overrides: Partial<WatchConfig> = {}): WatchConfig =>
   WatchSchema.parse({

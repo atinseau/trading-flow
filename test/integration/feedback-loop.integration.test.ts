@@ -271,203 +271,193 @@ async function seedSetupConfirmedThenSLHit(setupId: string, deps: ActivityDeps) 
 }
 
 describe("feedback loop integration (full pipeline, real Postgres, fake LLM)", () => {
-  test(
-    "Confirmed → SLHit triggers feedback loop, creates PENDING lesson, approve via callback → ACTIVE",
-    async () => {
-      const setupId = crypto.randomUUID();
-      const notifyCapture: NotifyLessonPendingInput[] = [];
+  test("Confirmed → SLHit triggers feedback loop, creates PENDING lesson, approve via callback → ACTIVE", async () => {
+    const setupId = crypto.randomUUID();
+    const notifyCapture: NotifyLessonPendingInput[] = [];
 
-      const feedbackOutput: FeedbackOutput = {
-        summary:
-          "The trade hit SL after confirmation. The reviewer over-weighted bullish observations from the immediate context without checking macro structure.",
-        actions: [
-          {
-            type: "CREATE",
-            category: "reviewing",
-            title: "Confirm structural confluence before strengthening on momentum alone",
-            body: "When momentum-style observations push a setup near the finalizer threshold, require an additional structural confluence check (range high reclaim, divergence, or higher-timeframe trend) before issuing STRENGTHEN of large magnitude.",
-            rationale:
-              "Setups that close as SL hits often had high score but weak structural backing.",
-          },
-        ],
-      };
-
-      const deps = buildDeps({ feedbackOutput, notifyCapture });
-
-      await seedSetupConfirmedThenSLHit(setupId, deps);
-
-      // Run feedback activities directly (bypass Temporal — child workflow is
-      // already covered in test/workflows/feedback/feedbackLoopWorkflow.test.ts).
-      const fb = buildFeedbackActivities(deps);
-
-      const gather = await fb.gatherFeedbackContext({
-        setupId,
-        watchId,
-        closeOutcome: { reason: "sl_hit_direct", everConfirmed: true },
-      });
-      expect(gather.contextRef).toMatch(/^file:/);
-      expect(gather.chunkHashes.length).toBeGreaterThan(0);
-
-      const analysis = await fb.runFeedbackAnalysis({
-        setupId,
-        watchId,
-        contextRef: gather.contextRef,
-        chunkHashes: gather.chunkHashes,
-      });
-      expect(analysis.cached).toBe(false);
-      expect(analysis.actions.length).toBe(1);
-
-      const apply = await fb.applyLessonChanges({
-        setupId,
-        watchId,
-        closeReason: "sl_hit_direct",
-        proposedActions: analysis.actions,
-        feedbackPromptVersion: analysis.promptVersion,
-        provider: analysis.provider,
-        model: analysis.model,
-        inputHash: analysis.inputHash,
-        costUsd: analysis.costUsd,
-        latencyMs: analysis.latencyMs,
-      });
-      expect(apply.changesApplied).toBe(1);
-      expect(apply.pendingApprovalsCreated).toBe(1);
-
-      // Lesson PENDING.
-      const lessonRows = await tp.db
-        .select()
-        .from(lessons)
-        .where(eq(lessons.watchId, watchId));
-      expect(lessonRows.length).toBe(1);
-      const created = lessonRows[0]!;
-      expect(created.status).toBe("PENDING");
-      expect(created.category).toBe("reviewing");
-
-      // CREATE lesson_event with sequence=1 + NotificationSent event captured.
-      const evts = await tp.db
-        .select()
-        .from(lessonEvents)
-        .where(eq(lessonEvents.watchId, watchId))
-        .orderBy(lessonEvents.sequence);
-      expect(evts.length).toBeGreaterThanOrEqual(2);
-      expect(evts[0]?.type).toBe("CREATE");
-      expect(evts[0]?.sequence).toBe(1);
-      expect(evts.some((e) => e.type === "NotificationSent")).toBe(true);
-      expect(notifyCapture.length).toBe(1);
-      expect(notifyCapture[0]?.kind).toBe("CREATE");
-
-      // Approve via fake callback → ACTIVE.
-      const approval = buildLessonApprovalUseCase({
-        lessonStore: deps.lessonStore,
-        lessonEventStore: deps.lessonEventStore,
-        editLessonMessage: async () => {},
-        chatId: "test",
-        notificationMsgIdByLessonId: async () => null,
-        clock: deps.clock,
-      });
-      const r = await approval.handle({
-        action: "approve",
-        lessonId: created.id,
-        via: "telegram",
-      });
-      expect(r.updated).toBe(true);
-      expect(r.finalStatus).toBe("ACTIVE");
-
-      const [activated] = await tp.db
-        .select()
-        .from(lessons)
-        .where(eq(lessons.id, created.id));
-      expect(activated?.status).toBe("ACTIVE");
-
-      const evtsAfter = await tp.db
-        .select()
-        .from(lessonEvents)
-        .where(eq(lessonEvents.lessonId, created.id))
-        .orderBy(lessonEvents.sequence);
-      expect(evtsAfter.some((e) => e.type === "HumanApproved")).toBe(true);
-
-      // Run runReviewer → assert prompt receives the active lesson title.
-      // We seed a minimal tickSnapshot and capture the LLM input via a
-      // dedicated reviewer FakeLLMProvider in deps.llmProviders.
-      let capturedReviewerPrompt = "";
-      const reviewerLLM = new FakeLLMProvider({
-        name: "fake",
-        completeImpl: async (input) => {
-          capturedReviewerPrompt = input.userPrompt;
-          return {
-            content: "{}",
-            parsed: { type: "NEUTRAL", observations: [] },
-            costUsd: 0,
-            latencyMs: 1,
-            promptTokens: 50,
-            completionTokens: 25,
-          };
+    const feedbackOutput: FeedbackOutput = {
+      summary:
+        "The trade hit SL after confirmation. The reviewer over-weighted bullish observations from the immediate context without checking macro structure.",
+      actions: [
+        {
+          type: "CREATE",
+          category: "reviewing",
+          title: "Confirm structural confluence before strengthening on momentum alone",
+          body: "When momentum-style observations push a setup near the finalizer threshold, require an additional structural confluence check (range high reclaim, divergence, or higher-timeframe trend) before issuing STRENGTHEN of large magnitude.",
+          rationale:
+            "Setups that close as SL hits often had high score but weak structural backing.",
         },
-      });
-      deps.llmProviders.set("fake", reviewerLLM);
+      ],
+    };
 
-      const reviewSnap = await deps.tickSnapshotStore.create({
-        watchId,
-        tickAt: new Date(),
-        asset: "BTCUSDT",
-        timeframe: "1h",
-        ohlcvUri: (
-          await deps.artifactStore.put({
-            kind: "ohlcv_snapshot",
-            content: Buffer.from("[]"),
-            mimeType: "application/json",
-          })
-        ).uri,
-        chartUri: (
-          await deps.artifactStore.put({
-            kind: "chart_image",
-            content: Buffer.from("png"),
-            mimeType: "image/png",
-          })
-        ).uri,
-        indicators: {
-          rsi: 50,
-          ema20: 100,
-          ema50: 100,
-          ema200: 100,
-          atr: 1,
-          atrMa20: 1,
-          volumeMa20: 100,
-          lastVolume: 100,
-          recentHigh: 110,
-          recentLow: 90,
-        },
-        preFilterPass: true,
-      });
+    const deps = buildDeps({ feedbackOutput, notifyCapture });
 
-      // Create a fresh setup for the reviewer (the previous one is closed).
-      const reviewerSetupId = crypto.randomUUID();
-      await deps.setupRepo.create({
-        id: reviewerSetupId,
-        watchId,
-        asset: "BTCUSDT",
-        timeframe: "1h",
-        status: "REVIEWING",
-        currentScore: 25,
-        patternHint: "double_bottom",
-        invalidationLevel: 90,
-        direction: "LONG",
-        ttlCandles: 50,
-        ttlExpiresAt: new Date(Date.now() + 365 * 24 * 3600_000),
-        workflowId: `setup-${reviewerSetupId}`,
-      });
+    await seedSetupConfirmedThenSLHit(setupId, deps);
 
-      const setupActivities = buildSetupActivities(deps);
-      await setupActivities.runReviewer({
-        setupId: reviewerSetupId,
-        tickSnapshotId: reviewSnap.id,
-        watchId,
-      });
+    // Run feedback activities directly (bypass Temporal — child workflow is
+    // already covered in test/workflows/feedback/feedbackLoopWorkflow.test.ts).
+    const fb = buildFeedbackActivities(deps);
 
-      // The active lesson title should appear in the reviewer's prompt.
-      expect(capturedReviewerPrompt).toContain(
-        "Confirm structural confluence before strengthening on momentum alone",
-      );
-    },
-    120_000,
-  );
+    const gather = await fb.gatherFeedbackContext({
+      setupId,
+      watchId,
+      closeOutcome: { reason: "sl_hit_direct", everConfirmed: true },
+    });
+    expect(gather.contextRef).toMatch(/^file:/);
+    expect(gather.chunkHashes.length).toBeGreaterThan(0);
+
+    const analysis = await fb.runFeedbackAnalysis({
+      setupId,
+      watchId,
+      contextRef: gather.contextRef,
+      chunkHashes: gather.chunkHashes,
+    });
+    expect(analysis.cached).toBe(false);
+    expect(analysis.actions.length).toBe(1);
+
+    const apply = await fb.applyLessonChanges({
+      setupId,
+      watchId,
+      closeReason: "sl_hit_direct",
+      proposedActions: analysis.actions,
+      feedbackPromptVersion: analysis.promptVersion,
+      provider: analysis.provider,
+      model: analysis.model,
+      inputHash: analysis.inputHash,
+      costUsd: analysis.costUsd,
+      latencyMs: analysis.latencyMs,
+    });
+    expect(apply.changesApplied).toBe(1);
+    expect(apply.pendingApprovalsCreated).toBe(1);
+
+    // Lesson PENDING.
+    const lessonRows = await tp.db.select().from(lessons).where(eq(lessons.watchId, watchId));
+    expect(lessonRows.length).toBe(1);
+    const created = lessonRows[0]!;
+    expect(created.status).toBe("PENDING");
+    expect(created.category).toBe("reviewing");
+
+    // CREATE lesson_event with sequence=1 + NotificationSent event captured.
+    const evts = await tp.db
+      .select()
+      .from(lessonEvents)
+      .where(eq(lessonEvents.watchId, watchId))
+      .orderBy(lessonEvents.sequence);
+    expect(evts.length).toBeGreaterThanOrEqual(2);
+    expect(evts[0]?.type).toBe("CREATE");
+    expect(evts[0]?.sequence).toBe(1);
+    expect(evts.some((e) => e.type === "NotificationSent")).toBe(true);
+    expect(notifyCapture.length).toBe(1);
+    expect(notifyCapture[0]?.kind).toBe("CREATE");
+
+    // Approve via fake callback → ACTIVE.
+    const approval = buildLessonApprovalUseCase({
+      lessonStore: deps.lessonStore,
+      lessonEventStore: deps.lessonEventStore,
+      editLessonMessage: async () => {},
+      chatId: "test",
+      notificationMsgIdByLessonId: async () => null,
+      clock: deps.clock,
+    });
+    const r = await approval.handle({
+      action: "approve",
+      lessonId: created.id,
+      via: "telegram",
+    });
+    expect(r.updated).toBe(true);
+    expect(r.finalStatus).toBe("ACTIVE");
+
+    const [activated] = await tp.db.select().from(lessons).where(eq(lessons.id, created.id));
+    expect(activated?.status).toBe("ACTIVE");
+
+    const evtsAfter = await tp.db
+      .select()
+      .from(lessonEvents)
+      .where(eq(lessonEvents.lessonId, created.id))
+      .orderBy(lessonEvents.sequence);
+    expect(evtsAfter.some((e) => e.type === "HumanApproved")).toBe(true);
+
+    // Run runReviewer → assert prompt receives the active lesson title.
+    // We seed a minimal tickSnapshot and capture the LLM input via a
+    // dedicated reviewer FakeLLMProvider in deps.llmProviders.
+    let capturedReviewerPrompt = "";
+    const reviewerLLM = new FakeLLMProvider({
+      name: "fake",
+      completeImpl: async (input) => {
+        capturedReviewerPrompt = input.userPrompt;
+        return {
+          content: "{}",
+          parsed: { type: "NEUTRAL", observations: [] },
+          costUsd: 0,
+          latencyMs: 1,
+          promptTokens: 50,
+          completionTokens: 25,
+        };
+      },
+    });
+    deps.llmProviders.set("fake", reviewerLLM);
+
+    const reviewSnap = await deps.tickSnapshotStore.create({
+      watchId,
+      tickAt: new Date(),
+      asset: "BTCUSDT",
+      timeframe: "1h",
+      ohlcvUri: (
+        await deps.artifactStore.put({
+          kind: "ohlcv_snapshot",
+          content: Buffer.from("[]"),
+          mimeType: "application/json",
+        })
+      ).uri,
+      chartUri: (
+        await deps.artifactStore.put({
+          kind: "chart_image",
+          content: Buffer.from("png"),
+          mimeType: "image/png",
+        })
+      ).uri,
+      indicators: {
+        rsi: 50,
+        ema20: 100,
+        ema50: 100,
+        ema200: 100,
+        atr: 1,
+        atrMa20: 1,
+        volumeMa20: 100,
+        lastVolume: 100,
+        recentHigh: 110,
+        recentLow: 90,
+      },
+      preFilterPass: true,
+    });
+
+    // Create a fresh setup for the reviewer (the previous one is closed).
+    const reviewerSetupId = crypto.randomUUID();
+    await deps.setupRepo.create({
+      id: reviewerSetupId,
+      watchId,
+      asset: "BTCUSDT",
+      timeframe: "1h",
+      status: "REVIEWING",
+      currentScore: 25,
+      patternHint: "double_bottom",
+      invalidationLevel: 90,
+      direction: "LONG",
+      ttlCandles: 50,
+      ttlExpiresAt: new Date(Date.now() + 365 * 24 * 3600_000),
+      workflowId: `setup-${reviewerSetupId}`,
+    });
+
+    const setupActivities = buildSetupActivities(deps);
+    await setupActivities.runReviewer({
+      setupId: reviewerSetupId,
+      tickSnapshotId: reviewSnap.id,
+      watchId,
+    });
+
+    // The active lesson title should appear in the reviewer's prompt.
+    expect(capturedReviewerPrompt).toContain(
+      "Confirm structural confluence before strengthening on momentum alone",
+    );
+  }, 120_000);
 });

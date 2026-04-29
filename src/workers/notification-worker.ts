@@ -1,5 +1,5 @@
-import { TelegramNotifier } from "@adapters/notify/TelegramNotifier";
 import { parseCallbackData } from "@adapters/notify/lessonProposalFormat";
+import { TelegramNotifier } from "@adapters/notify/TelegramNotifier";
 import { loadInfraConfig } from "@config/InfraConfig";
 import { loadWatchesConfig } from "@config/loadWatchesConfig";
 import { buildLessonApprovalUseCase } from "@domain/feedback/lessonApprovalUseCase";

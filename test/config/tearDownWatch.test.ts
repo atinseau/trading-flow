@@ -20,12 +20,16 @@ describe("tearDownWatch", () => {
     const fakeClient = {
       workflow: {
         getHandle: () => ({
-          terminate: mock(async () => { throw new Error("Workflow not found"); }),
+          terminate: mock(async () => {
+            throw new Error("Workflow not found");
+          }),
         }),
       },
       schedule: {
         getHandle: () => ({
-          delete: mock(async () => { throw new Error("schedule not found"); }),
+          delete: mock(async () => {
+            throw new Error("schedule not found");
+          }),
         }),
       },
     } as unknown as Parameters<typeof tearDownWatch>[0]["client"];
@@ -38,7 +42,9 @@ describe("tearDownWatch", () => {
       workflow: { getHandle: () => ({ terminate: mock(async () => undefined) }) },
       schedule: {
         getHandle: () => ({
-          delete: mock(async () => { throw new Error("postgres connection refused"); }),
+          delete: mock(async () => {
+            throw new Error("postgres connection refused");
+          }),
         }),
       },
     } as unknown as Parameters<typeof tearDownWatch>[0]["client"];
