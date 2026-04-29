@@ -1,12 +1,14 @@
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { ConfirmAction } from "../components/shared/confirm-action";
-import { EventsTimeline, type SetupEvent } from "../components/setup/events-timeline";
+import type { SetupEvent } from "../components/setup/events-timeline";
 import { KeyLevels } from "../components/setup/key-levels";
-import { ScoreChart } from "../components/setup/score-chart";
+import { NarrativeTimeline } from "../components/setup/narrative-timeline";
 import { TVChart, type Candle, type Level } from "../components/setup/tv-chart";
 import { useAdminAction } from "../hooks/useAdminAction";
 import { api } from "../lib/api";
+import { liveBadgeClass, outcomeMeta } from "../lib/outcome";
+import { cn } from "../lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 
@@ -21,7 +23,22 @@ type Setup = {
   direction: "LONG" | "SHORT" | null;
   invalidationLevel: string | null;
   ttlExpiresAt: string;
+  outcome: string | null;
+  createdAt: string;
+  closedAt: string | null;
 };
+
+const ACTIVE = new Set(["CANDIDATE", "REVIEWING", "FINALIZING", "TRACKING"]);
+
+function fmtDuration(fromIso: string, toIso: string | null): string {
+  const ms = (toIso ? new Date(toIso).getTime() : Date.now()) - new Date(fromIso).getTime();
+  const minutes = Math.max(0, Math.floor(ms / 60_000));
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 48) return `${hours}h`;
+  const days = Math.floor(hours / 24);
+  return `${days}j`;
+}
 
 export function Component() {
   const { id } = useParams<{ id: string }>();
@@ -39,23 +56,28 @@ export function Component() {
     queryKey: ["setups", id, "ohlcv"],
     queryFn: () => api<Candle[]>(`/api/setups/${id}/ohlcv`),
     staleTime: 60_000,
+    retry: false,
   });
 
   if (setup.isLoading) return <div>Chargement…</div>;
   if (setup.error || !setup.data) return <div>Erreur</div>;
 
-  const confirmedPayload = events.data
-    ? events.data.findLast?.((e) => e.type === "Confirmed")?.payload?.data
-    : undefined;
-  const cp = confirmedPayload as
+  const s = setup.data;
+  const live = ACTIVE.has(s.status);
+  const meta = outcomeMeta(s.outcome);
+  const headerBadgeClass = meta?.badge ?? (live ? liveBadgeClass() : "");
+  const headerBadgeLabel = meta?.label ?? (live ? "Live" : s.status);
+
+  const confirmedEvent = events.data?.find((e) => e.type === "Confirmed");
+  const cp = confirmedEvent?.payload?.data as
     | { entry?: number; stopLoss?: number; takeProfit?: number[] }
     | undefined;
 
   const levels: Level[] = [
     cp?.entry ? { price: cp.entry, label: "Entry", color: "#60a5fa" } : null,
     cp?.stopLoss ? { price: cp.stopLoss, label: "SL", color: "#f87171" } : null,
-    setup.data.invalidationLevel
-      ? { price: Number(setup.data.invalidationLevel), label: "Invalidation", color: "#9ca3af" }
+    s.invalidationLevel
+      ? { price: Number(s.invalidationLevel), label: "Invalidation", color: "#9ca3af" }
       : null,
     ...(cp?.takeProfit ?? []).map((p, i) => ({
       price: p,
@@ -66,71 +88,80 @@ export function Component() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-baseline gap-3">
-        <Link to={`/watches/${setup.data.watchId}`} className="text-sm text-muted-foreground">
-          ← {setup.data.watchId}
+      {/* Header */}
+      <div className="space-y-3">
+        <Link
+          to={`/watches/${s.watchId}`}
+          className="text-xs text-muted-foreground hover:text-foreground"
+        >
+          ← {s.watchId}
         </Link>
-        <h1 className="text-xl font-bold font-mono">
-          {setup.data.asset} {setup.data.timeframe}
-        </h1>
-        {setup.data.patternHint && (
-          <span className="text-muted-foreground">{setup.data.patternHint}</span>
-        )}
-        {setup.data.direction && (
-          <Badge variant={setup.data.direction === "LONG" ? "default" : "destructive"}>
-            {setup.data.direction}
+        <div className="flex items-center gap-3 flex-wrap">
+          <h1 className="text-xl font-bold font-mono">
+            {s.asset} {s.timeframe}
+          </h1>
+          {s.direction && (
+            <Badge variant={s.direction === "LONG" ? "default" : "destructive"}>
+              {s.direction}
+            </Badge>
+          )}
+          {s.patternHint && <span className="text-sm text-muted-foreground">{s.patternHint}</span>}
+          <Badge variant="outline" className={cn("text-xs uppercase", headerBadgeClass)}>
+            {headerBadgeLabel}
           </Badge>
-        )}
-        <Badge variant="secondary">{setup.data.status}</Badge>
-        <ConfirmAction
-          title={`Tuer le setup ${setup.data.id.slice(0, 8)} ?`}
-          description="Le workflow Setup est terminé. L'historique reste en DB."
-          trigger={<Button size="sm" variant="destructive" className="ml-auto">Kill setup</Button>}
-          onConfirm={() => killSetup.mutate({ setupId: id! })}
-          destructive
-        />
+          {live && (
+            <ConfirmAction
+              title={`Tuer le setup ${s.id.slice(0, 8)} ?`}
+              description="Le workflow Setup est terminé. L'historique reste en DB."
+              trigger={
+                <Button size="sm" variant="destructive" className="ml-auto">
+                  Kill setup
+                </Button>
+              }
+              onConfirm={() => killSetup.mutate({ setupId: id! })}
+              destructive
+            />
+          )}
+        </div>
+        <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground font-mono">
+          <span>score actuel {Number(s.currentScore).toFixed(0)} / 100</span>
+          <span>·</span>
+          <span>
+            durée {fmtDuration(s.createdAt, s.closedAt)}
+            {s.closedAt && " (fermé)"}
+          </span>
+          <span>·</span>
+          <span>{events.data?.length ?? 0} events</span>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[3fr_2fr] gap-6">
+        {/* Left: chart + key levels */}
         <div className="space-y-3">
           <h3 className="text-xs uppercase tracking-wide text-muted-foreground">Chart</h3>
           {ohlcv.data ? (
             <TVChart candles={ohlcv.data} levels={levels} />
           ) : (
-            <div className="h-[360px] bg-card border border-border rounded-md grid place-items-center text-muted-foreground">
-              {ohlcv.isLoading ? "Chargement OHLCV…" : "Pas de données OHLCV"}
+            <div className="h-[360px] bg-card border border-border rounded-md grid place-items-center text-muted-foreground text-sm">
+              {ohlcv.isLoading ? "Chargement OHLCV…" : "Pas de données OHLCV pour ce setup"}
             </div>
           )}
           <KeyLevels
             entry={cp?.entry}
             sl={cp?.stopLoss}
             tp={cp?.takeProfit}
-            invalidation={setup.data.invalidationLevel ? Number(setup.data.invalidationLevel) : null}
+            invalidation={s.invalidationLevel ? Number(s.invalidationLevel) : null}
           />
         </div>
 
-        <div className="space-y-4">
-          <div>
-            <h3 className="text-xs uppercase tracking-wide text-muted-foreground mb-2">
-              Évolution du score
-            </h3>
-            {events.data && events.data.length > 0 ? (
-              <ScoreChart
-                points={events.data.map((e) => ({
-                  occurredAt: e.occurredAt,
-                  scoreAfter: Number(e.scoreAfter),
-                }))}
-              />
-            ) : (
-              <div className="text-xs text-muted-foreground">Pas encore d'événements.</div>
-            )}
-          </div>
-          <div>
-            <h3 className="text-xs uppercase tracking-wide text-muted-foreground mb-2">
-              Événements ({events.data?.length ?? 0})
-            </h3>
-            <EventsTimeline events={events.data ?? []} />
-          </div>
+        {/* Right: narrative timeline */}
+        <div>
+          <h3 className="text-xs uppercase tracking-wide text-muted-foreground mb-3">Histoire</h3>
+          {events.data && events.data.length > 0 ? (
+            <NarrativeTimeline events={events.data} />
+          ) : (
+            <div className="text-xs text-muted-foreground">Pas encore d'événements.</div>
+          )}
         </div>
       </div>
     </div>

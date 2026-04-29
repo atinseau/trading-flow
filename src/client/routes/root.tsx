@@ -1,16 +1,13 @@
-import { LiveEventsSidebar } from "../components/live-events-sidebar";
 import { useSSEStream } from "../hooks/useSSEStream";
-import { cn } from "../lib/utils";
-import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
+import { Link, NavLink, Outlet } from "react-router-dom";
 
-// Routes that already render their own full live-events feed — hide the
-// sidebar there to avoid duplication.
-const SIDEBAR_HIDDEN_PATHS = new Set(["/live-events"]);
-
+/**
+ * App shell. Single-column layout. The previous live-events sidebar was
+ * removed (it duplicated /live-events and /setups/:id timelines, and was
+ * noise everywhere else). Per-page narrative views replace it where useful.
+ */
 export function RootLayout() {
   useSSEStream();
-  const { pathname } = useLocation();
-  const sidebarVisible = !SIDEBAR_HIDDEN_PATHS.has(pathname);
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -23,19 +20,16 @@ export function RootLayout() {
             <NavLink to="/" end className={({ isActive }) => (isActive ? "text-foreground" : "")}>
               Dashboard
             </NavLink>
-            <NavLink
-              to="/watches"
-              className={({ isActive }) => (isActive ? "text-foreground" : "")}
-            >
+            <NavLink to="/watches" className={({ isActive }) => (isActive ? "text-foreground" : "")}>
               Watches
+            </NavLink>
+            <NavLink to="/setups" className={({ isActive }) => (isActive ? "text-foreground" : "")}>
+              Setups
             </NavLink>
             <NavLink to="/search" className={({ isActive }) => (isActive ? "text-foreground" : "")}>
               Rechercher
             </NavLink>
-            <NavLink
-              to="/live-events"
-              className={({ isActive }) => (isActive ? "text-foreground" : "")}
-            >
+            <NavLink to="/live-events" className={({ isActive }) => (isActive ? "text-foreground" : "")}>
               Live events
             </NavLink>
             <NavLink to="/costs" className={({ isActive }) => (isActive ? "text-foreground" : "")}>
@@ -44,16 +38,9 @@ export function RootLayout() {
           </nav>
         </div>
       </header>
-      <div className={cn("grid", sidebarVisible ? "grid-cols-[1fr_288px]" : "grid-cols-1")}>
-        <main className="p-6">
-          <Outlet />
-        </main>
-        {sidebarVisible && (
-          <aside className="border-l border-border bg-card/50 p-4 sticky top-12 h-[calc(100vh-3rem)] overflow-auto">
-            <LiveEventsSidebar />
-          </aside>
-        )}
-      </div>
+      <main className="p-6 max-w-7xl mx-auto w-full">
+        <Outlet />
+      </main>
     </div>
   );
 }
