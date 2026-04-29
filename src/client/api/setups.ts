@@ -62,10 +62,15 @@ export function makeSetupsApi(deps: { db: DB }) {
       const watchFilter = watchId ? eq(setups.watchId, watchId) : undefined;
 
       // Aggregate counts in a single query: total, live, wins, losses, other.
+      // The `live` filter uses TERMINAL_STATUSES inverted via sql.raw — same
+      // single source of truth as the list endpoint.
+      const terminalSqlList = sql.raw(
+        `(${[...TERMINAL_STATUSES].map((s) => `'${s}'`).join(",")})`,
+      );
       const [agg] = await db
         .select({
           total: sql<number>`count(*)::int`,
-          live: sql<number>`count(*) filter (where ${setups.status} not in ('CLOSED','INVALIDATED','EXPIRED','REJECTED'))::int`,
+          live: sql<number>`count(*) filter (where ${setups.status} not in ${terminalSqlList})::int`,
           wins: sql<number>`count(*) filter (where ${setups.outcome} in ('WIN','PARTIAL_WIN'))::int`,
           losses: sql<number>`count(*) filter (where ${setups.outcome} = 'LOSS')::int`,
           other: sql<number>`count(*) filter (where ${setups.outcome} in ('TIME_OUT','REJECTED','INVALIDATED_PRE_TRADE','INVALIDATED_POST_TRADE','EXPIRED_NO_FILL'))::int`,
