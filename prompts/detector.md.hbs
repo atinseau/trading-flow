@@ -1,11 +1,28 @@
 {{!--
-  version: detector_v3
-  description: Free-form pattern detection with corroboration. v3 = full English
-               translation for optimal LLM performance.
+  version: detector_v4
+  description: Free-form pattern detection with corroboration. v4 = adds the
+               activeLessons head block (feedback loop integration). v3 was full
+               English translation for optimal LLM performance.
 --}}
 
 # Free-form pattern detection on a chart
 
+{{#if activeLessons.length}}
+## Active guidelines (learned from previous trades)
+
+These principles emerged from retrospective analysis of past failed trades on
+this watch. Apply them whenever they apply to the current decision. They take
+precedence over generic best practice when there is a conflict.
+
+{{#each activeLessons}}
+### {{this.title}}
+
+{{this.body}}
+
+---
+{{/each}}
+
+{{/if}}
 ## Tick context
 
 - **Asset / Timeframe**: {{asset}} / {{timeframe}}
