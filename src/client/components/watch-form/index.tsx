@@ -30,10 +30,12 @@ const SENSIBLE_DEFAULTS = {
     detector: { provider: "claude_max", model: "claude-sonnet-4-6", max_tokens: 2000 },
     reviewer: { provider: "claude_max", model: "claude-haiku-4-5", max_tokens: 2000 },
     finalizer: { provider: "claude_max", model: "claude-opus-4-7", max_tokens: 2000 },
+    feedback: { provider: "claude_max", model: "claude-opus-4-7" },
   },
   notify_on: ["confirmed", "tp_hit", "sl_hit"],
   include_chart_image: true,
   include_reasoning: true,
+  feedback: {},
 };
 
 export type WatchFormProps = {
