@@ -19,6 +19,7 @@ import { FakeLLMProvider } from "@test-fakes/FakeLLMProvider";
 import { FakeMarketDataFetcher } from "@test-fakes/FakeMarketDataFetcher";
 import { FakeNotifier } from "@test-fakes/FakeNotifier";
 import { FakePriceFeed } from "@test-fakes/FakePriceFeed";
+import { InMemoryLessonStore } from "@test-fakes/InMemoryLessonStore";
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 import type { ActivityDeps } from "@workflows/activityDependencies";
 import { buildSetupActivities } from "@workflows/setup/activities";
@@ -232,7 +233,7 @@ describe("SetupWorkflow integration (real Postgres + real activities)", () => {
       watchById: (id) => (id === watchId ? testWatch : undefined),
       temporalClient: env.client,
       db,
-      lessonStore: null as unknown as ActivityDeps["lessonStore"],
+      lessonStore: new InMemoryLessonStore(),
       lessonEventStore: null as unknown as ActivityDeps["lessonEventStore"],
       feedbackContextRegistry: null as unknown as ActivityDeps["feedbackContextRegistry"],
       notifyLessonPending: async () => {},
