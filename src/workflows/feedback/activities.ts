@@ -41,6 +41,16 @@ export type RunFeedbackAnalysisResult = {
   inputHash: string;
   costUsd: number;
   latencyMs: number;
+  /**
+   * True if the analysis was satisfied from a prior persisted run with the same
+   * inputHash. When true:
+   *   - `actions` is `[]` (the prior run already persisted its events)
+   *   - `costUsd` is 0 (no new LLM call was made)
+   *
+   * The workflow MUST short-circuit and skip applyLessonChanges when this is
+   * true; otherwise observability is misleading (logs would show 0 changes
+   * applied, hiding that the prior run handled the work). See Phase 8 workflow.
+   */
   cached: boolean;
 };
 
@@ -192,11 +202,14 @@ export function buildFeedbackActivities(deps: ActivityDeps) {
         inputHash,
       });
       if (prior.length > 0) {
-        childLog.info({ inputHash }, "runFeedbackAnalysis: replay from existing events");
+        childLog.info(
+          { inputHash, priorEvents: prior.length },
+          "runFeedbackAnalysis: cache hit, returning prior result without LLM call",
+        );
         const first = prior[0];
         return {
           summary: "(replayed from existing events)",
-          actions: priorEventsToActions(prior),
+          actions: cachedRunReplayActions(prior),
           provider: first?.provider ?? "",
           model: first?.model ?? "",
           promptVersion: feedbackPrompt.version,
@@ -285,6 +298,21 @@ export function buildFeedbackActivities(deps: ActivityDeps) {
       const childLog = log.child({ setupId: input.setupId, watchId: input.watchId });
       const watch = deps.watchById(input.watchId);
       if (!watch) throw new Error(`Unknown watch: ${input.watchId}`);
+
+      // Defense-in-depth: if the workflow forgets to short-circuit on a cache
+      // hit (cached: true → actions: []), bail early with a clear log line so
+      // the empty-input case is observable rather than silently doing zero work.
+      if (input.proposedActions.length === 0) {
+        childLog.info(
+          { inputHash: input.inputHash },
+          "applyLessonChanges: no actions to apply",
+        );
+        return {
+          changesApplied: 0,
+          pendingApprovalsCreated: 0,
+          costUsd: input.costUsd,
+        };
+      }
 
       const cap = watch.feedback.max_active_lessons_per_category;
       const allActiveByCat = {
@@ -531,7 +559,11 @@ export function buildFeedbackActivities(deps: ActivityDeps) {
  * lesson_events used on cache-hit replay. v1 returns an empty list — the
  * workflow only needs to know there was a hit; it doesn't re-apply actions
  * because the side effects already exist in the store.
+ *
+ * @deprecated v1 placeholder — always returns `[]`. The workflow uses the
+ *   `cached: true` flag to short-circuit instead of replaying actions. Future
+ *   phases may reconstruct actions from persisted payloads if needed.
  */
-function priorEventsToActions(_events: { type: string; payload: unknown }[]): LessonAction[] {
+function cachedRunReplayActions(_events: { type: string; payload: unknown }[]): LessonAction[] {
   return [];
 }
