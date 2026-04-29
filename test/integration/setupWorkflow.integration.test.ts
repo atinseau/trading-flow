@@ -212,6 +212,7 @@ describe("SetupWorkflow integration (real Postgres + real activities)", () => {
       priceFeeds: new Map([["fake", new FakePriceFeed()]]),
       notifier: fakeNotifier,
       setupRepo,
+      watchRepo: { findAll: async () => [], findById: async () => null, findEnabled: async () => [], findAllWithValidation: async () => [] },
       eventStore,
       artifactStore,
       tickSnapshotStore,
@@ -220,6 +221,7 @@ describe("SetupWorkflow integration (real Postgres + real activities)", () => {
       infra,
       watchById: (id) => (id === watchId ? testWatch : undefined),
       temporalClient: env.client,
+      scheduleController: { pause: async () => {}, unpause: async () => {} },
       db,
     };
 

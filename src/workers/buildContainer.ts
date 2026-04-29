@@ -11,8 +11,10 @@ import { PostgresEventStore } from "@adapters/persistence/PostgresEventStore";
 import { PostgresLLMUsageStore } from "@adapters/persistence/PostgresLLMUsageStore";
 import { PostgresSetupRepository } from "@adapters/persistence/PostgresSetupRepository";
 import { PostgresTickSnapshotStore } from "@adapters/persistence/PostgresTickSnapshotStore";
+import { PostgresWatchRepository } from "@adapters/persistence/PostgresWatchRepository";
 import { BinanceWsPriceFeed } from "@adapters/price-feed/BinanceWsPriceFeed";
 import { YahooPollingPriceFeed } from "@adapters/price-feed/YahooPollingPriceFeed";
+import { TemporalScheduleController } from "@adapters/temporal/TemporalScheduleController";
 import { SystemClock } from "@adapters/time/SystemClock";
 import type { InfraConfig } from "@config/InfraConfig";
 import { parseTimeframeToMs } from "@domain/ports/Clock";
@@ -20,6 +22,7 @@ import type { LLMProvider } from "@domain/ports/LLMProvider";
 import type { MarketDataFetcher } from "@domain/ports/MarketDataFetcher";
 import type { Notifier } from "@domain/ports/Notifier";
 import type { PriceFeed } from "@domain/ports/PriceFeed";
+import type { ScheduleController } from "@domain/ports/ScheduleController";
 import type { WatchesConfig } from "@domain/schemas/WatchesConfig";
 import { Client, Connection } from "@temporalio/client";
 import type { ActivityDeps } from "@workflows/activityDependencies";
@@ -70,6 +73,9 @@ export async function buildContainer(
   const llmUsageStore = new PostgresLLMUsageStore(db);
   const clock = new SystemClock();
 
+  // Persistence — always available in both standby and active.
+  const watchRepo = new PostgresWatchRepository(db);
+
   // Standby — no watches, no domain wiring.
   if (watches === null) {
     const deps: ActivityDeps = {
@@ -80,6 +86,7 @@ export async function buildContainer(
       priceFeeds: new Map<string, PriceFeed>(),
       notifier: null as unknown as Notifier,
       setupRepo,
+      watchRepo,
       eventStore,
       artifactStore,
       tickSnapshotStore,
@@ -88,6 +95,7 @@ export async function buildContainer(
       infra,
       watchById: () => undefined,
       temporalClient: null as unknown as Client,
+      scheduleController: null as unknown as ScheduleController,
       db,
     };
     return {
@@ -158,6 +166,11 @@ export async function buildContainer(
     });
   }
 
+  const scheduleController: ScheduleController =
+    temporalClient !== null
+      ? new TemporalScheduleController(temporalClient)
+      : (null as unknown as ScheduleController);
+
   const deps: ActivityDeps = {
     marketDataFetchers,
     chartRenderer: chartRenderer ?? (null as unknown as PlaywrightChartRenderer),
@@ -166,6 +179,7 @@ export async function buildContainer(
     priceFeeds,
     notifier: effectiveNotifier,
     setupRepo,
+    watchRepo,
     eventStore,
     artifactStore,
     tickSnapshotStore,
@@ -174,6 +188,7 @@ export async function buildContainer(
     infra,
     watchById,
     temporalClient: temporalClient ?? (null as unknown as Client),
+    scheduleController,
     db,
   };
 

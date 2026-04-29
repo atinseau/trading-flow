@@ -123,6 +123,7 @@ async function buildDeps(
     priceFeeds: new Map([["binance", new FakePriceFeed()]]),
     notifier: new FakeNotifier(),
     setupRepo,
+    watchRepo: { findAll: async () => [], findById: async () => null, findEnabled: async () => [], findAllWithValidation: async () => [] },
     eventStore,
     artifactStore,
     tickSnapshotStore,
@@ -138,6 +139,7 @@ async function buildDeps(
     },
     watchById: (id) => (id === watchId ? watch : undefined),
     temporalClient: env.client,
+    scheduleController: { pause: async () => {}, unpause: async () => {} },
     db,
   };
 }
