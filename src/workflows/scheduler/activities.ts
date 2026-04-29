@@ -1,7 +1,7 @@
 import { resolveAndCall } from "@adapters/llm/resolveAndCall";
 import { watchStates } from "@adapters/persistence/schema";
 import { loadPrompt } from "@adapters/prompts/loadPrompt";
-import { loadWatchesConfig } from "@config/loadWatchesConfig";
+import { loadWatchesFromDb } from "@config/loadWatchesFromDb";
 import { InvalidConfigError } from "@domain/errors";
 import { CandleSchema } from "@domain/schemas/Candle";
 import { getLogger } from "@observability/logger";
@@ -240,15 +240,12 @@ export function buildSchedulerActivities(deps: ActivityDeps) {
       return { artifactUri: stored.uri, sha256: stored.sha256 };
     },
 
-    async reloadConfigFromDisk(_input: Record<string, never>): Promise<{ reloaded: boolean }> {
-      const path = process.env.WATCHES_CONFIG_PATH ?? "config/watches.yaml";
-      const newConfig = await loadWatchesConfig(path);
-      if (!newConfig) return { reloaded: false };
+    async reloadConfigFromDb(_input: Record<string, never>): Promise<{ reloaded: boolean }> {
+      const watches = await loadWatchesFromDb(deps.pgPool);
       // Mutate the captured config object in place so the watchById closure
       // and any other references see the new data without rebuilding deps.
-      Object.assign(deps.config, newConfig);
       deps.config.watches.length = 0;
-      for (const w of newConfig.watches) deps.config.watches.push(w);
+      for (const w of watches) deps.config.watches.push(w);
       return { reloaded: true };
     },
   };

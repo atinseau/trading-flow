@@ -10,7 +10,7 @@ import { tickSnapshots } from "@adapters/persistence/schema";
 import { SystemClock } from "@adapters/time/SystemClock";
 import { parseTimeframeToMs } from "@domain/ports/Clock";
 import type { LLMProvider } from "@domain/ports/LLMProvider";
-import type { WatchConfig, WatchesConfig } from "@domain/schemas/WatchesConfig";
+import type { WatchConfig } from "@domain/schemas/WatchesConfig";
 import { TestWorkflowEnvironment } from "@temporalio/testing";
 import { Worker } from "@temporalio/worker";
 import { FakeChartRenderer } from "@test-fakes/FakeChartRenderer";
@@ -71,15 +71,8 @@ function makeWatch(id: string): WatchConfig {
   };
 }
 
-function makeConfig(watch: WatchConfig): WatchesConfig {
-  return {
-    version: 1,
-    market_data: ["fake"],
-    llm_providers: {},
-    artifacts: { type: "filesystem", retention: { keep_days: 30, keep_for_active_setups: true } },
-    notifications: { telegram: false },
-    watches: [watch],
-  };
+function makeConfig(watch: WatchConfig): { watches: WatchConfig[] } {
+  return { watches: [watch] };
 }
 
 beforeAll(async () => {
@@ -139,6 +132,7 @@ async function buildDeps(
     watchById: (id) => (id === watchId ? watch : undefined),
     temporalClient: env.client,
     db,
+    pgPool: pool,
   };
 }
 

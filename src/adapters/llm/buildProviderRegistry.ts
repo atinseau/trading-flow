@@ -1,39 +1,65 @@
 import type { InfraConfig } from "@config/InfraConfig";
 import type { LLMProvider } from "@domain/ports/LLMProvider";
 import type { LLMUsageStore } from "@domain/ports/LLMUsageStore";
-import type { WatchesConfig } from "@domain/schemas/WatchesConfig";
 import { validateProviderGraph } from "@domain/services/validateProviderGraph";
 import { ClaudeAgentSdkProvider } from "./ClaudeAgentSdkProvider";
 import { OpenRouterProvider } from "./OpenRouterProvider";
 
+type ProviderDefault =
+  | {
+      type: "claude-agent-sdk";
+      daily_call_budget?: number;
+      fallback: string | null;
+    }
+  | {
+      type: "openrouter";
+      base_url?: string;
+      monthly_budget_usd?: number;
+      fallback: string | null;
+    };
+
+const PROVIDER_DEFAULTS: Record<string, ProviderDefault> = {
+  claude_max: {
+    type: "claude-agent-sdk",
+    daily_call_budget: 800,
+    fallback: "openrouter",
+  },
+  openrouter: {
+    type: "openrouter",
+    monthly_budget_usd: 50,
+    fallback: null,
+  },
+};
+
 export function buildProviderRegistry(
-  watches: WatchesConfig,
   infra: InfraConfig,
   usageStore?: LLMUsageStore,
 ): Map<string, LLMProvider> {
   const registry = new Map<string, LLMProvider>();
 
-  for (const [name, providerCfg] of Object.entries(watches.llm_providers)) {
+  // Skip openrouter when no API key is configured — single-provider envs are valid.
+  // Other providers' fallback chains are then severed below to avoid dangling refs.
+  const openrouterAvailable = infra.llm.openrouter_api_key !== null;
+
+  for (const [name, providerCfg] of Object.entries(PROVIDER_DEFAULTS)) {
     if (providerCfg.type === "claude-agent-sdk") {
+      const fallback =
+        providerCfg.fallback === "openrouter" && !openrouterAvailable ? null : providerCfg.fallback;
       registry.set(
         name,
         new ClaudeAgentSdkProvider(name, {
           workspaceDir: infra.claude.workspace_dir,
           dailyCallBudget: providerCfg.daily_call_budget,
-          fallback: providerCfg.fallback,
+          fallback,
           usageStore,
         }),
       );
     } else if (providerCfg.type === "openrouter") {
-      if (infra.llm.openrouter_api_key === null) {
-        throw new Error(
-          `OPENROUTER_API_KEY is required because llm_providers.${name}.type = openrouter`,
-        );
-      }
+      if (!openrouterAvailable) continue;
       registry.set(
         name,
         new OpenRouterProvider(name, {
-          apiKey: infra.llm.openrouter_api_key,
+          apiKey: infra.llm.openrouter_api_key as string,
           baseUrl: providerCfg.base_url,
           monthlyBudgetUsd: providerCfg.monthly_budget_usd,
           fallback: providerCfg.fallback,
@@ -43,7 +69,7 @@ export function buildProviderRegistry(
     }
   }
 
-  // runtime safety: re-validate the graph (config validates too, but defense in depth)
+  // Defense in depth — even if PROVIDER_DEFAULTS is edited badly later
   const graphForValidation: Record<string, { fallback: string | null }> = {};
   for (const [name, p] of registry) graphForValidation[name] = { fallback: p.fallback };
   validateProviderGraph(graphForValidation);
