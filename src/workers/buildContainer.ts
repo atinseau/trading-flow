@@ -20,7 +20,7 @@ import type { LLMProvider } from "@domain/ports/LLMProvider";
 import type { MarketDataFetcher } from "@domain/ports/MarketDataFetcher";
 import type { Notifier } from "@domain/ports/Notifier";
 import type { PriceFeed } from "@domain/ports/PriceFeed";
-import type { WatchesConfig } from "@domain/schemas/WatchesConfig";
+import type { WatchConfig } from "@domain/schemas/WatchesConfig";
 import { Client, Connection } from "@temporalio/client";
 import type { ActivityDeps } from "@workflows/activityDependencies";
 import { drizzle } from "drizzle-orm/node-postgres";
@@ -38,21 +38,14 @@ export type Container = {
 /**
  * Build a role-specific dependency container for a worker.
  *
- * `infra` is always required (env-driven creds + addresses).
- * `watches` is null in standby mode (no `config/watches.yaml`); the container is
- * minimally wired (Postgres pool only) and no Temporal Worker should be registered.
- *
- * Role matrix when `watches !== null`:
+ * Role matrix:
  * - `scheduler`     → all adapters (chart renderer, indicators, market data, price feeds, LLM, Temporal client)
  * - `analysis`      → no chart renderer, no indicators, no market data, no price feeds; needs LLM + notifier
  * - `notification`  → no chart, no indicators, no market data, no price feeds, no LLM, no Temporal client; only notifier + persistence
- *
- * The `null as unknown as T` cast pattern is preserved for fields the worker's
- * registered activities never access at runtime (see Task 11 in the plan).
  */
 export async function buildContainer(
   infra: InfraConfig,
-  watches: WatchesConfig | null,
+  watches: WatchConfig[],
   role: WorkerRole,
 ): Promise<Container> {
   const pool = new pg.Pool({
@@ -62,7 +55,6 @@ export async function buildContainer(
   });
   const db = drizzle(pool);
 
-  // Persistence — needed in standby and active.
   const setupRepo = new PostgresSetupRepository(db, parseTimeframeToMs);
   const eventStore = new PostgresEventStore(db);
   const tickSnapshotStore = new PostgresTickSnapshotStore(db);
@@ -70,46 +62,12 @@ export async function buildContainer(
   const llmUsageStore = new PostgresLLMUsageStore(db);
   const clock = new SystemClock();
 
-  // Standby — no watches, no domain wiring.
-  if (watches === null) {
-    const deps: ActivityDeps = {
-      marketDataFetchers: new Map<string, MarketDataFetcher>(),
-      chartRenderer: null as unknown as PlaywrightChartRenderer,
-      indicatorCalculator: null as unknown as PureJsIndicatorCalculator,
-      llmProviders: new Map<string, LLMProvider>(),
-      priceFeeds: new Map<string, PriceFeed>(),
-      notifier: null as unknown as Notifier,
-      setupRepo,
-      eventStore,
-      artifactStore,
-      tickSnapshotStore,
-      clock,
-      config: null as unknown as WatchesConfig,
-      infra,
-      watchById: () => undefined,
-      temporalClient: null as unknown as Client,
-      db,
-      pgPool: pool,
-    };
-    return {
-      deps,
-      pgPool: pool,
-      chartRenderer: null,
-      async shutdown() {
-        await pool.end();
-      },
-    };
-  }
+  const usedSources = new Set(watches.filter((w) => w.enabled).map((w) => w.asset.source));
 
-  // Active mode — full wiring.
   const marketDataFetchers = new Map<string, MarketDataFetcher>();
   if (role === "scheduler") {
-    if (watches.market_data.includes("binance")) {
-      marketDataFetchers.set("binance", new BinanceFetcher());
-    }
-    if (watches.market_data.includes("yahoo")) {
-      marketDataFetchers.set("yahoo", new YahooFinanceFetcher());
-    }
+    if (usedSources.has("binance")) marketDataFetchers.set("binance", new BinanceFetcher());
+    if (usedSources.has("yahoo")) marketDataFetchers.set("yahoo", new YahooFinanceFetcher());
   }
 
   let chartRenderer: PlaywrightChartRenderer | null = null;
@@ -125,21 +83,14 @@ export async function buildContainer(
       ? new Map<string, LLMProvider>()
       : buildProviderRegistry(infra, llmUsageStore);
 
-  // Notifier — console always; telegram appended via MultiNotifier when opted in.
-  // chatId is supplied per-call by activities from `deps.infra.notifications.telegram.chat_id`.
   const consoleNotifier = new ConsoleNotifier();
-  let notifier: Notifier;
-  if (watches.notifications.telegram) {
-    notifier = new MultiNotifier([
-      consoleNotifier,
-      new TelegramNotifier({ token: infra.notifications.telegram.bot_token }),
-    ]);
-  } else {
-    notifier = consoleNotifier;
-  }
-  // Notifier is only registered on workers that actually emit notifications.
-  const effectiveNotifier =
-    role === "notification" || role === "analysis" ? notifier : (null as unknown as Notifier);
+  const notifier: Notifier =
+    role === "notification" || role === "analysis"
+      ? new MultiNotifier([
+          consoleNotifier,
+          new TelegramNotifier({ token: infra.notifications.telegram.bot_token }),
+        ])
+      : (null as unknown as Notifier);
 
   const priceFeeds = new Map<string, PriceFeed>();
   if (role === "scheduler") {
@@ -147,7 +98,8 @@ export async function buildContainer(
     priceFeeds.set("yahoo_polling", new YahooPollingPriceFeed());
   }
 
-  const watchById = (id: string) => watches.watches.find((w) => w.id === id);
+  const watchesArr = [...watches];
+  const watchById = (id: string) => watchesArr.find((w) => w.id === id);
 
   let temporalConnection: Connection | null = null;
   let temporalClient: Client | null = null;
@@ -165,13 +117,13 @@ export async function buildContainer(
     indicatorCalculator: indicatorCalculator ?? (null as unknown as PureJsIndicatorCalculator),
     llmProviders,
     priceFeeds,
-    notifier: effectiveNotifier,
+    notifier,
     setupRepo,
     eventStore,
     artifactStore,
     tickSnapshotStore,
     clock,
-    config: watches,
+    config: { watches: watchesArr },
     infra,
     watchById,
     temporalClient: temporalClient ?? (null as unknown as Client),
