@@ -128,11 +128,7 @@ export const watchConfigs = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
   },
-  (t) => [
-    index("idx_watch_configs_enabled")
-      .on(t.enabled)
-      .where(sql`${t.deletedAt} IS NULL`),
-  ],
+  (t) => [index("idx_watch_configs_enabled").on(t.enabled).where(sql`${t.deletedAt} IS NULL`)],
 );
 
 export const watchConfigRevisions = pgTable(
@@ -148,4 +144,59 @@ export const watchConfigRevisions = pgTable(
     appliedBy: text("applied_by").notNull().default("ui"),
   },
   (t) => [index("idx_watch_revisions_watch").on(t.watchId, t.appliedAt.desc())],
+);
+
+export const lessons = pgTable(
+  "lessons",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    watchId: text("watch_id").notNull(),
+    category: text("category").notNull(),
+    status: text("status").notNull(),
+    title: text("title").notNull(),
+    body: text("body").notNull(),
+    rationale: text("rationale").notNull(),
+    pinned: boolean("pinned").notNull().default(false),
+    timesReinforced: integer("times_reinforced").notNull().default(0),
+    timesUsedInPrompts: integer("times_used_in_prompts").notNull().default(0),
+    sourceFeedbackEventId: uuid("source_feedback_event_id"),
+    supersedesLessonId: uuid("supersedes_lesson_id"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    activatedAt: timestamp("activated_at", { withTimezone: true }),
+    deprecatedAt: timestamp("deprecated_at", { withTimezone: true }),
+    promptVersion: text("prompt_version").notNull(),
+  },
+  (t) => [
+    index("idx_lessons_watch_cat_status").on(t.watchId, t.category, t.status),
+    index("idx_lessons_supersedes").on(t.supersedesLessonId),
+  ],
+);
+
+export const lessonEvents = pgTable(
+  "lesson_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    watchId: text("watch_id").notNull(),
+    lessonId: uuid("lesson_id"),
+    sequence: integer("sequence").notNull(),
+    type: text("type").notNull(),
+    actor: text("actor").notNull(),
+    triggerSetupId: uuid("trigger_setup_id"),
+    triggerCloseReason: text("trigger_close_reason"),
+    payload: jsonb("payload").$type<unknown>().notNull(),
+    occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull().defaultNow(),
+    provider: text("provider"),
+    model: text("model"),
+    promptVersion: text("prompt_version"),
+    inputHash: text("input_hash"),
+    costUsd: numeric("cost_usd", { precision: 10, scale: 6 }),
+    latencyMs: integer("latency_ms"),
+  },
+  (t) => [
+    index("idx_lesson_events_watch_seq").on(t.watchId, t.sequence),
+    uniqueIndex("ux_lesson_events_watch_seq").on(t.watchId, t.sequence),
+    index("idx_lesson_events_lesson_time").on(t.lessonId, t.occurredAt),
+    index("idx_lesson_events_setup").on(t.triggerSetupId),
+    index("idx_lesson_events_input_hash").on(t.inputHash),
+  ],
 );
