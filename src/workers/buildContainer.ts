@@ -1,5 +1,9 @@
 import { PlaywrightChartRenderer } from "@adapters/chart/PlaywrightChartRenderer";
-import type { FeedbackContextProviderRegistry } from "@adapters/feedback-context/FeedbackContextProviderRegistry";
+import { ChartPostMortemContextProvider } from "@adapters/feedback-context/ChartPostMortemContextProvider";
+import { FeedbackContextProviderRegistry } from "@adapters/feedback-context/FeedbackContextProviderRegistry";
+import { PostMortemOhlcvContextProvider } from "@adapters/feedback-context/PostMortemOhlcvContextProvider";
+import { SetupEventsContextProvider } from "@adapters/feedback-context/SetupEventsContextProvider";
+import { TickSnapshotsContextProvider } from "@adapters/feedback-context/TickSnapshotsContextProvider";
 import { PureJsIndicatorCalculator } from "@adapters/indicators/PureJsIndicatorCalculator";
 import { buildProviderRegistry } from "@adapters/llm/buildProviderRegistry";
 import { BinanceFetcher } from "@adapters/market-data/BinanceFetcher";
@@ -47,7 +51,8 @@ export type Container = {
  *
  * Role matrix when `watches !== null`:
  * - `scheduler`     → all adapters (chart renderer, indicators, market data, price feeds, LLM, Temporal client)
- * - `analysis`      → no chart renderer, no indicators, no market data, no price feeds; needs LLM + notifier
+ * - `analysis`      → LLM + notifier + chart renderer + market data + indicators (the
+ *                     last three feed the feedback context providers); no price feeds, no Temporal client
  * - `notification`  → no chart, no indicators, no market data, no price feeds, no LLM, no Temporal client; only notifier + persistence
  *
  * The `null as unknown as T` cast pattern is preserved for fields the worker's
@@ -141,8 +146,11 @@ export async function buildContainer(
   }
 
   // Active mode — full wiring.
+  // Market data fetchers: scheduler runs the live tracking loop; analysis runs
+  // feedback context providers (post-mortem OHLCV + chart). Notification needs
+  // none.
   const marketDataFetchers = new Map<string, MarketDataFetcher>();
-  if (role === "scheduler") {
+  if (role === "scheduler" || role === "analysis") {
     if (watches.market_data.includes("binance")) {
       marketDataFetchers.set("binance", new BinanceFetcher());
     }
@@ -151,13 +159,20 @@ export async function buildContainer(
     }
   }
 
+  // Chart renderer: scheduler builds setup charts; analysis renders post-mortem
+  // charts for the feedback loop. Smaller pool on analysis (one chart per
+  // feedback run, not per scheduler tick).
   let chartRenderer: PlaywrightChartRenderer | null = null;
   if (role === "scheduler") {
     chartRenderer = new PlaywrightChartRenderer({ poolSize: 2 });
     await chartRenderer.warmUp();
+  } else if (role === "analysis") {
+    chartRenderer = new PlaywrightChartRenderer({ poolSize: 1 });
+    await chartRenderer.warmUp();
   }
 
-  const indicatorCalculator = role === "scheduler" ? new PureJsIndicatorCalculator() : null;
+  const indicatorCalculator =
+    role === "scheduler" || role === "analysis" ? new PureJsIndicatorCalculator() : null;
 
   const llmProviders =
     role === "notification"
@@ -198,6 +213,84 @@ export async function buildContainer(
     });
   }
 
+  // Feedback context registry — wired with the 4 canonical providers on the
+  // analysis role (the only worker that runs feedback activities). Other roles
+  // keep the throwing placeholder: they should never call
+  // `gatherFeedbackContext`, and a loud failure if they do is preferable to a
+  // silent no-op.
+  //
+  // Per-watch MarketDataFetcher selection: each watch has `asset.source`
+  // (`binance` | `yahoo`) and the registry stores a single fetcher per
+  // provider. We mirror the CLI adapter (`src/cli/_feedback-adapters.ts`):
+  // wire the FIRST configured fetcher. Workflows execute against one watch at
+  // a time; if both `binance` and `yahoo` watches are mixed in the same
+  // config, the chosen fetcher will reject unknown symbols loudly. A future
+  // refactor could pass the fetcher map and dispatch by `scope.asset` inside
+  // each provider — out of scope for v1.
+  let feedbackContextRegistry: FeedbackContextProviderRegistry = feedbackContextRegistryPlaceholder;
+  if (role === "analysis") {
+    const firstFetcher = marketDataFetchers.values().next().value;
+    if (!firstFetcher) {
+      throw new Error(
+        "analysis role requires at least one market_data fetcher configured in watches.yaml",
+      );
+    }
+    if (!chartRenderer) {
+      throw new Error("analysis role requires chartRenderer (internal wiring bug)");
+    }
+    feedbackContextRegistry = new FeedbackContextProviderRegistry({
+      "setup-events": new SetupEventsContextProvider({ eventStore }),
+      "tick-snapshots": new TickSnapshotsContextProvider({ tickStore: tickSnapshotStore }),
+      "post-mortem-ohlcv": new PostMortemOhlcvContextProvider({
+        marketDataFetcher: firstFetcher,
+      }),
+      "chart-post-mortem": new ChartPostMortemContextProvider({
+        chartRenderer,
+        marketDataFetcher: firstFetcher,
+        artifactStore,
+      }),
+    });
+  }
+
+  // notifyLessonPending — bridges applyLessonChanges to the user-facing
+  // approval channel. On the analysis role with telegram enabled we send the
+  // inline-keyboard proposal and persist a NotificationSent lesson_event so
+  // the notification-worker callback handler can later edit the message in
+  // place (see Task 38 / notification-worker.ts). Other roles keep the no-op
+  // (they don't run feedback activities).
+  let notifyLessonPending: ActivityDeps["notifyLessonPending"] = noopNotifyLessonPending;
+  if (role === "analysis" && watches.notifications.telegram) {
+    const lessonProposalNotifier = new TelegramNotifier({
+      token: infra.notifications.telegram.bot_token,
+    });
+    const lessonChatId = infra.notifications.telegram.chat_id;
+    notifyLessonPending = async (input) => {
+      const { messageId } = await lessonProposalNotifier.sendLessonProposal({
+        chatId: lessonChatId,
+        lessonId: input.lessonId,
+        kind: input.kind,
+        watchId: input.watchId,
+        category: input.category,
+        title: input.title,
+        body: input.body,
+        rationale: input.rationale,
+        triggerSetupId: input.triggerSetupId,
+        triggerCloseReason: input.triggerCloseReason,
+        before: input.before,
+      });
+      await lessonEventStore.append({
+        watchId: input.watchId,
+        lessonId: input.lessonId,
+        type: "NotificationSent",
+        actor: "system",
+        payload: {
+          type: "NotificationSent",
+          data: { channel: "telegram", msgId: messageId },
+        },
+      });
+    };
+  }
+
   const deps: ActivityDeps = {
     marketDataFetchers,
     chartRenderer: chartRenderer ?? (null as unknown as PlaywrightChartRenderer),
@@ -217,9 +310,8 @@ export async function buildContainer(
     db,
     lessonStore,
     lessonEventStore,
-    // Wired in Phase 13 composition root with the 4 canonical providers.
-    feedbackContextRegistry: feedbackContextRegistryPlaceholder,
-    notifyLessonPending: noopNotifyLessonPending,
+    feedbackContextRegistry,
+    notifyLessonPending,
   };
 
   return {
