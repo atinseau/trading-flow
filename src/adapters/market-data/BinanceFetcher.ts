@@ -8,6 +8,7 @@ import { z } from "zod";
 const log = getLogger({ component: "binance-fetcher" });
 
 const BINANCE_BASE_URL = "https://api.binance.com";
+const BINANCE_KLINE_PAGE_SIZE = 1000;
 
 const TIMEFRAME_MAP: Record<string, string> = {
   "1m": "1m",
@@ -103,12 +104,41 @@ export class BinanceFetcher implements MarketDataFetcher {
     const interval = TIMEFRAME_MAP[args.timeframe];
     if (!interval) throw new Error(`Timeframe non supporté: ${args.timeframe}`);
 
+    const all: Candle[] = [];
+    const toMs = args.to.getTime();
+    let cursor = args.from.getTime();
+    while (cursor <= toMs) {
+      const batch = await this.fetchBatch({
+        asset: args.asset,
+        interval,
+        startTime: cursor,
+        endTime: toMs,
+        limit: BINANCE_KLINE_PAGE_SIZE,
+      });
+      if (batch.length === 0) break;
+      all.push(...batch);
+      if (batch.length < BINANCE_KLINE_PAGE_SIZE) break;
+      const lastTs = batch[batch.length - 1]!.timestamp.getTime();
+      // Safety: if the cursor wouldn't advance, stop to avoid infinite loop.
+      if (lastTs <= cursor) break;
+      cursor = lastTs + 1;
+    }
+    return all;
+  }
+
+  private async fetchBatch(args: {
+    asset: string;
+    interval: string;
+    startTime: number;
+    endTime: number;
+    limit: number;
+  }): Promise<Candle[]> {
     const url = new URL(`${BINANCE_BASE_URL}/api/v3/klines`);
     url.searchParams.set("symbol", args.asset);
-    url.searchParams.set("interval", interval);
-    url.searchParams.set("startTime", String(args.from.getTime()));
-    url.searchParams.set("endTime", String(args.to.getTime()));
-    url.searchParams.set("limit", "1000");
+    url.searchParams.set("interval", args.interval);
+    url.searchParams.set("startTime", String(args.startTime));
+    url.searchParams.set("endTime", String(args.endTime));
+    url.searchParams.set("limit", String(args.limit));
 
     const response = await fetch(url);
     if (response.status === 418 || response.status === 429) {
