@@ -1,4 +1,8 @@
+import { makeCostsApi } from "@client/api/costs";
+import { makeEventsApi } from "@client/api/events";
 import { health } from "@client/api/health";
+import { makeSetupsApi } from "@client/api/setups";
+import { makeTicksApi } from "@client/api/ticks";
 import { makeWatchesApi } from "@client/api/watches";
 import { db } from "@client/lib/db";
 import { webLogger } from "@client/lib/logger";
@@ -34,6 +38,11 @@ const watchesApi = makeWatchesApi({
   },
 });
 
+const setupsApi = makeSetupsApi({ db });
+const eventsApi = makeEventsApi({ db });
+const ticksApi = makeTicksApi({ db });
+const costsApi = makeCostsApi({ db });
+
 // Adapter to bridge Bun route handlers (which receive BunRequest with .params)
 // to our (req, params) handler convention.
 const withParams =
@@ -57,6 +66,14 @@ const server = Bun.serve({
     "/api/watches/:id/revisions": {
       GET: withParams(watchesApi.revisions),
     },
+    "/api/setups": { GET: (req) => setupsApi.list(req) },
+    "/api/setups/:id": { GET: withParams(setupsApi.get) },
+    "/api/setups/:id/events": { GET: withParams(setupsApi.events) },
+    "/api/setups/:id/ohlcv": { GET: withParams(setupsApi.ohlcv) },
+    "/api/events": { GET: (req) => eventsApi.list(req) },
+    "/api/ticks": { GET: (req) => ticksApi.list(req) },
+    "/api/ticks/:id/chart.png": { GET: withParams(ticksApi.chartPng) },
+    "/api/costs": { GET: (req) => costsApi.aggregations(req) },
   },
   fetch() {
     return new Response("not found", { status: 404 });
