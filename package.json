@@ -28,7 +28,14 @@
     "worker:web": "bun run src/client/server.ts",
     "compose:up": "docker compose up -d --build",
     "compose:dev": "docker compose -f docker-compose.yml -f docker-compose-dev.yaml up -d --build",
-    "compose:down": "docker compose down"
+    "compose:down": "docker compose down",
+    "logs": "docker compose logs -f --tail=50",
+    "logs:web": "docker compose logs -f --tail=50 tf-web",
+    "logs:workers": "docker compose logs -f --tail=50 scheduler-worker analysis-worker notification-worker",
+    "logs:scheduler": "docker compose logs -f --tail=50 scheduler-worker",
+    "logs:analysis": "docker compose logs -f --tail=50 analysis-worker",
+    "logs:notification": "docker compose logs -f --tail=50 notification-worker",
+    "logs:db": "docker compose logs -f --tail=50 postgres temporal"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.0",

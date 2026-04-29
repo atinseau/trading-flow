@@ -89,7 +89,6 @@ process.on("SIGINT", () => stopPoller());
 const server = Bun.serve({
   port,
   routes: {
-    "/": index,
     "/health": { GET: (req) => health(req) },
     "/api/watches": {
       GET: (req) => watchesApi.list(req),
@@ -116,6 +115,13 @@ const server = Bun.serve({
     "/api/watches/:id/resume": { POST: withParams(adminApi.resume) },
     "/api/setups/:id/kill": { POST: withParams(adminApi.killSetup) },
     "/api/stream": { GET: makeStreamHandler({ broadcaster }) },
+    // Unknown /api/* → 404 JSON (must come before the SPA catch-all so it
+    // wins for paths starting with /api/).
+    "/api/*": () => Response.json({ error: "not found" }, { status: 404 }),
+    // SPA fallback — any other path serves the React shell so
+    // react-router-dom can handle the client-side route on page reloads
+    // and direct URL hits.
+    "/*": index,
   },
   fetch() {
     return new Response("not found", { status: 404 });
