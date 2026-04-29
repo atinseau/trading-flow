@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { WatchesConfigSchema } from "@domain/schemas/WatchesConfig";
 
 const minimalValid = {
@@ -91,4 +91,69 @@ test("WatchSchema accepts explicit include_chart_image = false", () => {
   const r = WatchesConfigSchema.safeParse(w);
   if (!r.success) throw new Error("expected success");
   expect(r.data.watches[0].include_chart_image).toBe(false);
+});
+
+const minimalYahooWatch = {
+  ...minimalValid,
+  market_data: ["yahoo"],
+  watches: [
+    {
+      ...minimalValid.watches[0],
+      asset: { symbol: "AAPL", source: "yahoo", quoteType: "EQUITY", exchange: "NMS" },
+    },
+  ],
+};
+
+describe("WatchSchema asset invariants", () => {
+  test("yahoo EQUITY without exchange → invalid", () => {
+    const w = structuredClone(minimalYahooWatch);
+    w.watches[0].asset = { symbol: "AAPL", source: "yahoo", quoteType: "EQUITY" } as never;
+    const r = WatchesConfigSchema.safeParse(w);
+    expect(r.success).toBe(false);
+  });
+
+  test("yahoo EQUITY with exchange → valid", () => {
+    const r = WatchesConfigSchema.safeParse(minimalYahooWatch);
+    expect(r.success).toBe(true);
+  });
+
+  test("yahoo ETF without exchange → invalid", () => {
+    const w = structuredClone(minimalYahooWatch);
+    w.watches[0].asset = { symbol: "QQQ", source: "yahoo", quoteType: "ETF" } as never;
+    const r = WatchesConfigSchema.safeParse(w);
+    expect(r.success).toBe(false);
+  });
+
+  test("yahoo INDEX without exchange → invalid", () => {
+    const w = structuredClone(minimalYahooWatch);
+    w.watches[0].asset = { symbol: "^GSPC", source: "yahoo", quoteType: "INDEX" } as never;
+    const r = WatchesConfigSchema.safeParse(w);
+    expect(r.success).toBe(false);
+  });
+
+  test("yahoo CURRENCY without exchange → valid (forex global)", () => {
+    const w = structuredClone(minimalYahooWatch);
+    w.watches[0].asset = { symbol: "EURUSD=X", source: "yahoo", quoteType: "CURRENCY" } as never;
+    const r = WatchesConfigSchema.safeParse(w);
+    expect(r.success).toBe(true);
+  });
+
+  test("yahoo FUTURE without exchange → valid", () => {
+    const w = structuredClone(minimalYahooWatch);
+    w.watches[0].asset = { symbol: "ES=F", source: "yahoo", quoteType: "FUTURE" } as never;
+    const r = WatchesConfigSchema.safeParse(w);
+    expect(r.success).toBe(true);
+  });
+
+  test("yahoo without quoteType → invalid (forces recreation)", () => {
+    const w = structuredClone(minimalYahooWatch);
+    w.watches[0].asset = { symbol: "AAPL", source: "yahoo" } as never;
+    const r = WatchesConfigSchema.safeParse(w);
+    expect(r.success).toBe(false);
+  });
+
+  test("binance without quoteType/exchange → valid (still works)", () => {
+    const r = WatchesConfigSchema.safeParse(minimalValid);
+    expect(r.success).toBe(true);
+  });
 });

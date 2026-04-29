@@ -39,7 +39,7 @@ function makeWatch(id: string): WatchConfig {
   return {
     id,
     enabled: true,
-    asset: { symbol: "BTCUSDT", source: "fake" },
+    asset: { symbol: "BTCUSDT", source: "binance" },
     timeframes: { primary: "1h", higher: [] },
     schedule: { detector_cron: "*/15 * * * *", timezone: "UTC" },
     candles: { detector_lookback: 200, reviewer_lookback: 500, reviewer_chart_window: 150 },
