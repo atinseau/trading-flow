@@ -13,6 +13,7 @@
     "test:workflows": "bun test test/workflows",
     "test:e2e": "RUN_E2E=1 bun test test/e2e",
     "test:e2e:web": "RUN_E2E=1 bun test test/e2e/web-smoke.test.ts",
+    "test:e2e:feedback": "RUN_E2E=1 bun test test/e2e/feedback-loop.e2e.test.ts",
     "test:integration:standby": "RUN_INTEGRATION_STANDBY=1 bun test test/integration/standby-boot.test.ts",
     "test:llm": "RUN_LLM_OPENROUTER=1 RUN_LLM_CLAUDE=1 bun test test/llm",
     "test:llm:openrouter": "RUN_LLM_OPENROUTER=1 bun test test/llm/promptSmoke.test.ts",
