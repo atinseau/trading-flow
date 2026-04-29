@@ -1,12 +1,17 @@
 import { events, setups, tickSnapshots } from "@adapters/persistence/schema";
 import { NotFoundError, safeHandler } from "@client/api/safeHandler";
 import { streamArtifact } from "@client/lib/artifacts";
-import { and, asc, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
+import { TERMINAL_STATUSES } from "@domain/state-machine/setupTransitions";
+import { and, asc, desc, eq, inArray, isNotNull, notInArray, sql } from "drizzle-orm";
 import type { drizzle } from "drizzle-orm/node-postgres";
 
 type DB = ReturnType<typeof drizzle>;
 
-const ACTIVE = ["CANDIDATE", "REVIEWING", "FINALIZING", "TRACKING"] as const;
+// "Live" in the dashboard sense = "any non-terminal status" (includes
+// CANDIDATE, which the domain's ACTIVE_STATUSES excludes for workflow
+// transition reasons we don't want to touch). Single source of truth via
+// TERMINAL_STATUSES — invert it.
+const TERMINAL = [...TERMINAL_STATUSES];
 const WIN_OUTCOMES = ["WIN", "PARTIAL_WIN"] as const;
 const OTHER_OUTCOMES = [
   "TIME_OUT",
@@ -33,7 +38,7 @@ export function makeSetupsApi(deps: { db: DB }) {
       if (outcome) filters.push(eq(setups.outcome, outcome));
 
       if (category === "live") {
-        filters.push(inArray(setups.status, [...ACTIVE]));
+        filters.push(notInArray(setups.status, TERMINAL));
       } else if (category === "wins") {
         filters.push(inArray(setups.outcome, [...WIN_OUTCOMES]));
       } else if (category === "losses") {
@@ -60,7 +65,7 @@ export function makeSetupsApi(deps: { db: DB }) {
       const [agg] = await db
         .select({
           total: sql<number>`count(*)::int`,
-          live: sql<number>`count(*) filter (where ${setups.status} in ('CANDIDATE','REVIEWING','FINALIZING','TRACKING'))::int`,
+          live: sql<number>`count(*) filter (where ${setups.status} not in ('CLOSED','INVALIDATED','EXPIRED','REJECTED'))::int`,
           wins: sql<number>`count(*) filter (where ${setups.outcome} in ('WIN','PARTIAL_WIN'))::int`,
           losses: sql<number>`count(*) filter (where ${setups.outcome} = 'LOSS')::int`,
           other: sql<number>`count(*) filter (where ${setups.outcome} in ('TIME_OUT','REJECTED','INVALIDATED_PRE_TRADE','INVALIDATED_POST_TRADE','EXPIRED_NO_FILL'))::int`,

@@ -1,18 +1,12 @@
 /**
- * Outcome → display metadata. Mirrors the union from
- * @domain/services/deriveOutcome but kept here as a string-keyed record for
- * easy iteration in filter pills.
+ * Outcome → display metadata. The Outcome union itself comes from the domain
+ * (single source of truth — same type used by deriveOutcome and the DB write
+ * path); this module only owns the visual mapping.
  */
 
-export type Outcome =
-  | "WIN"
-  | "PARTIAL_WIN"
-  | "LOSS"
-  | "TIME_OUT"
-  | "REJECTED"
-  | "INVALIDATED_PRE_TRADE"
-  | "INVALIDATED_POST_TRADE"
-  | "EXPIRED_NO_FILL";
+import type { Outcome } from "@domain/services/deriveOutcome";
+
+export type { Outcome };
 
 export type OutcomeMeta = {
   label: string;

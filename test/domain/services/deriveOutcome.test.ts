@@ -108,4 +108,16 @@ describe("deriveOutcome", () => {
       deriveOutcome("CLOSED", [ev("SetupCreated"), ev("Confirmed", 2), ev("EntryFilled", 3)]),
     ).toBe("TIME_OUT");
   });
+
+  // Edge case flagged in code review #11: degenerate INVALIDATED with no
+  // events at all (e.g. force-invalidated externally before any LLM ran).
+  test("INVALIDATED with empty event list -> INVALIDATED_PRE_TRADE", () => {
+    expect(deriveOutcome("INVALIDATED", [])).toBe("INVALIDATED_PRE_TRADE");
+  });
+
+  test("CLOSED with empty event list -> TIME_OUT", () => {
+    // Pathological: a setup that closed without ever recording any event.
+    // Shouldn't happen in practice but the helper must not throw.
+    expect(deriveOutcome("CLOSED", [])).toBe("TIME_OUT");
+  });
 });

@@ -34,11 +34,21 @@ function groupIntoPhases(events: SetupEvent[]): Phase[] {
     i++;
   }
   if (refinement.length > 0) {
+    const firstRefinement = refinement[0]!;
+    const lastRefinement = refinement[refinement.length - 1]!;
+    // scoreStart: prefer the previous event's scoreAfter (typically the
+    // SetupCreated initialScore). Fall back to (firstAfter - firstDelta),
+    // which only works if the first refinement event has a non-zero delta.
+    const idxInEvents = events.indexOf(firstRefinement);
+    const scoreStart =
+      idxInEvents > 0
+        ? Number(events[idxInEvents - 1]!.scoreAfter)
+        : Number(firstRefinement.scoreAfter) - Number(firstRefinement.scoreDelta || 0);
     phases.push({
       kind: "refinement",
       events: refinement,
-      scoreStart: Number(refinement[0]!.scoreAfter) - Number(refinement[0]!.scoreDelta || 0),
-      scoreEnd: Number(refinement[refinement.length - 1]!.scoreAfter),
+      scoreStart,
+      scoreEnd: Number(lastRefinement.scoreAfter),
     });
   }
 
