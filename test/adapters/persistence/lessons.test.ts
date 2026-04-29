@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { PostgresLessonEventStore } from "@adapters/persistence/PostgresLessonEventStore";
 import { PostgresLessonStore } from "@adapters/persistence/PostgresLessonStore";
 import { startTestPostgres, type TestPostgres } from "../../helpers/postgres";
 
@@ -132,5 +133,66 @@ describe("PostgresLessonStore", () => {
     await store.setPinned(id, false);
     const after2 = await store.getById(id);
     expect(after2?.pinned).toBe(false);
+  });
+});
+
+describe("PostgresLessonEventStore", () => {
+  let store2: PostgresLessonEventStore;
+
+  beforeAll(() => {
+    store2 = new PostgresLessonEventStore(pg.db);
+  });
+
+  test("append assigns sequence atomically per watchId", async () => {
+    const watchId = "btc-1h-events-test";
+    const e1 = await store2.append({
+      watchId,
+      type: "CREATE",
+      actor: "feedback_v1",
+      payload: {
+        type: "CREATE",
+        data: {
+          category: "reviewing",
+          title: "test",
+          body: "test body",
+          rationale: "test rationale",
+        },
+      },
+    });
+    const e2 = await store2.append({
+      watchId,
+      type: "REINFORCE",
+      actor: "feedback_v1",
+      payload: { type: "REINFORCE", data: { reason: "test reinforce" } },
+    });
+    expect(e1.sequence).toBe(1);
+    expect(e2.sequence).toBe(2);
+  });
+
+  test("findByInputHash returns matching events only for same watch", async () => {
+    const inputHash = "abc123";
+    await store2.append({
+      watchId: "btc-1h",
+      type: "CREATE",
+      actor: "feedback_v1",
+      payload: {
+        type: "CREATE",
+        data: { category: "reviewing", title: "x", body: "y", rationale: "z" },
+      },
+      inputHash,
+    });
+    await store2.append({
+      watchId: "eth-4h",
+      type: "CREATE",
+      actor: "feedback_v1",
+      payload: {
+        type: "CREATE",
+        data: { category: "reviewing", title: "x", body: "y", rationale: "z" },
+      },
+      inputHash,
+    });
+    const matchedBtc = await store2.findByInputHash({ watchId: "btc-1h", inputHash });
+    expect(matchedBtc.length).toBe(1);
+    expect(matchedBtc[0]?.watchId).toBe("btc-1h");
   });
 });
