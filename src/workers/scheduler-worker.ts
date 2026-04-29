@@ -3,6 +3,8 @@ import { loadWatchesConfig } from "@config/loadWatchesConfig";
 import { HealthServer } from "@observability/healthServer";
 import { getLogger } from "@observability/logger";
 import { NativeConnection, Worker } from "@temporalio/worker";
+import { buildMarketClockActivities } from "@workflows/marketClock/activities";
+import { bootstrapMarketClocks } from "@workflows/marketClock/ensureMarketClock";
 import { buildPriceMonitorActivities } from "@workflows/price-monitor/activities";
 import { buildSchedulerActivities } from "@workflows/scheduler/activities";
 import { buildContainer } from "./buildContainer";
@@ -19,7 +21,9 @@ health.start();
 
 if (watches === null) {
   const container = await buildContainer(infra, null, "scheduler");
-  health.setStatus("standby", { reason: "no watches.yaml — system idle, drop the file and restart" });
+  health.setStatus("standby", {
+    reason: "no watches.yaml — system idle, drop the file and restart",
+  });
   log.info({ configPath }, "standby: no watches.yaml — idle (Temporal worker not registered)");
   await new Promise<void>((resolve) => {
     const stop = () => resolve();
@@ -43,8 +47,18 @@ const worker = await Worker.create({
   activities: {
     ...buildSchedulerActivities(container.deps),
     ...buildPriceMonitorActivities(container.deps),
+    ...buildMarketClockActivities(container.deps),
   },
 });
+
+// Start market-clock workflows for every distinct session of enabled watches.
+// Runs once per worker startup; idempotent (skips already-running clocks).
+await bootstrapMarketClocks({
+  client: container.deps.temporalClient,
+  taskQueue: infra.temporal.task_queues.scheduler,
+  watches: container.deps.watchRepo,
+});
+log.info("market clocks bootstrapped");
 
 log.info({ taskQueue: infra.temporal.task_queues.scheduler }, "starting");
 
