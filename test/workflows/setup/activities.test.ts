@@ -128,7 +128,7 @@ function makeDeps(
 // ---- runReviewer tests -------------------------------------------------------
 
 describe("runReviewer — market-hours guard", () => {
-  test("closed market (NASDAQ Saturday) → returns eventAlreadyExisted:true without calling LLM", async () => {
+  test("closed market (NASDAQ Saturday) → returns skipReason:'market_closed' without calling LLM", async () => {
     const clock = new FakeClock(SATURDAY_UTC);
     const llm = new FakeLLMProvider({ name: "fake" });
     const deps = makeDeps(nasdaqWatch, clock, llm);
@@ -140,11 +140,52 @@ describe("runReviewer — market-hours guard", () => {
       tickSnapshotId: "snap-does-not-matter",
     });
 
-    expect(result.eventAlreadyExisted).toBe(true);
+    expect(result.skipReason).toBe("market_closed");
+    expect(result.eventAlreadyExisted).toBe(false);
     expect(result.verdictJson).toBe("");
     expect(result.costUsd).toBe(0);
     // LLM must NOT have been called
     expect(llm.callCount).toBe(0);
+  });
+
+  test("runReviewer — invalid asset metadata (UnsupportedExchangeError) → guard skipped, LLM called", async () => {
+    // A yahoo EQUITY watch with an unknown exchange code — getSession() will throw.
+    const unknownExchangeWatch: WatchConfig = WatchSchema.parse({
+      id: "xyz-1h",
+      enabled: true,
+      asset: { symbol: "XYZ", source: "yahoo", quoteType: "EQUITY", exchange: "XYZ_UNKNOWN" },
+      timeframes: { primary: "1h", higher: [] },
+      schedule: { timezone: "America/New_York" },
+      candles: { detector_lookback: 200, reviewer_lookback: 500, reviewer_chart_window: 150 },
+      setup_lifecycle: {
+        ttl_candles: 50,
+        score_initial: 25,
+        score_threshold_finalizer: 80,
+        score_threshold_dead: 10,
+        invalidation_policy: "strict",
+      },
+      analyzers: {
+        detector: { provider: "fake", model: "fake-model" },
+        reviewer: { provider: "fake", model: "fake-model" },
+        finalizer: { provider: "fake", model: "fake-model" },
+      },
+      notify_on: [],
+    });
+
+    const clock = new FakeClock(SATURDAY_UTC);
+    const llm = new FakeLLMProvider({ name: "fake" });
+    const deps = makeDeps(unknownExchangeWatch, clock, llm);
+    const activities = buildSetupActivities(deps);
+
+    // Guard should be skipped (no skipReason) and the activity proceeds to the LLM
+    // path. The tick snapshot is missing, so it throws — confirming the guard was bypassed.
+    await expect(
+      activities.runReviewer({
+        setupId: "setup-test",
+        watchId: unknownExchangeWatch.id,
+        tickSnapshotId: "snap-missing",
+      }),
+    ).rejects.toThrow("TickSnapshot snap-missing not found");
   });
 
   test("open market (Binance, always-open) → attempts LLM (tick snapshot lookup fails, confirming LLM path was entered)", async () => {

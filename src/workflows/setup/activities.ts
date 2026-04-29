@@ -68,27 +68,38 @@ export function buildSetupActivities(deps: ActivityDeps) {
       promptVersion: string;
       provider: string;
       model: string;
+      skipReason?: "market_closed";
     }> {
       const childLog = log.child({ setupId: input.setupId, watchId: input.watchId });
       childLog.info({ tickSnapshotId: input.tickSnapshotId }, "runReviewer starting");
       const watch = deps.watchById(input.watchId);
       if (!watch) throw new InvalidConfigError(`Unknown watch: ${input.watchId}`);
 
-      const session = getSession(watch);
-      const marketState = getSessionState(session, deps.clock.now());
-      if (!marketState.isOpen) {
+      let marketState: ReturnType<typeof getSessionState> | null = null;
+      try {
+        const session = getSession(watch);
+        marketState = getSessionState(session, deps.clock.now());
+      } catch (e) {
+        childLog.warn(
+          { err: (e as Error).message },
+          "runReviewer: skipping market-hours guard (invalid asset metadata)",
+        );
+      }
+
+      if (marketState && !marketState.isOpen) {
         childLog.info(
-          { sessionKind: session.kind, nextOpenAt: marketState.nextOpenAt?.toISOString() },
+          { nextOpenAt: marketState.nextOpenAt?.toISOString() },
           "runReviewer skipped: market closed",
         );
         return {
           verdictJson: "",
           costUsd: 0,
-          eventAlreadyExisted: true,
+          eventAlreadyExisted: false,
           inputHash: "",
           promptVersion: "",
           provider: "",
           model: "",
+          skipReason: "market_closed",
         };
       }
 
@@ -189,11 +200,20 @@ export function buildSetupActivities(deps: ActivityDeps) {
       const watch = deps.watchById(input.watchId);
       if (!watch) throw new InvalidConfigError(`Unknown watch: ${input.watchId}`);
 
-      const session = getSession(watch);
-      const marketState = getSessionState(session, deps.clock.now());
-      if (!marketState.isOpen) {
+      let marketState: ReturnType<typeof getSessionState> | null = null;
+      try {
+        const session = getSession(watch);
+        marketState = getSessionState(session, deps.clock.now());
+      } catch (e) {
+        childLog.warn(
+          { err: (e as Error).message },
+          "runFinalizer: skipping market-hours guard (invalid asset metadata)",
+        );
+      }
+
+      if (marketState && !marketState.isOpen) {
         childLog.info(
-          { sessionKind: session.kind, nextOpenAt: marketState.nextOpenAt?.toISOString() },
+          { nextOpenAt: marketState.nextOpenAt?.toISOString() },
           "runFinalizer skipped: market closed",
         );
         return {
