@@ -52,12 +52,14 @@ const NotifyEventSchema = z.enum([
   "lesson_rejected",
 ]);
 
-const KNOWN_PROVIDER_IDS = [
+export const KNOWN_PROVIDER_IDS = [
   "setup-events",
   "tick-snapshots",
   "post-mortem-ohlcv",
   "chart-post-mortem",
 ] as const;
+
+export type KnownProviderId = (typeof KNOWN_PROVIDER_IDS)[number];
 
 export const FeedbackInjectionSchema = z.object({
   detector: z.boolean().default(true),
@@ -73,7 +75,7 @@ export const FeedbackAnalyzerSchema = z.object({
 export const FeedbackConfigSchema = z.object({
   enabled: z.boolean().default(true),
   max_active_lessons_per_category: z.number().int().min(1).max(200).default(30),
-  injection: FeedbackInjectionSchema.default({ detector: true, reviewer: true, finalizer: true }),
+  injection: FeedbackInjectionSchema.prefault({}),
   context_providers_disabled: z.array(z.enum(KNOWN_PROVIDER_IDS)).default([]),
   analyzer: FeedbackAnalyzerSchema.optional(),
 });
