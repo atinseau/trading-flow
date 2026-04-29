@@ -1,5 +1,5 @@
 import {
-  FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage,
+  FormControl, FormField, FormItem, FormLabel, FormMessage,
 } from "@client/components/ui/form";
 import { Input } from "@client/components/ui/input";
 import { useFormContext } from "react-hook-form";
@@ -17,9 +17,9 @@ export function SectionAnalyzers() {
       <h3 className="text-sm font-bold uppercase tracking-wide text-muted-foreground">
         Modèles d'IA
       </h3>
-      <FormDescription>
+      <p className="text-sm text-muted-foreground">
         Choisis quel provider et quel modèle utiliser pour chaque étape.
-      </FormDescription>
+      </p>
       {ROLES.map(({ key, label }) => (
         <div key={key} className="space-y-2 border-l-2 border-border pl-4">
           <p className="text-xs uppercase tracking-wide text-muted-foreground">{label}</p>
