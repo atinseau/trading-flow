@@ -1,2 +1,0 @@
-- explorer setup("pattern" | "chartist")
-- annonce us | analyse macro
