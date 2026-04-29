@@ -6,26 +6,27 @@ import { priceMonitorWorkflowId } from "./priceMonitorWorkflow";
  * Idempotent "start if not already running" for the shared per-symbol
  * price monitor. Both the dedicated activity and the inline call site in
  * `setupActivities.createSetup` use this so the workflow ID format and
- * the duplicate-start tolerance live in exactly one place.
+ * the spawn-or-noop semantic live in exactly one place.
  *
- * Spawns `price-monitor-${source}-${symbol}` on the scheduler task queue
- * when no instance with that ID is currently Running. Catches the
- * `WorkflowExecutionAlreadyStartedError` and returns silently.
+ * Uses Temporal's native `signalWithStart`: if no workflow with this ID
+ * is currently Running, the SDK starts one and dispatches the signal.
+ * If one is already Running, the signal is delivered without re-starting.
+ * Either way no exception is thrown, so no error-message matching needed.
+ *
+ * The signal itself is `ensureRunningSignal`, a no-op declared on the
+ * workflow purely to satisfy `signalWithStart`'s contract — see the
+ * comment in `priceMonitorWorkflow.ts`.
  */
 export async function ensurePriceMonitorStarted(
   client: Client,
   infra: InfraConfig,
   input: { symbol: string; source: string },
 ): Promise<void> {
-  const workflowId = priceMonitorWorkflowId(input.symbol, input.source);
-  try {
-    await client.workflow.start("priceMonitorWorkflow", {
-      args: [{ symbol: input.symbol, source: input.source }],
-      workflowId,
-      taskQueue: infra.temporal.task_queues.scheduler,
-    });
-  } catch (err) {
-    if (/already.*started|alreadystarted/i.test((err as Error).message)) return;
-    throw err;
-  }
+  await client.workflow.signalWithStart("priceMonitorWorkflow", {
+    workflowId: priceMonitorWorkflowId(input.symbol, input.source),
+    taskQueue: infra.temporal.task_queues.scheduler,
+    args: [{ symbol: input.symbol, source: input.source }],
+    signal: "ensureRunning",
+    signalArgs: [],
+  });
 }

@@ -39,10 +39,18 @@ export type PriceMonitorArgs = { symbol: string; source: string };
 
 export const stopSignal = defineSignal<[]>("stop");
 
+// `ensurePriceMonitorStarted` uses signalWithStart to spawn-or-noop. The
+// SDK requires a signal name; this no-op handler exists solely to satisfy
+// that contract — it carries no behavior of its own.
+export const ensureRunningSignal = defineSignal<[]>("ensureRunning");
+
 export async function priceMonitorWorkflow(args: PriceMonitorArgs): Promise<void> {
   let stop = false;
   setHandler(stopSignal, () => {
     stop = true;
+  });
+  setHandler(ensureRunningSignal, () => {
+    // intentionally empty — see comment on ensureRunningSignal above
   });
 
   while (!stop) {
