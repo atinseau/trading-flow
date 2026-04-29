@@ -1,12 +1,12 @@
-import { Badge } from "@client/components/ui/badge";
-import { Button } from "@client/components/ui/button";
-import { ConfirmAction } from "@client/components/shared/confirm-action";
-import { EventsTimeline, type SetupEvent } from "@client/components/setup/events-timeline";
-import { KeyLevels } from "@client/components/setup/key-levels";
-import { ScoreChart } from "@client/components/setup/score-chart";
-import { TVChart, type Candle, type Level } from "@client/components/setup/tv-chart";
-import { useAdminAction } from "@client/hooks/useAdminAction";
-import { api } from "@client/lib/api";
+import { Badge } from "../components/ui/badge";
+import { Button } from "../components/ui/button";
+import { ConfirmAction } from "../components/shared/confirm-action";
+import { EventsTimeline, type SetupEvent } from "../components/setup/events-timeline";
+import { KeyLevels } from "../components/setup/key-levels";
+import { ScoreChart } from "../components/setup/score-chart";
+import { TVChart, type Candle, type Level } from "../components/setup/tv-chart";
+import { useAdminAction } from "../hooks/useAdminAction";
+import { api } from "../lib/api";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 

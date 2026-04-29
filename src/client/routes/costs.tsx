@@ -1,8 +1,8 @@
 import {
   ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig,
-} from "@client/components/ui/chart";
-import { Tabs, TabsList, TabsTrigger } from "@client/components/ui/tabs";
-import { api } from "@client/lib/api";
+} from "../components/ui/chart";
+import { Tabs, TabsList, TabsTrigger } from "../components/ui/tabs";
+import { api } from "../lib/api";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";

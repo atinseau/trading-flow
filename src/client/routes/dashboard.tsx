@@ -1,6 +1,6 @@
-import { Button } from "@client/components/ui/button";
-import { WatchCard } from "@client/components/watch-card";
-import { useWatches } from "@client/hooks/useWatches";
+import { Button } from "../components/ui/button";
+import { WatchCard } from "../components/watch-card";
+import { useWatches } from "../hooks/useWatches";
 import { Link } from "react-router-dom";
 
 export function Component() {

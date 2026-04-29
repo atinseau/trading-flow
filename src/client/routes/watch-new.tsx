@@ -1,5 +1,5 @@
-import { WatchForm } from "@client/components/watch-form";
-import { api } from "@client/lib/api";
+import { WatchForm } from "../components/watch-form";
+import { api } from "../lib/api";
 import type { WatchConfig } from "@domain/schemas/WatchesConfig";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";

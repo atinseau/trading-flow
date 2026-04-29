@@ -1,5 +1,5 @@
-import { LiveEventsSidebar } from "@client/components/live-events-sidebar";
-import { useSSEStream } from "@client/hooks/useSSEStream";
+import { LiveEventsSidebar } from "../components/live-events-sidebar";
+import { useSSEStream } from "../hooks/useSSEStream";
 import { Link, NavLink, Outlet } from "react-router-dom";
 
 export function RootLayout() {

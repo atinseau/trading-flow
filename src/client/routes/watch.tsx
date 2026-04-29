@@ -1,7 +1,7 @@
-import { Button } from "@client/components/ui/button";
-import { ConfirmAction } from "@client/components/shared/confirm-action";
-import { WatchForm } from "@client/components/watch-form";
-import { api } from "@client/lib/api";
+import { Button } from "../components/ui/button";
+import { ConfirmAction } from "../components/shared/confirm-action";
+import { WatchForm } from "../components/watch-form";
+import { api } from "../lib/api";
 import type { WatchConfig } from "@domain/schemas/WatchesConfig";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
