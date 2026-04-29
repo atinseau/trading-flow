@@ -36,3 +36,6 @@ coverage/
 
 # Superpowers (brainstorm sessions, plans cache)
 .superpowers/
+
+# Git worktrees
+.worktrees/
