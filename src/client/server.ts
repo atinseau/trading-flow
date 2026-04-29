@@ -1,3 +1,4 @@
+import { makeAdminApi } from "@client/api/admin";
 import { makeCostsApi } from "@client/api/costs";
 import { makeEventsApi } from "@client/api/events";
 import { health } from "@client/api/health";
@@ -10,6 +11,7 @@ import { getTemporalClient } from "@client/lib/temporal";
 import { applyReload } from "@config/applyReload";
 import { bootstrapWatch } from "@config/bootstrapWatch";
 import { tearDownWatch } from "@config/tearDownWatch";
+import { forceTick, killSetup, pauseWatch, resumeWatch } from "@config/watchOps";
 
 const port = Number(process.env.WEB_PORT ?? 8084);
 
@@ -43,6 +45,27 @@ const eventsApi = makeEventsApi({ db });
 const ticksApi = makeTicksApi({ db });
 const costsApi = makeCostsApi({ db });
 
+const adminApi = makeAdminApi({
+  ops: {
+    forceTick: async ({ watchId }) => {
+      const client = await getTemporalClient();
+      await forceTick({ client, watchId });
+    },
+    pauseWatch: async ({ watchId }) => {
+      const client = await getTemporalClient();
+      await pauseWatch({ client, watchId });
+    },
+    resumeWatch: async ({ watchId }) => {
+      const client = await getTemporalClient();
+      await resumeWatch({ client, watchId });
+    },
+    killSetup: async ({ setupId, reason }) => {
+      const client = await getTemporalClient();
+      await killSetup({ client, setupId, reason });
+    },
+  },
+});
+
 // Adapter to bridge Bun route handlers (which receive BunRequest with .params)
 // to our (req, params) handler convention.
 const withParams =
@@ -74,6 +97,10 @@ const server = Bun.serve({
     "/api/ticks": { GET: (req) => ticksApi.list(req) },
     "/api/ticks/:id/chart.png": { GET: withParams(ticksApi.chartPng) },
     "/api/costs": { GET: (req) => costsApi.aggregations(req) },
+    "/api/watches/:id/force-tick": { POST: withParams(adminApi.forceTick) },
+    "/api/watches/:id/pause": { POST: withParams(adminApi.pause) },
+    "/api/watches/:id/resume": { POST: withParams(adminApi.resume) },
+    "/api/setups/:id/kill": { POST: withParams(adminApi.killSetup) },
   },
   fetch() {
     return new Response("not found", { status: 404 });
