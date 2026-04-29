@@ -150,6 +150,10 @@ async function buildDeps(
     watchById: (id) => (id === watchId ? watch : undefined),
     temporalClient: env.client,
     db,
+    lessonStore: null as unknown as ActivityDeps["lessonStore"],
+    lessonEventStore: null as unknown as ActivityDeps["lessonEventStore"],
+    feedbackContextRegistry: null as unknown as ActivityDeps["feedbackContextRegistry"],
+    notifyLessonPending: async () => {},
   };
 }
 

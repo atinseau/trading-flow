@@ -1,4 +1,5 @@
 import { PlaywrightChartRenderer } from "@adapters/chart/PlaywrightChartRenderer";
+import type { FeedbackContextProviderRegistry } from "@adapters/feedback-context/FeedbackContextProviderRegistry";
 import { PureJsIndicatorCalculator } from "@adapters/indicators/PureJsIndicatorCalculator";
 import { buildProviderRegistry } from "@adapters/llm/buildProviderRegistry";
 import { BinanceFetcher } from "@adapters/market-data/BinanceFetcher";
@@ -8,6 +9,8 @@ import { MultiNotifier } from "@adapters/notify/MultiNotifier";
 import { TelegramNotifier } from "@adapters/notify/TelegramNotifier";
 import { FilesystemArtifactStore } from "@adapters/persistence/FilesystemArtifactStore";
 import { PostgresEventStore } from "@adapters/persistence/PostgresEventStore";
+import { PostgresLessonEventStore } from "@adapters/persistence/PostgresLessonEventStore";
+import { PostgresLessonStore } from "@adapters/persistence/PostgresLessonStore";
 import { PostgresLLMUsageStore } from "@adapters/persistence/PostgresLLMUsageStore";
 import { PostgresSetupRepository } from "@adapters/persistence/PostgresSetupRepository";
 import { PostgresTickSnapshotStore } from "@adapters/persistence/PostgresTickSnapshotStore";
@@ -68,7 +71,14 @@ export async function buildContainer(
   const tickSnapshotStore = new PostgresTickSnapshotStore(db);
   const artifactStore = new FilesystemArtifactStore(db, infra.artifacts.base_dir);
   const llmUsageStore = new PostgresLLMUsageStore(db);
+  const lessonStore = new PostgresLessonStore(db);
+  const lessonEventStore = new PostgresLessonEventStore(db);
   const clock = new SystemClock();
+
+  // notifyLessonPending is wired in the composition root (Phase 13) — at the
+  // container level we provide a no-op default; the worker entrypoint can swap
+  // it for a Telegram-backed implementation when feedback approvals ship.
+  const noopNotifyLessonPending: ActivityDeps["notifyLessonPending"] = async () => {};
 
   // Standby — no watches, no domain wiring.
   if (watches === null) {
@@ -89,6 +99,10 @@ export async function buildContainer(
       watchById: () => undefined,
       temporalClient: null as unknown as Client,
       db,
+      lessonStore,
+      lessonEventStore,
+      feedbackContextRegistry: null as unknown as FeedbackContextProviderRegistry,
+      notifyLessonPending: noopNotifyLessonPending,
     };
     return {
       deps,
@@ -175,6 +189,11 @@ export async function buildContainer(
     watchById,
     temporalClient: temporalClient ?? (null as unknown as Client),
     db,
+    lessonStore,
+    lessonEventStore,
+    // Wired in Phase 13 composition root with the 4 canonical providers.
+    feedbackContextRegistry: null as unknown as FeedbackContextProviderRegistry,
+    notifyLessonPending: noopNotifyLessonPending,
   };
 
   return {

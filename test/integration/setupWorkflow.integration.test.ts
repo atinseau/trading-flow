@@ -232,6 +232,10 @@ describe("SetupWorkflow integration (real Postgres + real activities)", () => {
       watchById: (id) => (id === watchId ? testWatch : undefined),
       temporalClient: env.client,
       db,
+      lessonStore: null as unknown as ActivityDeps["lessonStore"],
+      lessonEventStore: null as unknown as ActivityDeps["lessonEventStore"],
+      feedbackContextRegistry: null as unknown as ActivityDeps["feedbackContextRegistry"],
+      notifyLessonPending: async () => {},
     };
 
     const activities = buildSetupActivities(deps);
