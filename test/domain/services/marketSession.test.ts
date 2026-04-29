@@ -162,3 +162,47 @@ describe("getSessionState — exchange (multi-range, Asia)", () => {
     expect(state.nextOpenAt).toEqual(new Date("2026-04-13T00:00:00Z"));
   });
 });
+
+describe("getSessionState — forex", () => {
+  test("Tuesday 10:00 UTC → open", () => {
+    const state = getSessionState({ kind: "forex" }, new Date("2026-04-14T10:00:00Z"));
+    expect(state.isOpen).toBe(true);
+  });
+
+  test("Saturday 10:00 UTC → closed, next open Sunday 17:00 ET (April → EDT, 21:00 UTC)", () => {
+    const state = getSessionState({ kind: "forex" }, new Date("2026-04-11T10:00:00Z"));
+    expect(state.isOpen).toBe(false);
+    expect(state.nextOpenAt).toEqual(new Date("2026-04-12T21:00:00Z"));
+  });
+
+  test("Friday 22:00 UTC summer → closed (after 17:00 EDT close at 21:00 UTC)", () => {
+    const state = getSessionState({ kind: "forex" }, new Date("2026-04-10T22:00:00Z"));
+    expect(state.isOpen).toBe(false);
+  });
+
+  test("Sunday 22:30 UTC winter → open (Sunday 17:30 EST = 22:30 UTC)", () => {
+    const state = getSessionState({ kind: "forex" }, new Date("2026-01-11T22:30:00Z"));
+    expect(state.isOpen).toBe(true);
+  });
+
+  test("Wednesday 03:00 UTC summer → open (it's Tue 23:00 EDT, mid-week)", () => {
+    const state = getSessionState({ kind: "forex" }, new Date("2026-04-15T03:00:00Z"));
+    expect(state.isOpen).toBe(true);
+  });
+
+  test("when closed Saturday, nextOpenAt resolves to Sunday 17:00 ET (correct UTC across DST)", () => {
+    // Winter: Sun 17:00 EST = 22:00 UTC
+    const winter = getSessionState({ kind: "forex" }, new Date("2026-01-10T15:00:00Z"));
+    expect(winter.nextOpenAt).toEqual(new Date("2026-01-11T22:00:00Z"));
+    // Summer: Sun 17:00 EDT = 21:00 UTC
+    const summer = getSessionState({ kind: "forex" }, new Date("2026-07-04T15:00:00Z"));
+    expect(summer.nextOpenAt).toEqual(new Date("2026-07-05T21:00:00Z"));
+  });
+
+  test("when open Wednesday, nextCloseAt resolves to upcoming Friday 17:00 ET", () => {
+    // 2026-04-15 is Wednesday. Friday 2026-04-17 17:00 EDT = 21:00 UTC
+    const state = getSessionState({ kind: "forex" }, new Date("2026-04-15T10:00:00Z"));
+    expect(state.isOpen).toBe(true);
+    expect(state.nextCloseAt).toEqual(new Date("2026-04-17T21:00:00Z"));
+  });
+});

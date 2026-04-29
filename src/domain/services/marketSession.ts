@@ -1,5 +1,10 @@
 import { UnsupportedExchangeError } from "@domain/errors";
-import { EXCHANGE_DEFS, type ExchangeId, normalizeYahooExchange } from "./exchangeCalendars";
+import {
+  EXCHANGE_DEFS,
+  type ExchangeId,
+  FOREX_DEF,
+  normalizeYahooExchange,
+} from "./exchangeCalendars";
 
 export type Session =
   | { kind: "always-open" }
@@ -156,7 +161,77 @@ function computeExchangeState(id: ExchangeId, now: Date): SessionState {
   throw new Error(`No open in next 8 days for ${id} — bug`);
 }
 
-// Stub — implemented in Task 1.5
-function computeForexState(_now: Date): SessionState {
-  throw new Error("computeForexState not implemented (Task 1.5)");
+function computeForexState(now: Date): SessionState {
+  const local = localPartsInTz(now, FOREX_DEF.tz);
+  const open = parseHHmm(FOREX_DEF.open.hhmm); // 17:00 ET Sunday
+  const close = parseHHmm(FOREX_DEF.close.hhmm); // 17:00 ET Friday
+  const minutesNow = local.hh * 60 + local.mm;
+  const minutesOpen = open.hh * 60 + open.mm;
+  const minutesClose = close.hh * 60 + close.mm;
+
+  // ISO weekday: 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat, 7=Sun
+  let isOpen: boolean;
+  switch (local.isoWeekday) {
+    case 1:
+    case 2:
+    case 3:
+    case 4: // Mon–Thu: always open
+      isOpen = true;
+      break;
+    case 5: // Fri: open before 17:00 ET
+      isOpen = minutesNow < minutesClose;
+      break;
+    case 6: // Sat: always closed
+      isOpen = false;
+      break;
+    case 7: // Sun: open at/after 17:00 ET
+      isOpen = minutesNow >= minutesOpen;
+      break;
+    default:
+      throw new Error(`unreachable isoWeekday: ${local.isoWeekday}`);
+  }
+
+  if (isOpen) {
+    // nextCloseAt = upcoming Friday 17:00 ET
+    // isoWeekday 1..4 (Mon–Thu): daysToFri = 5 - isoWeekday
+    // isoWeekday 5 (Fri, open = before close): 0 days away
+    // isoWeekday 7 (Sun, open = after 17:00): 6 days to next Friday
+    const daysToFri = local.isoWeekday <= 5 ? 5 - local.isoWeekday : 12 - local.isoWeekday;
+    const friProbe = new Date(now.getTime() + daysToFri * 24 * 3600_000);
+    const friLocal = localPartsInTz(friProbe, FOREX_DEF.tz);
+    return {
+      isOpen: true,
+      nextCloseAt: utcFromLocalInTz(
+        friLocal.yyyy,
+        friLocal.MM,
+        friLocal.dd,
+        close.hh,
+        close.mm,
+        FOREX_DEF.tz,
+      ),
+    };
+  }
+
+  // Closed: nextOpenAt = upcoming Sunday 17:00 ET
+  // Fri (after 17:00): 2 days to Sun
+  // Sat: 1 day to Sun
+  // Sun (before 17:00): 0 days (today)
+  let daysToSun: number;
+  if (local.isoWeekday === 5) daysToSun = 2;
+  else if (local.isoWeekday === 6) daysToSun = 1;
+  else if (local.isoWeekday === 7) daysToSun = 0;
+  else throw new Error(`unexpected closed weekday ${local.isoWeekday}`);
+  const sunProbe = new Date(now.getTime() + daysToSun * 24 * 3600_000);
+  const sunLocal = localPartsInTz(sunProbe, FOREX_DEF.tz);
+  return {
+    isOpen: false,
+    nextOpenAt: utcFromLocalInTz(
+      sunLocal.yyyy,
+      sunLocal.MM,
+      sunLocal.dd,
+      open.hh,
+      open.mm,
+      FOREX_DEF.tz,
+    ),
+  };
 }
