@@ -21,7 +21,7 @@ describe("feedback prompt", () => {
       existingLessons: [],
       contextChunks: [],
     });
-    expect(out).toContain("First cycle");
+    expect(out).toContain("No active lessons yet");
   });
 
   test("existingLessons title/body are NOT HTML-escaped (triple-stache)", async () => {
