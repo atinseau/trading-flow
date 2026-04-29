@@ -63,6 +63,23 @@ describe("loadWatchesFromDb", () => {
       await tp.cleanup();
     }
   });
+
+  test("throws WatchesConfigError with row id when config jsonb is malformed", async () => {
+    const tp = await startTestPostgres();
+    try {
+      await tp.db.insert(watchConfigs).values({
+        id: "broken-row",
+        enabled: true,
+        // Intentionally invalid: missing required fields
+        config: { id: "broken-row" } as unknown,
+        version: 1,
+      });
+
+      await expect(loadWatchesFromDb(tp.pool)).rejects.toThrow(/broken-row/);
+    } finally {
+      await tp.cleanup();
+    }
+  });
 });
 
 describe("loadWatchesConfig with DB-sourced watches", () => {
