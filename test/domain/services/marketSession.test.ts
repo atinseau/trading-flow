@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { UnsupportedExchangeError } from "@domain/errors";
-import { getSession, type WatchAssetInput } from "@domain/services/marketSession";
+import { getSession, getSessionState, type WatchAssetInput } from "@domain/services/marketSession";
 
 const baseWatch = (asset: WatchAssetInput["asset"]): WatchAssetInput => ({ asset });
 
@@ -72,5 +72,14 @@ describe("getSession", () => {
         }),
       ),
     ).toThrow(UnsupportedExchangeError);
+  });
+});
+
+describe("getSessionState — always-open", () => {
+  test("isOpen always true, no nextOpenAt/nextCloseAt", () => {
+    const state = getSessionState({ kind: "always-open" }, new Date("2026-04-29T12:00:00Z"));
+    expect(state.isOpen).toBe(true);
+    expect(state.nextOpenAt).toBeUndefined();
+    expect(state.nextCloseAt).toBeUndefined();
   });
 });

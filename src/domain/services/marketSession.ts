@@ -34,3 +34,26 @@ export function getSession(watch: WatchAssetInput): Session {
       throw new Error(`Unsupported quoteType: ${watch.asset.quoteType}`);
   }
 }
+
+export type SessionState = {
+  isOpen: boolean;
+  nextOpenAt?: Date;
+  nextCloseAt?: Date;
+};
+
+export function getSessionState(session: Session, now: Date): SessionState {
+  if (session.kind === "always-open") return { isOpen: true };
+  if (session.kind === "exchange") return computeExchangeState(session.id, now);
+  if (session.kind === "forex") return computeForexState(now);
+  // exhaustive — should never reach here
+  const _exhaustive: never = session;
+  return _exhaustive;
+}
+
+// Stubs — implemented in Tasks 1.4 and 1.5
+function computeExchangeState(_id: ExchangeId, _now: Date): SessionState {
+  throw new Error("computeExchangeState not implemented (Task 1.4)");
+}
+function computeForexState(_now: Date): SessionState {
+  throw new Error("computeForexState not implemented (Task 1.5)");
+}
