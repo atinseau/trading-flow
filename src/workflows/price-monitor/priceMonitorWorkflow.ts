@@ -1,4 +1,4 @@
-import { defineSignal, proxyActivities, setHandler, sleep } from "@temporalio/workflow";
+import { defineSignal, proxyActivities, setHandler } from "@temporalio/workflow";
 import type * as activities from "./activities";
 
 const SHARED_NON_RETRYABLE = [
@@ -11,7 +11,6 @@ const SHARED_NON_RETRYABLE = [
   "StopRequestedError",
 ];
 
-// DB / persistence activities — many fast retries (transient DB blips).
 const dbActivities = proxyActivities<ReturnType<typeof activities.buildPriceMonitorActivities>>({
   startToCloseTimeout: "10s",
   retry: {
@@ -23,7 +22,6 @@ const dbActivities = proxyActivities<ReturnType<typeof activities.buildPriceMoni
   },
 });
 
-// Long-running price feed activity — heartbeat-driven, many retries to survive network blips.
 const longRunningActivities = proxyActivities<
   ReturnType<typeof activities.buildPriceMonitorActivities>
 >({
@@ -37,10 +35,7 @@ const longRunningActivities = proxyActivities<
   },
 });
 
-export type PriceMonitorArgs = {
-  watchId: string;
-  adapter: string;
-};
+export type PriceMonitorArgs = { symbol: string; source: string };
 
 export const stopSignal = defineSignal<[]>("stop");
 
@@ -51,24 +46,30 @@ export async function priceMonitorWorkflow(args: PriceMonitorArgs): Promise<void
   });
 
   while (!stop) {
-    const aliveSetups = await dbActivities.listAliveSetupsWithInvalidation({
-      watchId: args.watchId,
+    const aliveSetups = await dbActivities.listAliveSetupsForSymbol({
+      symbol: args.symbol,
+      source: args.source,
     });
     if (aliveSetups.length === 0) {
-      await sleep(60_000);
-      continue;
+      // Last alive setup terminated — exit gracefully. We're spawned again
+      // lazily when a new setup is created on this (symbol, source).
+      return;
     }
 
     try {
       await longRunningActivities.subscribeAndCheckPriceFeed({
-        watchId: args.watchId,
-        adapter: args.adapter,
-        assets: [...new Set(aliveSetups.map((s) => s.asset))],
+        symbol: args.symbol,
+        source: args.source,
       });
-    } catch {
-      await sleep(5_000);
+      // The activity returned without throwing — that means the alive set
+      // drained inside the activity. Re-check at the top of the loop; will exit.
+    } catch (_err) {
+      // Feed errored (network, etc). The proxy already retried up to limits.
+      // Re-check the alive set at the top of the loop and decide.
+      if (stop) return;
     }
   }
 }
 
-export const priceMonitorWorkflowId = (watchId: string) => `price-monitor-${watchId}`;
+export const priceMonitorWorkflowId = (symbol: string, source: string): string =>
+  `price-monitor-${source}-${symbol}`;

@@ -8,6 +8,7 @@ import { VerdictSchema } from "@domain/schemas/Verdict";
 import { computeInputHash } from "@domain/services/inputHash";
 import { getLogger } from "@observability/logger";
 import type { ActivityDeps } from "@workflows/activityDependencies";
+import { ensurePriceMonitorStarted } from "@workflows/price-monitor/ensureRunning";
 import { z } from "zod";
 
 const log = getLogger({ component: "setup-activities" });
@@ -35,7 +36,7 @@ export function buildSetupActivities(deps: ActivityDeps) {
       initialScore: number;
       workflowId: string;
     }) {
-      return deps.setupRepo.create({
+      const created = await deps.setupRepo.create({
         id: input.setupId,
         watchId: input.watchId,
         asset: input.asset,
@@ -49,6 +50,14 @@ export function buildSetupActivities(deps: ActivityDeps) {
         ttlExpiresAt: new Date(input.ttlExpiresAt),
         workflowId: input.workflowId,
       });
+      const watch = deps.watchById(input.watchId);
+      if (watch) {
+        await ensurePriceMonitorStarted(deps.temporalClient, deps.infra, {
+          symbol: input.asset,
+          source: watch.asset.source,
+        });
+      }
+      return created;
     },
 
     async persistEvent(input: { event: NewEvent; setupUpdate: SetupStateUpdate }) {
@@ -255,9 +264,7 @@ export function buildSetupActivities(deps: ActivityDeps) {
       const text = `${arrow} ${input.asset} ${input.timeframe}\nEntry: ${input.entry}\nSL: ${input.stopLoss}${tpStr}${reasoning}`;
 
       const images =
-        watch.include_chart_image && input.chartUri
-          ? [{ uri: input.chartUri }]
-          : undefined;
+        watch.include_chart_image && input.chartUri ? [{ uri: input.chartUri }] : undefined;
 
       const result = await deps.notifier.send({
         chatId: deps.infra.notifications.telegram.chat_id,

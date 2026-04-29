@@ -51,7 +51,7 @@ describe("priceMonitor activity dispatch", () => {
 
     const deps = {
       setupRepo,
-      priceFeeds: new Map([["fake", priceFeed]]),
+      priceFeeds: new Map([["binance_ws", priceFeed]]),
       temporalClient: mockClient.client,
       clock: new SystemClock(),
     } as unknown as ActivityDeps;
@@ -64,6 +64,7 @@ describe("priceMonitor activity dispatch", () => {
   });
 
   test("REVIEWING setup: signals 'priceCheck' only on breach", async () => {
+    setupRepo.registerWatchSource("btc-1h", "binance");
     await setupRepo.create({
       id: "setup-1",
       watchId: "btc-1h",
@@ -80,9 +81,8 @@ describe("priceMonitor activity dispatch", () => {
     });
 
     const subscribePromise = activities.subscribeAndCheckPriceFeed({
-      watchId: "btc-1h",
-      adapter: "fake",
-      assets: ["BTCUSDT"],
+      symbol: "BTCUSDT",
+      source: "binance",
     });
 
     // Tick above invalidation -- should NOT signal.
@@ -104,6 +104,7 @@ describe("priceMonitor activity dispatch", () => {
   }, 10_000);
 
   test("TRACKING setup: signals 'trackingPrice' on every tick", async () => {
+    setupRepo.registerWatchSource("btc-1h", "binance");
     await setupRepo.create({
       id: "setup-2",
       watchId: "btc-1h",
@@ -120,9 +121,8 @@ describe("priceMonitor activity dispatch", () => {
     });
 
     const subscribePromise = activities.subscribeAndCheckPriceFeed({
-      watchId: "btc-1h",
-      adapter: "fake",
-      assets: ["BTCUSDT"],
+      symbol: "BTCUSDT",
+      source: "binance",
     });
 
     // First tick -- should signal trackingPrice (no breach filter for TRACKING).

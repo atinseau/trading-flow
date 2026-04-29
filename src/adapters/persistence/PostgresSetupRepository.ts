@@ -2,9 +2,9 @@ import type { Setup } from "@domain/entities/Setup";
 import type { AliveSetupSummary, SetupRepository } from "@domain/ports/SetupRepository";
 import type { SetupStatus } from "@domain/state-machine/setupTransitions";
 import { TERMINAL_STATUSES } from "@domain/state-machine/setupTransitions";
-import { and, eq, isNotNull, notInArray } from "drizzle-orm";
+import { and, eq, notInArray, sql } from "drizzle-orm";
 import type { drizzle } from "drizzle-orm/node-postgres";
-import { setups } from "./schema";
+import { setups, watchConfigs } from "./schema";
 
 type DB = ReturnType<typeof drizzle>;
 
@@ -49,19 +49,34 @@ export class PostgresSetupRepository implements SetupRepository {
     return rows.map((r) => this.toSummary(r));
   }
 
-  async listAliveWithInvalidation(watchId: string): Promise<AliveSetupSummary[]> {
+  async listAliveBySymbol(symbol: string, source: string): Promise<AliveSetupSummary[]> {
     const terminalArr = [...TERMINAL_STATUSES];
     const rows = await this.db
-      .select()
+      .select({
+        id: setups.id,
+        watchId: setups.watchId,
+        asset: setups.asset,
+        timeframe: setups.timeframe,
+        status: setups.status,
+        currentScore: setups.currentScore,
+        patternHint: setups.patternHint,
+        invalidationLevel: setups.invalidationLevel,
+        direction: setups.direction,
+        ttlCandles: setups.ttlCandles,
+        ttlExpiresAt: setups.ttlExpiresAt,
+        workflowId: setups.workflowId,
+        createdAt: setups.createdAt,
+      })
       .from(setups)
+      .innerJoin(watchConfigs, eq(setups.watchId, watchConfigs.id))
       .where(
         and(
-          eq(setups.watchId, watchId),
+          eq(setups.asset, symbol),
+          sql`${watchConfigs.config}->'asset'->>'source' = ${source}`,
           notInArray(setups.status, terminalArr),
-          isNotNull(setups.invalidationLevel),
         ),
       );
-    return rows.map((r) => this.toSummary(r));
+    return rows.map((r) => this.toSummary(r as typeof setups.$inferSelect));
   }
 
   async markClosed(id: string, finalStatus: SetupStatus): Promise<void> {
