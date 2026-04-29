@@ -1,7 +1,10 @@
 import { events, setups, tickSnapshots, watchStates } from "@adapters/persistence/schema";
 import type { Broadcaster } from "@client/lib/broadcaster";
 import { childLogger } from "@client/lib/logger";
-import { and, asc, eq, gt, isNotNull } from "drizzle-orm";
+import { deriveOutcome } from "@domain/services/deriveOutcome";
+import type { SetupStatus } from "@domain/state-machine/setupTransitions";
+import { TERMINAL_STATUSES } from "@domain/state-machine/setupTransitions";
+import { and, asc, eq, gt, inArray, isNotNull, isNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import type pg from "pg";
 
@@ -108,6 +111,29 @@ export function startPoller(opts: PollerOpts): () => void {
         seen.setups.add(key);
         broadcaster.emit("setups", r);
         if (r.updatedAt > cursors.setups) cursors.setups = r.updatedAt;
+      }
+
+      // Derive outcome for terminal setups missing one. Idempotent: the
+      // UPDATE re-checks `outcome IS NULL` so re-runs cannot double-write.
+      const terminalArr = [...TERMINAL_STATUSES] as string[];
+      const pendingOutcome = await db
+        .select({ id: setups.id, status: setups.status })
+        .from(setups)
+        .where(and(inArray(setups.status, terminalArr), isNull(setups.outcome)))
+        .limit(50);
+      for (const row of pendingOutcome) {
+        const evts = await db
+          .select({ type: events.type, sequence: events.sequence })
+          .from(events)
+          .where(eq(events.setupId, row.id))
+          .orderBy(asc(events.sequence));
+        const outcome = deriveOutcome(row.status as SetupStatus, evts);
+        if (!outcome) continue;
+        await db
+          .update(setups)
+          .set({ outcome })
+          .where(and(eq(setups.id, row.id), isNull(setups.outcome)));
+        log.info({ setupId: row.id, outcome }, "outcome derived");
       }
 
       const tickRows = await db

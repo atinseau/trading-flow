@@ -48,8 +48,12 @@ export const setups = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
     closedAt: timestamp("closed_at", { withTimezone: true }),
+    outcome: text("outcome"),
   },
-  (t) => [index("idx_setups_watch_status").on(t.watchId, t.status)],
+  (t) => [
+    index("idx_setups_watch_status").on(t.watchId, t.status),
+    index("idx_setups_outcome").on(t.outcome),
+  ],
 );
 
 export const events = pgTable(
@@ -128,11 +132,7 @@ export const watchConfigs = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
   },
-  (t) => [
-    index("idx_watch_configs_enabled")
-      .on(t.enabled)
-      .where(sql`${t.deletedAt} IS NULL`),
-  ],
+  (t) => [index("idx_watch_configs_enabled").on(t.enabled).where(sql`${t.deletedAt} IS NULL`)],
 );
 
 export const watchConfigRevisions = pgTable(
