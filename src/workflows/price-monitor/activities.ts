@@ -1,4 +1,5 @@
 import { InvalidConfigError, StopRequestedError } from "@domain/errors";
+import { getSession, getSessionState } from "@domain/services/marketSession";
 import { getLogger } from "@observability/logger";
 import { Context } from "@temporalio/activity";
 import type { ActivityDeps } from "@workflows/activityDependencies";
@@ -31,6 +32,10 @@ export function buildPriceMonitorActivities(deps: ActivityDeps) {
       const feed = deps.priceFeeds.get(input.adapter);
       if (!feed) throw new InvalidConfigError(`Unknown price feed adapter: ${input.adapter}`);
 
+      const watch = deps.watchById(input.watchId);
+      if (!watch) throw new InvalidConfigError(`Unknown watch: ${input.watchId}`);
+      const session = getSession(watch);
+
       childLog.info({ assetCount: input.assets.length }, "subscribing to price feed");
       const stream = feed.subscribe({ watchId: input.watchId, assets: input.assets });
       let lastRefresh = Date.now();
@@ -38,6 +43,13 @@ export function buildPriceMonitorActivities(deps: ActivityDeps) {
 
       for await (const tick of stream) {
         Context.current().heartbeat({ lastTickAt: tick.timestamp.toISOString() });
+
+        // Skip signal emission if the market is closed (avoids waking setups
+        // during overnight/weekend/holiday). Activity stays alive — next tick
+        // after reopen will resume normal emission.
+        if (!getSessionState(session, deps.clock.now()).isOpen) {
+          continue;
+        }
 
         if (Date.now() - lastRefresh > 60_000) {
           cachedSetups = await deps.setupRepo.listAliveWithInvalidation(input.watchId);
