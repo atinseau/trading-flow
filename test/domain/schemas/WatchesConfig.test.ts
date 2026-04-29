@@ -42,3 +42,23 @@ test("WatchSchema accepts explicit include_chart_image = false", () => {
   if (!r.success) throw new Error("expected success");
   expect(r.data.include_chart_image).toBe(false);
 });
+
+test("WatchSchema rejects unknown asset.source", () => {
+  const w = structuredClone(minimalValidWatch);
+  w.asset.source = "kraken";
+  const r = WatchSchema.safeParse(w);
+  expect(r.success).toBe(false);
+  if (r.success) return;
+  expect(r.error.issues.some((i) => i.path.join(".") === "asset.source")).toBe(true);
+});
+
+test("WatchSchema rejects unknown analyzer provider", () => {
+  const w = structuredClone(minimalValidWatch);
+  w.analyzers.detector.provider = "openai";
+  const r = WatchSchema.safeParse(w);
+  expect(r.success).toBe(false);
+  if (r.success) return;
+  expect(r.error.issues.some((i) => i.path.join(".") === "analyzers.detector.provider")).toBe(
+    true,
+  );
+});

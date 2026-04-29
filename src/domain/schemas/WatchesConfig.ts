@@ -17,8 +17,16 @@ const PreFilterSchema = z
   })
   .prefault({});
 
+// Names that can appear in a watch must match what the runtime exposes:
+// - providers: PROVIDER_DEFAULTS in src/adapters/llm/buildProviderRegistry.ts
+// - sources: BinanceFetcher / YahooFinanceFetcher in src/adapters/market-data/
+// Adding a new provider or source requires touching this schema, the
+// registry/fetcher wiring, and the tf-web wizard pickers — by design.
+export const KNOWN_PROVIDERS = ["claude_max", "openrouter"] as const;
+export const KNOWN_ASSET_SOURCES = ["binance", "yahoo"] as const;
+
 const AnalyzerSchema = z.object({
-  provider: z.string(),
+  provider: z.enum(KNOWN_PROVIDERS),
   model: z.string(),
   max_tokens: z.number().int().positive().default(2000),
   fetch_higher_timeframe: z.boolean().optional(),
@@ -53,7 +61,7 @@ export type NotifyEvent = z.infer<typeof NotifyEventSchema>;
 export const WatchSchema = z.object({
   id: z.string().regex(/^[a-z0-9-]+$/),
   enabled: z.boolean().default(true),
-  asset: z.object({ symbol: z.string(), source: z.string() }),
+  asset: z.object({ symbol: z.string(), source: z.enum(KNOWN_ASSET_SOURCES) }),
   timeframes: z.object({
     primary: TimeframeSchema,
     higher: z.array(TimeframeSchema).default([]),
