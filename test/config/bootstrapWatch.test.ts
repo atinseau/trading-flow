@@ -88,7 +88,8 @@ describe("bootstrapWatch", () => {
 
     await bootstrapWatch(watch, { client: fakeClient, taskQueues });
 
-    const call = scheduleCreate.mock.calls[0]![0] as { spec: { cronExpressions: string[] } };
+    const calls = scheduleCreate.mock.calls as unknown as [{ spec: { cronExpressions: string[] } }][];
+    const call = calls[0]![0];
     expect(call.spec.cronExpressions[0]).toBe("0 * * * *"); // 1h cron
   });
 });
