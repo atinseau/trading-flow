@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { LessonAction } from "@domain/feedback/lessonAction";
+import type { AutoRejectReason, LessonAction } from "@domain/feedback/lessonAction";
 import { validateActions, type PoolSnapshot } from "@domain/feedback/validateActions";
 
 const lessonId = "11111111-1111-1111-1111-111111111111";
@@ -140,5 +140,33 @@ describe("validateActions", () => {
       pool,
     );
     expect(r.rejected[0]?.reason).toBe("timeframe_mention");
+  });
+
+  test.each<[string, AutoRejectReason]>([
+    ["Bitcoin tends to spike on Asian session opens", "asset_mention"],
+    ["Ethereum bouncing off resistance is reliable", "asset_mention"],
+    ["DOGE pumps correlate with social signals", "asset_mention"],
+    ["USDT pair correlation tightens in volatile regimes", "asset_mention"],
+    ["four-hour candles show different behaviour than higher", "timeframe_mention"],
+    ["fifteen-minute scalp setups need tighter SL", "timeframe_mention"],
+    ["H4 chart shows a clean trend reliably", "timeframe_mention"],
+    ["M15 scalps benefit from confluence here", "timeframe_mention"],
+    ["The 4hr timeframe is good for swing", "timeframe_mention"],
+  ])("CREATE that contains '%s' is auto-rejected with reason '%s'", (text, reason) => {
+    const title = text.length >= 10 ? text : `Lesson: ${text}`;
+    const body = (text + " ").repeat(8) + "y".repeat(40);
+    const r = validateActions(
+      [
+        {
+          type: "CREATE",
+          category: "reviewing",
+          title,
+          body,
+          rationale: "y".repeat(30),
+        },
+      ],
+      pool,
+    );
+    expect(r.rejected[0]?.reason).toBe(reason);
   });
 });

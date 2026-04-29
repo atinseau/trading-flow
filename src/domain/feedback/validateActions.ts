@@ -29,7 +29,7 @@ export type ValidationResult = {
 };
 
 const TIMEFRAME_REGEX =
-  /\b(?:\d+\s*(?:m|min|minute|h|hour|d|day|w|week)s?|hourly|daily|weekly|intraday|swing|scalp)\b/i;
+  /\b(?:\d+\s*(?:m|min|minute|h|hr|hour|d|day|w|week)s?|hourly|daily|weekly|intraday|swing|scalp|(?:one|two|three|four|five|six|seven|eight|nine|ten|fifteen|thirty|sixty)[\s-](?:minute|hour|day)s?|[mhdw]\d{1,2})\b/i;
 
 const CONSTANT_TIMEFRAMES = ["1m", "5m", "15m", "30m", "1h", "2h", "4h", "1d", "1w"] as const;
 
@@ -48,9 +48,11 @@ function mentionsAsset(text: string, symbols: string[]): boolean {
     const re = new RegExp(`\\b${s.toUpperCase()}\\b`);
     if (re.test(text.toUpperCase())) return true;
   }
-  // Common asset class & symbol whitelist for safety
+  // Common asset class & symbol whitelist for safety.
+  // False positives are acceptable here (only AutoRejected; LLM gets another shot).
+  // False negatives are NOT acceptable (mention pollutes the prompt pool forever).
   const generic =
-    /\b(BTC|ETH|EUR|USD|JPY|GBP|AAPL|TSLA|SPX|NQ|ES|XAU|GOLD|SILVER|OIL|forex|crypto|stocks?|equities|fx)\b/i;
+    /\b(BTC|ETH|EUR|USD|JPY|GBP|AAPL|TSLA|SPX|NQ|ES|XAU|GOLD|SILVER|OIL|forex|crypto|stocks?|equities|fx|Bitcoin|Ethereum|Solana|Dogecoin|Cardano|Ripple|Litecoin|DOGE|SOL|ADA|XRP|LTC|BNB|MATIC|USDT|USDC|BUSD|DAI)\b/i;
   return generic.test(text);
 }
 
