@@ -2,7 +2,7 @@ import { getLogger } from "./logger";
 
 type BunServer = ReturnType<typeof Bun.serve>;
 
-export type HealthStatus = "ok" | "degraded" | "down" | "standby";
+export type HealthStatus = "ok" | "degraded" | "down";
 
 export type HealthState = {
   component: string;
