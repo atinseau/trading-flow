@@ -3,10 +3,13 @@ import { makeCostsApi } from "@client/api/costs";
 import { makeEventsApi } from "@client/api/events";
 import { health } from "@client/api/health";
 import { makeSetupsApi } from "@client/api/setups";
+import { makeStreamHandler } from "@client/api/stream";
 import { makeTicksApi } from "@client/api/ticks";
 import { makeWatchesApi } from "@client/api/watches";
-import { db } from "@client/lib/db";
+import { broadcaster } from "@client/lib/broadcaster";
+import { db, pool } from "@client/lib/db";
 import { webLogger } from "@client/lib/logger";
+import { startPoller } from "@client/lib/poller";
 import { getTemporalClient } from "@client/lib/temporal";
 import { applyReload } from "@config/applyReload";
 import { bootstrapWatch } from "@config/bootstrapWatch";
@@ -73,6 +76,15 @@ const withParams =
   (req: Request) =>
     handler(req, (req as Request & { params?: Record<string, string> }).params ?? {});
 
+const stopPoller = startPoller({
+  pool,
+  broadcaster,
+  intervalMs: Number(process.env.TF_WEB_POLL_INTERVAL_MS ?? 1500),
+  batchSize: Number(process.env.TF_WEB_POLL_BATCH_SIZE ?? 200),
+});
+process.on("SIGTERM", () => stopPoller());
+process.on("SIGINT", () => stopPoller());
+
 const server = Bun.serve({
   port,
   routes: {
@@ -101,6 +113,7 @@ const server = Bun.serve({
     "/api/watches/:id/pause": { POST: withParams(adminApi.pause) },
     "/api/watches/:id/resume": { POST: withParams(adminApi.resume) },
     "/api/setups/:id/kill": { POST: withParams(adminApi.killSetup) },
+    "/api/stream": { GET: makeStreamHandler({ broadcaster }) },
   },
   fetch() {
     return new Response("not found", { status: 404 });
