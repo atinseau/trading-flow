@@ -1,4 +1,5 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
+import { computeClaudeCost } from "@adapters/llm/claudePricing";
 import { LLMRateLimitError, LLMSchemaValidationError } from "@domain/errors";
 import type { LLMInput, LLMOutput, LLMProvider } from "@domain/ports/LLMProvider";
 import type { LLMUsageStore } from "@domain/ports/LLMUsageStore";
@@ -91,6 +92,7 @@ export class ClaudeAgentSdkProvider implements LLMProvider {
     let promptTokens = 0;
     let completionTokens = 0;
     let cacheReadTokens = 0;
+    let cacheCreateTokens = 0;
 
     try {
       const stream = query({
@@ -109,6 +111,7 @@ export class ClaudeAgentSdkProvider implements LLMProvider {
           input_tokens?: number;
           output_tokens?: number;
           cache_read_input_tokens?: number;
+          cache_creation_input_tokens?: number;
         };
       }>) {
         if (event.type === "result" && event.result != null) {
@@ -116,6 +119,7 @@ export class ClaudeAgentSdkProvider implements LLMProvider {
           promptTokens = event.usage?.input_tokens ?? 0;
           completionTokens = event.usage?.output_tokens ?? 0;
           cacheReadTokens = event.usage?.cache_read_input_tokens ?? 0;
+          cacheCreateTokens = event.usage?.cache_creation_input_tokens ?? 0;
         }
       }
 
@@ -143,14 +147,26 @@ export class ClaudeAgentSdkProvider implements LLMProvider {
       }
     }
 
+    // Claude Max is a flat-rate subscription — Anthropic doesn't bill per call.
+    // We compute an *estimated* cost as if this exact request had hit the
+    // metered API, using the published per-token pricing for the requested
+    // model. Lets the operator measure marginal value vs the Max subscription
+    // and keeps the cost dashboard meaningful.
+    const costUsd = computeClaudeCost(input.model, {
+      promptTokens,
+      completionTokens,
+      cacheReadTokens,
+      cacheCreateTokens,
+    });
+
     this.log.info(
-      { promptTokens, completionTokens, cacheReadTokens, model: input.model },
+      { promptTokens, completionTokens, cacheReadTokens, cacheCreateTokens, costUsd, model: input.model },
       "claude-agent-sdk call complete",
     );
     return {
       content,
       parsed,
-      costUsd: 0,
+      costUsd,
       latencyMs: Date.now() - start,
       promptTokens,
       completionTokens,

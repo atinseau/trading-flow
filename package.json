@@ -32,6 +32,8 @@
     "compose:up": "docker compose --env-file .env -f docker-compose.yml up -d --build",
     "compose:dev": "docker compose --env-file .env -f docker-compose.yml -f docker-compose-dev.yaml up -d --build",
     "compose:down": "docker compose --env-file .env -f docker-compose.yml -f docker-compose-dev.yaml down",
+    "compose:sync": "docker compose --env-file .env -f docker-compose.yml -f docker-compose-dev.yaml restart tf-web",
+    "compose:nuke": "docker compose --env-file .env -f docker-compose.yml -f docker-compose-dev.yaml down -v",
     "logs": "docker compose logs -f --tail=50",
     "logs:web": "docker compose logs -f --tail=50 tf-web",
     "logs:workers": "docker compose logs -f --tail=50 scheduler-worker analysis-worker notification-worker",

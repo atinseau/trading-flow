@@ -58,9 +58,22 @@ services:
       - ./config:/app/config:ro
       - ./prompts:/app/prompts:ro
       - artifacts_data:/data/artifacts:ro
-    # bun --hot handles React + server hot-reload AND CSS regeneration via
-    # bun-plugin-tailwind on every request.
-    command: bun --hot src/client/server.ts
+      # Bind-mount manifests so the container sees `bun add`/`bun remove`
+      # changes immediately (writable so `bun install` can update the lockfile).
+      - ./package.json:/app/package.json
+      - ./bun.lock:/app/bun.lock
+      # Named volume for node_modules: keeps the linux-arm64/x64 binaries built
+      # inside the container separate from the host's darwin-arm64 ones (avoids
+      # @temporalio/core-bridge / playwright native-deps mismatch on macOS).
+      - tf_dev_node_modules:/app/node_modules
+    # On every start: `bun install` syncs node_modules with the (possibly
+    # updated) lockfile — no-op if nothing changed, fast incremental install
+    # if a package was added/removed. Then `bun --hot` for React + server HMR.
+    command: sh -c "bun install && bun --hot src/client/server.ts"
     healthcheck:
-      # Longer start_period — first build of node_modules + initial CSS take a few seconds.
-      start_period: 30s
+      # Longer start_period — first boot installs deps into the named volume,
+      # subsequent boots are fast (~1-2s).
+      start_period: 60s
+
+volumes:
+  tf_dev_node_modules:

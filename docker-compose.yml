@@ -70,11 +70,10 @@ services:
       temporal:
         condition: service_healthy
     environment:
-      # Coolify magic var: empty = auto-FQDN; UI lets you override.
-      # Locally unset = no exposure via Traefik (we use docker-compose-dev.yaml ports instead).
-      SERVICE_FQDN_TEMPORALUI_8080: ${SERVICE_FQDN_TEMPORALUI_8080:-}
       TEMPORAL_ADDRESS: temporal:7233
-      TEMPORAL_CORS_ORIGINS: ${SERVICE_FQDN_TEMPORALUI_8080:-http://localhost:8080}
+      # If you publish temporal-ui via Coolify (UI → Domains), override this
+      # with the actual public URL to keep CORS strict.
+      TEMPORAL_CORS_ORIGINS: ${TEMPORAL_CORS_ORIGINS:-http://localhost:8080}
     expose:
       - "8080"
     deploy:
@@ -226,9 +225,6 @@ services:
         condition: service_completed_successfully
     environment:
       <<: *worker_env
-      # Coolify magic var: empty = auto-FQDN + Traefik routing + Let's Encrypt.
-      # Locally unset = port published via docker-compose-dev.yaml.
-      SERVICE_FQDN_TFWEB_8084: ${SERVICE_FQDN_TFWEB_8084:-}
       WEB_PORT: "8084"
       NODE_ENV: production
       TF_WEB_POLL_INTERVAL_MS: "1500"
