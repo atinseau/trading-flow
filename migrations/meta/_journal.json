@@ -22,6 +22,13 @@
       "when": 1777448348409,
       "tag": "0002_silky_maginty",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1777448696472,
+      "tag": "0003_wealthy_the_hand",
+      "breakpoints": true
     }
   ]
 }

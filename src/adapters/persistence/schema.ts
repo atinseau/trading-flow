@@ -1,5 +1,6 @@
 import type { EventPayload } from "@domain/events/schemas";
 import type { Indicators } from "@domain/schemas/Indicators";
+import { sql } from "drizzle-orm";
 import {
   boolean,
   index,
@@ -127,7 +128,11 @@ export const watchConfigs = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
   },
-  (t) => [index("idx_watch_configs_enabled").on(t.enabled)],
+  (t) => [
+    index("idx_watch_configs_enabled")
+      .on(t.enabled)
+      .where(sql`${t.deletedAt} IS NULL`),
+  ],
 );
 
 export const watchConfigRevisions = pgTable(
@@ -142,5 +147,5 @@ export const watchConfigRevisions = pgTable(
     appliedAt: timestamp("applied_at", { withTimezone: true }).notNull().defaultNow(),
     appliedBy: text("applied_by").notNull().default("ui"),
   },
-  (t) => [index("idx_watch_revisions_watch").on(t.watchId, t.appliedAt)],
+  (t) => [index("idx_watch_revisions_watch").on(t.watchId, t.appliedAt.desc())],
 );
