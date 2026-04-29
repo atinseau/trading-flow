@@ -50,6 +50,11 @@ Hexagonale (Ports & Adapters), orchestration via Temporal, persistence event-sou
 │   │ PriceMonitor  │  │ Finalizer LLM │  │                  │     │
 │   │ + Chromium    │  │ Tracking loop │  │                  │     │
 │   └───────────────┘  └───────────────┘  └──────────────────┘     │
+│                                                                   │
+│   ┌──────────────────────────────────────────────────────────┐   │
+│   │ tf-web :8084 — Trader UI + /api (watches CRUD, setups,   │   │
+│   │ events SSE, costs, chart artifacts)                      │   │
+│   └──────────────────────────────────────────────────────────┘   │
 └──────────────────────────────────────────────────────────────────┘
 
   Domain (pure)  ◄──  Adapters (Postgres, LLM, Telegram, Playwright)
@@ -98,6 +103,7 @@ Ports utilisés (tous bindés sur `127.0.0.1`) :
 - `8081` — scheduler-worker `/health`
 - `8082` — analysis-worker `/health`
 - `8083` — notification-worker `/health`
+- `8084` — tf-web `/api` + UI
 
 ---
 
@@ -293,6 +299,26 @@ bun run src/cli/list-setups.ts
 ```
 
 S'il y a un setup intéressant détecté, il apparaîtra avec son score initial.
+
+### 7. Ouvrir l'UI Trader (`tf-web`)
+
+Une fois la stack démarrée, l'interface trader est disponible sur :
+
+```
+http://localhost:8084
+```
+
+Tu y configures tes watches (création / édition / pause / suppression) et tu monitores les setups en cours en temps réel : score qui évolue, events au fil de l'eau, chart interactif par setup, coûts LLM agrégés.
+
+**Architecture** : `tf-web` lit / écrit la table Postgres `watch_configs` (la source de vérité pour les watches[]). Le `watches.yaml` continue de fournir l'infra globale (`llm_providers`, `notifications.telegram`, `database`, `temporal`, `market_data`).
+
+**Migration depuis un `watches.yaml` existant** (one-shot, optionnel) :
+
+```bash
+bun run src/cli/seed-watches-from-yaml.ts
+```
+
+Idempotent : skippe les watches déjà présentes en DB.
 
 ---
 
