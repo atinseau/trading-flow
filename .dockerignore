@@ -1,0 +1,41 @@
+# Dependencies (re-installed in image)
+node_modules
+
+# VCS
+.git
+.gitignore
+
+# Env (build-arg or runtime-injected, never baked into image)
+.env
+.env.*
+!.env.example
+
+# Local-only directories
+.worktrees
+.superpowers
+.vscode
+.idea
+.claude
+
+# Build outputs
+dist
+build
+*.tsbuildinfo
+
+# Tests + docs (not needed at runtime)
+coverage
+.nyc_output
+test
+docs
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Misc
+README.md
+CLAUDE.md
