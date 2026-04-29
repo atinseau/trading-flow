@@ -116,11 +116,11 @@ async function buildDeps(
   llmProviders.set("fake", detectorLLM);
 
   return {
-    marketDataFetchers: new Map([["fake", marketData]]),
+    marketDataFetchers: new Map([["binance", marketData]]),
     chartRenderer: new FakeChartRenderer(),
     indicatorCalculator: indicators,
     llmProviders,
-    priceFeeds: new Map([["fake", new FakePriceFeed()]]),
+    priceFeeds: new Map([["binance", new FakePriceFeed()]]),
     notifier: new FakeNotifier(),
     setupRepo,
     eventStore,
