@@ -63,7 +63,7 @@ export const EXCHANGE_DEFS = {
     ],
     days: [1, 2, 3, 4, 5],
   },
-} as const;
+} satisfies Record<string, ExchangeDef>;
 
 export type ExchangeId = keyof typeof EXCHANGE_DEFS;
 
