@@ -1,3 +1,5 @@
+import { TemporalScheduleController } from "@adapters/temporal/TemporalScheduleController";
+import { SystemClock } from "@adapters/time/SystemClock";
 import { bootstrapWatch } from "@config/bootstrapWatch";
 import { loadInfraConfig } from "@config/InfraConfig";
 import { loadWatchesConfig } from "@config/loadWatchesConfig";
@@ -20,7 +22,12 @@ const client = new Client({ connection, namespace: infra.temporal.namespace });
 
 const enabled = watches.watches.filter((w) => w.enabled);
 for (const watch of enabled) {
-  await bootstrapWatch(watch, { client, taskQueues: infra.temporal.task_queues });
+  await bootstrapWatch(watch, {
+    client,
+    taskQueues: infra.temporal.task_queues,
+    clock: new SystemClock(),
+    scheduleController: new TemporalScheduleController(client),
+  });
 }
 
 log.info({ count: enabled.length }, "done");

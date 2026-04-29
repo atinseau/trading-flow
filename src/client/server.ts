@@ -1,3 +1,5 @@
+import { TemporalScheduleController } from "@adapters/temporal/TemporalScheduleController";
+import { SystemClock } from "@adapters/time/SystemClock";
 import { makeAdminApi } from "@client/api/admin";
 import { assetOhlcv } from "@client/api/assets";
 import { makeCostsApi } from "@client/api/costs";
@@ -33,6 +35,8 @@ const watchesApi = makeWatchesApi({
           analysis: process.env.TEMPORAL_TASK_QUEUE_ANALYSIS ?? "analysis",
           notifications: process.env.TEMPORAL_TASK_QUEUE_NOTIFICATIONS ?? "notifications",
         },
+        clock: new SystemClock(),
+        scheduleController: new TemporalScheduleController(client),
       });
     },
     applyReload: async (watch, previous) => {
