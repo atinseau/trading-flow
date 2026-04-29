@@ -19,5 +19,6 @@ export interface SetupRepository {
   get(id: string): Promise<Setup | null>;
   listAlive(watchId: string): Promise<AliveSetupSummary[]>;
   listAliveWithInvalidation(watchId: string): Promise<AliveSetupSummary[]>;
+  listAliveBySymbol(symbol: string, source: string): Promise<AliveSetupSummary[]>;
   markClosed(id: string, finalStatus: SetupStatus): Promise<void>;
 }
