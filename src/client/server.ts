@@ -15,6 +15,7 @@ import { applyReload } from "@config/applyReload";
 import { bootstrapWatch } from "@config/bootstrapWatch";
 import { tearDownWatch } from "@config/tearDownWatch";
 import { forceTick, killSetup, pauseWatch, resumeWatch } from "@config/watchOps";
+import index from "./index.html";
 
 const port = Number(process.env.WEB_PORT ?? 8084);
 
@@ -88,6 +89,7 @@ process.on("SIGINT", () => stopPoller());
 const server = Bun.serve({
   port,
   routes: {
+    "/": index,
     "/health": { GET: (req) => health(req) },
     "/api/watches": {
       GET: (req) => watchesApi.list(req),
