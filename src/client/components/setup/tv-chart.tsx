@@ -1,6 +1,4 @@
-import {
-  createChart, type IChartApi, type ISeriesApi, type Time,
-} from "lightweight-charts";
+import { createChart, type IChartApi, type ISeriesApi, type Time } from "lightweight-charts";
 import { useEffect, useRef } from "react";
 
 export type Candle = {
@@ -21,7 +19,9 @@ export function TVChart(props: {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
-  const linesRef = useRef<ReturnType<NonNullable<typeof seriesRef.current>["createPriceLine"]>[]>([]);
+  const linesRef = useRef<ReturnType<NonNullable<typeof seriesRef.current>["createPriceLine"]>[]>(
+    [],
+  );
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -39,9 +39,12 @@ export function TVChart(props: {
       height: 360,
     });
     const series = chart.addCandlestickSeries({
-      upColor: "#10b981", downColor: "#ef4444",
-      borderUpColor: "#10b981", borderDownColor: "#ef4444",
-      wickUpColor: "#10b981", wickDownColor: "#ef4444",
+      upColor: "#10b981",
+      downColor: "#ef4444",
+      borderUpColor: "#10b981",
+      borderDownColor: "#ef4444",
+      wickUpColor: "#10b981",
+      wickDownColor: "#ef4444",
     });
     chartRef.current = chart;
     seriesRef.current = series;

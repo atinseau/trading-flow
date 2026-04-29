@@ -43,6 +43,13 @@
       "when": 1777500478718,
       "tag": "0005_lucky_hammerhead",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1777501551265,
+      "tag": "0006_feedback_loop",
+      "breakpoints": true
     }
   ]
 }

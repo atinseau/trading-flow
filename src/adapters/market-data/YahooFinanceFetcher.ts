@@ -70,9 +70,7 @@ export class YahooFinanceFetcher implements MarketDataFetcher {
     if (!interval) throw new Error(`Timeframe non supporté: ${args.timeframe}`);
     const range = RANGE_BY_TIMEFRAME[args.timeframe];
 
-    const url = new URL(
-      `${YAHOO_BASE_URL}/v8/finance/chart/${encodeURIComponent(args.asset)}`,
-    );
+    const url = new URL(`${YAHOO_BASE_URL}/v8/finance/chart/${encodeURIComponent(args.asset)}`);
     url.searchParams.set("interval", interval);
     if (range) url.searchParams.set("range", range);
 
@@ -119,6 +117,44 @@ export class YahooFinanceFetcher implements MarketDataFetcher {
       );
     }
     return candles.slice(-args.limit);
+  }
+
+  async fetchRange(args: {
+    asset: string;
+    timeframe: string;
+    from: Date;
+    to: Date;
+  }): Promise<Candle[]> {
+    // Yahoo's chart API uses range presets, not arbitrary time windows. We
+    // fetch the natural range for the timeframe, then filter client-side.
+    // Limit is set very high so the slice doesn't truncate before filtering.
+    const all = await this.fetchOHLCV({
+      asset: args.asset,
+      timeframe: args.timeframe,
+      limit: 10_000,
+    });
+    // Observability: if the requested window starts before Yahoo's earliest
+    // returned candle, the range preset capped data and the result is
+    // silently truncated at the head. Log a warning so callers (e.g. the
+    // post-mortem chart) can spot incomplete windows in production.
+    if (all.length > 0) {
+      const earliest = all[0]!;
+      if (args.from.getTime() < earliest.timestamp.getTime()) {
+        log.warn(
+          {
+            asset: args.asset,
+            timeframe: args.timeframe,
+            from: args.from.toISOString(),
+            earliest: earliest.timestamp.toISOString(),
+          },
+          "yahoo fetchRange: requested window starts before earliest available data (range preset cap)",
+        );
+      }
+    }
+    return all.filter(
+      (c) =>
+        c.timestamp.getTime() >= args.from.getTime() && c.timestamp.getTime() <= args.to.getTime(),
+    );
   }
 
   async isAssetSupported(asset: string): Promise<boolean> {

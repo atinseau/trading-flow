@@ -8,6 +8,10 @@ const cache = new Map<
 
 const VERSION_REGEX = /\{\{!--[\s\S]*?version:\s*([a-zA-Z0-9_-]+)[\s\S]*?--\}\}/;
 
+// Register an `eq` helper for use in templates: {{#if (eq a b)}}…{{/if}}.
+// Idempotent: safe to call multiple times — Handlebars overwrites silently.
+Handlebars.registerHelper("eq", (a: unknown, b: unknown) => a === b);
+
 export type LoadedPrompt = {
   systemPrompt: string;
   render: (context: unknown) => string;
@@ -15,7 +19,7 @@ export type LoadedPrompt = {
 };
 
 export async function loadPrompt(
-  name: "detector" | "reviewer" | "finalizer",
+  name: "detector" | "reviewer" | "finalizer" | "feedback",
 ): Promise<LoadedPrompt> {
   const cached = cache.get(name);
   if (cached) {

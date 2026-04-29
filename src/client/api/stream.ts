@@ -7,7 +7,9 @@ export function makeStreamHandler(deps: { broadcaster: Broadcaster; heartbeatMs?
 
   return async (req: Request): Promise<Response> => {
     const url = new URL(req.url);
-    const requested = (url.searchParams.get("topics") ?? "events,setups,watches,ticks").split(",") as Topic[];
+    const requested = (url.searchParams.get("topics") ?? "events,setups,watches,ticks").split(
+      ",",
+    ) as Topic[];
     const topics = requested.filter((t): t is Topic => ALL_TOPICS.includes(t));
 
     const encoder = new TextEncoder();
@@ -34,7 +36,10 @@ export function makeStreamHandler(deps: { broadcaster: Broadcaster; heartbeatMs?
 
         const unsub = deps.broadcaster.subscribe(topics, subscriber);
 
-        const hbInterval = setInterval(() => safeEnqueue(encoder.encode(`: heartbeat\n\n`)), heartbeat);
+        const hbInterval = setInterval(
+          () => safeEnqueue(encoder.encode(`: heartbeat\n\n`)),
+          heartbeat,
+        );
 
         const close = (): void => {
           if (closed) return;
@@ -57,7 +62,7 @@ export function makeStreamHandler(deps: { broadcaster: Broadcaster; heartbeatMs?
       headers: {
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache",
-        "Connection": "keep-alive",
+        Connection: "keep-alive",
         "X-Accel-Buffering": "no",
       },
     });

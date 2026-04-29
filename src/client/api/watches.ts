@@ -1,4 +1,4 @@
-import { watchConfigs, watchConfigRevisions, watchStates } from "@adapters/persistence/schema";
+import { watchConfigRevisions, watchConfigs, watchStates } from "@adapters/persistence/schema";
 import { NotFoundError, safeHandler } from "@client/api/safeHandler";
 import {
   createWatchConfig,

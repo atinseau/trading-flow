@@ -1,5 +1,5 @@
-import { cronForTimeframe } from "@domain/services/cronForTimeframe";
 import type { WatchConfig } from "@domain/schemas/WatchesConfig";
+import { cronForTimeframe } from "@domain/services/cronForTimeframe";
 import { getLogger } from "@observability/logger";
 import type { Client } from "@temporalio/client";
 import { schedulerWorkflowId } from "@workflows/scheduler/schedulerWorkflow";
@@ -31,8 +31,6 @@ export async function applyReload(input: ApplyReloadInput): Promise<void> {
     }
   }
 
-  await client.workflow
-    .getHandle(schedulerWorkflowId(watch.id))
-    .signal("reloadConfig", watch);
+  await client.workflow.getHandle(schedulerWorkflowId(watch.id)).signal("reloadConfig", watch);
   watchLog.info("sent reloadConfig signal");
 }

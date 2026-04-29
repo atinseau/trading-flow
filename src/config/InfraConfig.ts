@@ -64,9 +64,7 @@ function parseInt10(name: string, fallback: number): number {
   if (raw === undefined || raw === "") return fallback;
   const n = Number(raw);
   if (!Number.isFinite(n) || !Number.isInteger(n) || n <= 0) {
-    throw new InfraConfigError(
-      `Invalid ${name}: expected positive integer, got "${raw}"`,
-    );
+    throw new InfraConfigError(`Invalid ${name}: expected positive integer, got "${raw}"`);
   }
   return n;
 }
@@ -76,9 +74,7 @@ function parseBool(name: string, fallback: boolean): boolean {
   if (raw === undefined || raw === "") return fallback;
   if (raw === "true" || raw === "1") return true;
   if (raw === "false" || raw === "0") return false;
-  throw new InfraConfigError(
-    `Invalid ${name}: expected "true"|"false"|"1"|"0", got "${raw}"`,
-  );
+  throw new InfraConfigError(`Invalid ${name}: expected "true"|"false"|"1"|"0", got "${raw}"`);
 }
 
 export function loadInfraConfig(): InfraConfig {

@@ -19,6 +19,7 @@ import { FakeLLMProvider } from "@test-fakes/FakeLLMProvider";
 import { FakeMarketDataFetcher } from "@test-fakes/FakeMarketDataFetcher";
 import { FakeNotifier } from "@test-fakes/FakeNotifier";
 import { FakePriceFeed } from "@test-fakes/FakePriceFeed";
+import { InMemoryLessonStore } from "@test-fakes/InMemoryLessonStore";
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 import type { ActivityDeps } from "@workflows/activityDependencies";
 import { buildSetupActivities } from "@workflows/setup/activities";
@@ -62,12 +63,19 @@ const testWatch: WatchConfig = {
     detector: { provider: "fake", model: "fake", max_tokens: 2000 },
     reviewer: { provider: "fake", model: "fake", max_tokens: 2000 },
     finalizer: { provider: "fake", model: "fake", max_tokens: 2000 },
+    feedback: { provider: "fake", model: "fake" },
   },
   optimization: { reviewer_skip_when_detector_corroborated: true },
   notify_on: ["confirmed", "rejected", "tp_hit", "sl_hit", "invalidated_after_confirmed"],
   include_chart_image: false,
   include_reasoning: true,
   budget: { pause_on_budget_exceeded: false },
+  feedback: {
+    enabled: true,
+    max_active_lessons_per_category: 30,
+    injection: { detector: true, reviewer: true, finalizer: true },
+    context_providers_disabled: [],
+  },
 };
 
 const testConfig: { watches: WatchConfig[] } = { watches: [testWatch] };
@@ -190,7 +198,11 @@ describe("SetupWorkflow integration (real Postgres + real activities)", () => {
 
     const infra = {
       database: { url: "x", pool_size: 1, ssl: false },
-      temporal: { address: "x", namespace: "default", task_queues: { scheduler: "s", analysis: "a", notifications: "n" } },
+      temporal: {
+        address: "x",
+        namespace: "default",
+        task_queues: { scheduler: "s", analysis: "a", notifications: "n" },
+      },
       notifications: { telegram: { bot_token: "test-token", chat_id: "test-chat" } },
       llm: { openrouter_api_key: null },
       artifacts: { base_dir: "/tmp" },
@@ -215,6 +227,10 @@ describe("SetupWorkflow integration (real Postgres + real activities)", () => {
       temporalClient: env.client,
       db,
       pgPool: pool,
+      lessonStore: new InMemoryLessonStore(),
+      lessonEventStore: null as unknown as ActivityDeps["lessonEventStore"],
+      feedbackContextRegistry: null as unknown as ActivityDeps["feedbackContextRegistry"],
+      notifyLessonPending: async () => {},
     };
 
     const activities = buildSetupActivities(deps);
@@ -245,6 +261,9 @@ describe("SetupWorkflow integration (real Postgres + real activities)", () => {
       scoreThresholdDead: 10,
       scoreMax: 100,
       detectorPromptVersion: "detector_v3",
+      // Disabled here — this integration test focuses on the setup workflow
+      // path, not the feedback loop (covered by setupWorkflow.feedback.test).
+      feedbackEnabled: false,
     };
 
     let finalStatus: string | undefined;

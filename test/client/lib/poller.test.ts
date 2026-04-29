@@ -1,8 +1,8 @@
+import { describe, expect, test } from "bun:test";
 import { events, setups } from "@adapters/persistence/schema";
 import { Broadcaster } from "@client/lib/broadcaster";
 import { startPoller } from "@client/lib/poller";
 import { startTestPostgres } from "@test-helpers/postgres";
-import { describe, expect, test } from "bun:test";
 
 const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 

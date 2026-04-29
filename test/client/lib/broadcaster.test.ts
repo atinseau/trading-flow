@@ -1,5 +1,5 @@
-import { Broadcaster, type Topic } from "@client/lib/broadcaster";
 import { describe, expect, test } from "bun:test";
+import { Broadcaster, type Topic } from "@client/lib/broadcaster";
 
 const fakeSub = () => {
   const received: { topic: Topic; payload: unknown }[] = [];

@@ -14,7 +14,9 @@ export function KeyLevels(props: {
     <div className="flex flex-wrap gap-2">
       {cell("Entry", props.entry)}
       {cell("SL", props.sl)}
-      {props.tp?.map((p, i) => <div key={i}>{cell(`TP${i + 1}`, p)}</div>)}
+      {props.tp?.map((p, i) => (
+        <div key={i}>{cell(`TP${i + 1}`, p)}</div>
+      ))}
       {cell("Invalidation", props.invalidation)}
     </div>
   );

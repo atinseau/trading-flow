@@ -14,6 +14,16 @@ export class InMemoryTickSnapshotStore implements TickSnapshotStore {
     return this.store.get(id) ?? null;
   }
 
+  async listInWindow(args: { watchId: string; from: Date; to: Date }): Promise<TickSnapshot[]> {
+    const out: TickSnapshot[] = [];
+    for (const t of this.store.values()) {
+      if (t.watchId !== args.watchId) continue;
+      if (t.tickAt < args.from || t.tickAt > args.to) continue;
+      out.push(t);
+    }
+    return out.sort((a, b) => a.tickAt.getTime() - b.tickAt.getTime());
+  }
+
   reset(): void {
     this.store.clear();
   }

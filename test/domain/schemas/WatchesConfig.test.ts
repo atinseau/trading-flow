@@ -18,8 +18,10 @@ const minimalValidWatch = {
     detector: { provider: "claude_max", model: "x" },
     reviewer: { provider: "claude_max", model: "x" },
     finalizer: { provider: "claude_max", model: "x" },
+    feedback: { provider: "claude_max", model: "x" },
   },
   notify_on: ["confirmed"],
+  feedback: {},
 };
 
 test("WatchSchema accepts minimal valid input", () => {

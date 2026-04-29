@@ -89,12 +89,25 @@ export function buildSetupActivities(deps: ActivityDeps) {
       const ohlcvBuf = await deps.artifactStore.get(snap.ohlcvUri);
       const reviewerPrompt = await loadPrompt("reviewer");
       const promptVersion = reviewerPrompt.version;
+
+      const activeLessons = watch.feedback.injection.reviewer
+        ? await deps.lessonStore.listActive({
+            watchId: input.watchId,
+            category: "reviewing",
+            limit: watch.feedback.max_active_lessons_per_category,
+          })
+        : [];
+      if (activeLessons.length > 0) {
+        await deps.lessonStore.incrementUsage(activeLessons.map((l) => l.id));
+      }
+
       const inputHash = computeInputHash({
         setupId: input.setupId,
         promptVersion,
         ohlcvSnapshot: ohlcvBuf.toString("hex").slice(0, 64),
         chartUri: snap.chartUri,
         indicators: snap.indicators as unknown as Record<string, number>,
+        activeLessonIds: activeLessons.map((l) => l.id).sort(),
       });
 
       const cached = await deps.eventStore.findByInputHash(input.setupId, inputHash);
@@ -132,6 +145,7 @@ export function buildSetupActivities(deps: ActivityDeps) {
         })),
         tick: { tickAt: snap.tickAt.toISOString() },
         fresh: { lastClose: 0, indicators: snap.indicators },
+        activeLessons: activeLessons.map((l) => ({ title: l.title, body: l.body })),
       });
 
       const result = await resolveAndCall(
@@ -179,6 +193,17 @@ export function buildSetupActivities(deps: ActivityDeps) {
       if (!setup) throw new Error(`Setup ${input.setupId} not found`);
       const history = await deps.eventStore.listForSetup(input.setupId);
 
+      const activeLessons = watch.feedback.injection.finalizer
+        ? await deps.lessonStore.listActive({
+            watchId: input.watchId,
+            category: "finalizing",
+            limit: watch.feedback.max_active_lessons_per_category,
+          })
+        : [];
+      if (activeLessons.length > 0) {
+        await deps.lessonStore.incrementUsage(activeLessons.map((l) => l.id));
+      }
+
       const finalizerPrompt = await loadPrompt("finalizer");
       const userPrompt = finalizerPrompt.render({
         setup: {
@@ -196,6 +221,7 @@ export function buildSetupActivities(deps: ActivityDeps) {
           type: e.type,
           scoreAfter: e.scoreAfter,
         })),
+        activeLessons: activeLessons.map((l) => ({ title: l.title, body: l.body })),
       });
 
       const result = await resolveAndCall(

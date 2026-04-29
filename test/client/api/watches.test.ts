@@ -1,6 +1,6 @@
-import { startTestPostgres } from "@test-helpers/postgres";
-import { makeWatchesApi } from "@client/api/watches";
 import { describe, expect, mock, test } from "bun:test";
+import { makeWatchesApi } from "@client/api/watches";
+import { startTestPostgres } from "@test-helpers/postgres";
 
 const validBody = {
   id: "btc-1h",
@@ -20,6 +20,7 @@ const validBody = {
     detector: { provider: "claude_max", model: "claude-sonnet-4-6" },
     reviewer: { provider: "claude_max", model: "claude-haiku-4-5" },
     finalizer: { provider: "claude_max", model: "claude-opus-4-7" },
+    feedback: { provider: "claude_max", model: "claude-opus-4-7" },
   },
   notify_on: ["confirmed"],
 };

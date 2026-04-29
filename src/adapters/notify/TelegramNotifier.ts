@@ -1,5 +1,10 @@
 import type { NotificationImage, Notifier } from "@domain/ports/Notifier";
 import { Bot, InputFile } from "grammy";
+import {
+  encodeCallbackData,
+  formatLessonProposalMessage,
+  type LessonProposalMessageInput,
+} from "./lessonProposalFormat";
 
 export class TelegramNotifier implements Notifier {
   private bot: Bot;
@@ -39,5 +44,49 @@ export class TelegramNotifier implements Notifier {
       parse_mode: parseMode,
     });
     return { messageId: msg.message_id };
+  }
+
+  async sendLessonProposal(
+    args: LessonProposalMessageInput & {
+      chatId: string;
+      lessonId: string;
+    },
+  ): Promise<{ messageId: number }> {
+    const text = formatLessonProposalMessage(args);
+    const msg = await this.bot.api.sendMessage(args.chatId, text, {
+      parse_mode: "Markdown",
+      reply_markup: {
+        inline_keyboard: [
+          [
+            {
+              text: "✅ Approve",
+              callback_data: encodeCallbackData({ action: "approve", lessonId: args.lessonId }),
+            },
+            {
+              text: "❌ Reject",
+              callback_data: encodeCallbackData({ action: "reject", lessonId: args.lessonId }),
+            },
+          ],
+        ],
+      },
+    });
+    return { messageId: msg.message_id };
+  }
+
+  async editLessonMessage(args: {
+    chatId: string;
+    msgId: number;
+    finalState: "approved" | "rejected" | "no_longer_pending";
+    atIso?: string;
+  }): Promise<void> {
+    const label =
+      args.finalState === "approved"
+        ? `✅ Approved by you on ${args.atIso ?? new Date().toISOString()}`
+        : args.finalState === "rejected"
+          ? `❌ Rejected by you on ${args.atIso ?? new Date().toISOString()}`
+          : "ℹ️ No longer pending";
+    await this.bot.api.editMessageText(args.chatId, args.msgId, label, {
+      parse_mode: "Markdown",
+    });
   }
 }

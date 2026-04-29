@@ -43,6 +43,9 @@ const baseInitial: InitialEvidence = {
   scoreThresholdDead: 10,
   scoreMax: 100,
   detectorPromptVersion: "detector_v3",
+  // Feedback disabled — these tests focus on the setup workflow itself; the
+  // feedback child-workflow path is covered by setupWorkflow.feedback.test.ts.
+  feedbackEnabled: false,
 };
 
 const baseRunReviewerReturn = (
@@ -241,7 +244,15 @@ describe("SetupWorkflow", () => {
     });
     await worker.runUntil(async () => {
       const handle = await env.client.workflow.start(setupWorkflow, {
-        args: [{ ...baseInitial, setupId: "test-tracking-tp" }],
+        args: [
+          {
+            ...baseInitial,
+            setupId: "test-tracking-tp",
+            // Below the SL=95 / entry=100 path so the trackingLoop's
+            // price-invalidation check doesn't trigger before the TP path.
+            invalidationLevel: 80,
+          },
+        ],
         workflowId: `test-tracking-tp-${__testCounter}`,
         taskQueue,
       });
@@ -326,7 +337,15 @@ describe("SetupWorkflow", () => {
     });
     await worker.runUntil(async () => {
       const handle = await env.client.workflow.start(setupWorkflow, {
-        args: [{ ...baseInitial, setupId: "test-tracking-sl" }],
+        args: [
+          {
+            ...baseInitial,
+            setupId: "test-tracking-sl",
+            // Below the SL=95 / target tick=90 path so trackingLoop's
+            // price-invalidation check doesn't fire before the SL path.
+            invalidationLevel: 50,
+          },
+        ],
         workflowId: `test-tracking-sl-${__testCounter}`,
         taskQueue,
       });

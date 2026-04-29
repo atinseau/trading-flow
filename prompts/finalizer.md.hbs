@@ -1,6 +1,7 @@
 {{!--
-  version: finalizer_v3
-  description: Final go/no-go decision. v3 = full English translation for
+  version: finalizer_v4
+  description: Final go/no-go decision. v4 = adds the activeLessons head block
+               (feedback loop integration). v3 was full English translation for
                optimal LLM performance.
 --}}
 
@@ -15,6 +16,22 @@
 - **Score reached**: {{setup.currentScore}}/100 (threshold crossed)
 - **Invalidation level**: {{setup.invalidationLevel}}
 
+{{#if activeLessons.length}}
+## Active guidelines (learned from previous trades)
+
+These principles emerged from retrospective analysis of past failed trades on
+this watch. Apply them whenever they apply to the current decision. They take
+precedence over generic best practice when there is a conflict.
+
+{{#each activeLessons}}
+### {{{this.title}}}
+
+{{{this.body}}}
+
+---
+{{/each}}
+
+{{/if}}
 ## Full history ({{historyCount}} events)
 
 {{#each history}}
