@@ -1,3 +1,4 @@
+import { isAutoActionAllowed } from "@domain/feedback/lessonTransitions";
 import type {
   AutoRejectReason,
   LessonAction,
@@ -51,11 +52,6 @@ function mentionsAsset(text: string, symbols: string[]): boolean {
   const generic =
     /\b(BTC|ETH|EUR|USD|JPY|GBP|AAPL|TSLA|SPX|NQ|ES|XAU|GOLD|SILVER|OIL|forex|crypto|stocks?|equities|fx)\b/i;
   return generic.test(text);
-}
-
-function isAutoActionAllowed(pinned: boolean, type: LessonAction["type"]): boolean {
-  if (!pinned) return true;
-  return type === "REINFORCE";
 }
 
 export function validateActions(actions: LessonAction[], pool: PoolSnapshot): ValidationResult {
@@ -113,7 +109,7 @@ export function validateActions(actions: LessonAction[], pool: PoolSnapshot): Va
     }
 
     const pinned = pool.pinnedById.get(action.lessonId) ?? false;
-    if (!isAutoActionAllowed(pinned, action.type)) {
+    if (!isAutoActionAllowed({ pinned, action: action.type })) {
       rejected.push({ action, reason: "pinned_lesson" });
       continue;
     }
