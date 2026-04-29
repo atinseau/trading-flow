@@ -192,7 +192,7 @@ async function seedClosedSetup(deps: ActivityDeps, watchId: string): Promise<str
     {
       setupId,
       sequence: 0,
-      stage: "test",
+      stage: "system",
       actor: "test",
       type: "Confirmed" as never,
       scoreDelta: 0,
@@ -210,7 +210,7 @@ async function seedClosedSetup(deps: ActivityDeps, watchId: string): Promise<str
     {
       setupId,
       sequence: 0,
-      stage: "test",
+      stage: "system",
       actor: "test",
       type: "SLHit" as never,
       scoreDelta: 0,

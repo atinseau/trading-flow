@@ -217,7 +217,7 @@ async function seedSetupConfirmedThenSLHit(setupId: string, deps: ActivityDeps) 
       event: {
         setupId,
         sequence: 0, // ignored; computed atomically by the store
-        stage: "test",
+        stage: "system",
         actor: "test",
         type: e.type as never,
         scoreDelta: e.scoreDelta,
