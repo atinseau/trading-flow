@@ -34,9 +34,6 @@ Thumbs.db
 coverage/
 .nyc_output/
 
-# Generated CSS bundle (compiled at build time from globals.css)
-src/client/globals.compiled.css
-
 # Superpowers (brainstorm sessions, plans cache)
 .superpowers/
 

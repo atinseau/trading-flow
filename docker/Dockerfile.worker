@@ -23,14 +23,9 @@ RUN --mount=type=cache,target=/root/.cache/ms-playwright \
 FROM deps AS runtime
 
 COPY src ./src
-COPY drizzle.config.ts biome.json tsconfig.json ./
+COPY drizzle.config.ts biome.json tsconfig.json bunfig.toml ./
 COPY config ./config
 COPY prompts ./prompts
 COPY migrations ./migrations
-
-# Precompile Tailwind v4 utilities to a static CSS asset.
-# Workaround for bun-plugin-tailwind v0.1.2 which doesn't expand @tailwind utilities
-# at HTML-bundle time. The compiled file is referenced by src/client/index.html.
-RUN bunx @tailwindcss/cli -i src/client/globals.css -o src/client/globals.compiled.css --minify
 
 ENV NODE_ENV=production

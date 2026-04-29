@@ -27,16 +27,9 @@ services:
       - ./config:/app/config:ro
       - ./prompts:/app/prompts:ro
       - artifacts_data:/data/artifacts:ro
-    # 1. Initial Tailwind compile (synchronous — index.html needs globals.compiled.css)
-    # 2. Tailwind --watch in background for live CSS rebuilds
-    # 3. bun --hot for React + server hot-reload
-    command:
-      - sh
-      - -c
-      - |
-        bunx @tailwindcss/cli -i src/client/globals.css -o src/client/globals.compiled.css
-        bunx @tailwindcss/cli -i src/client/globals.css -o src/client/globals.compiled.css --watch &
-        exec bun --hot src/client/server.ts
+    # bun --hot handles React + server hot-reload AND CSS regeneration via
+    # bun-plugin-tailwind on every request.
+    command: bun --hot src/client/server.ts
     healthcheck:
       # Longer start_period — first build of node_modules + initial CSS take a few seconds.
       start_period: 30s
