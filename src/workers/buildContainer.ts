@@ -78,7 +78,33 @@ export async function buildContainer(
   // notifyLessonPending is wired in the composition root (Phase 13) — at the
   // container level we provide a no-op default; the worker entrypoint can swap
   // it for a Telegram-backed implementation when feedback approvals ship.
-  const noopNotifyLessonPending: ActivityDeps["notifyLessonPending"] = async () => {};
+  // The first invocation logs a one-time warning so the silent path is observable.
+  let warnedNotifyPending = false;
+  const noopNotifyLessonPending: ActivityDeps["notifyLessonPending"] = async () => {
+    if (!warnedNotifyPending) {
+      warnedNotifyPending = true;
+      // Use a console.warn here (no logger import) to keep this surface dependency-free;
+      // structured logging takes over once Phase 13 wires the real implementation.
+      console.warn(
+        "notifyLessonPending no-op invoked (Phase 13 pending). " +
+          "Pending lesson approvals are not being notified yet — wire a real implementation.",
+      );
+    }
+  };
+
+  // Phase 13 will replace this with the real FeedbackContextProviderRegistry instance.
+  // Until then, any access throws so the gap is loud and obvious.
+  const feedbackContextRegistryPlaceholder: FeedbackContextProviderRegistry = new Proxy(
+    {} as FeedbackContextProviderRegistry,
+    {
+      get() {
+        throw new Error(
+          "feedbackContextRegistry not wired (Phase 13 pending). " +
+            "If you see this in tests, mock feedbackContextRegistry on the test deps directly.",
+        );
+      },
+    },
+  );
 
   // Standby — no watches, no domain wiring.
   if (watches === null) {
@@ -101,7 +127,7 @@ export async function buildContainer(
       db,
       lessonStore,
       lessonEventStore,
-      feedbackContextRegistry: null as unknown as FeedbackContextProviderRegistry,
+      feedbackContextRegistry: feedbackContextRegistryPlaceholder,
       notifyLessonPending: noopNotifyLessonPending,
     };
     return {
@@ -192,7 +218,7 @@ export async function buildContainer(
     lessonStore,
     lessonEventStore,
     // Wired in Phase 13 composition root with the 4 canonical providers.
-    feedbackContextRegistry: null as unknown as FeedbackContextProviderRegistry,
+    feedbackContextRegistry: feedbackContextRegistryPlaceholder,
     notifyLessonPending: noopNotifyLessonPending,
   };
 
