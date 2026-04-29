@@ -22,7 +22,11 @@ test("builds registry with claude_max + openrouter from hardcoded catalog", () =
   expect(registry.get("openrouter")?.fallback).toBeNull();
 });
 
-test("openrouter without api_key throws clear error", () => {
+test("skips openrouter when api_key is null, severs claude_max fallback", () => {
   const infraNoKey: InfraConfig = { ...infraStub, llm: { openrouter_api_key: null } };
-  expect(() => buildProviderRegistry(infraNoKey)).toThrow(/OPENROUTER_API_KEY/);
+  const registry = buildProviderRegistry(infraNoKey);
+  expect(registry.size).toBe(1);
+  expect(registry.has("openrouter")).toBe(false);
+  // claude_max's fallback would dangle to a missing provider; sever it
+  expect(registry.get("claude_max")?.fallback).toBeNull();
 });

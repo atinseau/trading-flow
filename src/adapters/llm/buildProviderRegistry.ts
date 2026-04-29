@@ -37,27 +37,29 @@ export function buildProviderRegistry(
 ): Map<string, LLMProvider> {
   const registry = new Map<string, LLMProvider>();
 
+  // Skip openrouter when no API key is configured — single-provider envs are valid.
+  // Other providers' fallback chains are then severed below to avoid dangling refs.
+  const openrouterAvailable = infra.llm.openrouter_api_key !== null;
+
   for (const [name, providerCfg] of Object.entries(PROVIDER_DEFAULTS)) {
     if (providerCfg.type === "claude-agent-sdk") {
+      const fallback =
+        providerCfg.fallback === "openrouter" && !openrouterAvailable ? null : providerCfg.fallback;
       registry.set(
         name,
         new ClaudeAgentSdkProvider(name, {
           workspaceDir: infra.claude.workspace_dir,
           dailyCallBudget: providerCfg.daily_call_budget,
-          fallback: providerCfg.fallback,
+          fallback,
           usageStore,
         }),
       );
-    } else {
-      if (infra.llm.openrouter_api_key === null) {
-        throw new Error(
-          `OPENROUTER_API_KEY is required because provider "${name}" type = openrouter`,
-        );
-      }
+    } else if (providerCfg.type === "openrouter") {
+      if (!openrouterAvailable) continue;
       registry.set(
         name,
         new OpenRouterProvider(name, {
-          apiKey: infra.llm.openrouter_api_key,
+          apiKey: infra.llm.openrouter_api_key as string,
           baseUrl: providerCfg.base_url,
           monthlyBudgetUsd: providerCfg.monthly_budget_usd,
           fallback: providerCfg.fallback,
