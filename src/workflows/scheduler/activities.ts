@@ -146,6 +146,18 @@ export function buildSchedulerActivities(deps: ActivityDeps) {
       if (!watch) throw new InvalidConfigError(`Unknown watch: ${input.watchId}`);
       const snap = await deps.tickSnapshotStore.get(input.tickSnapshotId);
       if (!snap) throw new Error(`TickSnapshot ${input.tickSnapshotId} not found`);
+
+      const activeLessons = watch.feedback.injection.detector
+        ? await deps.lessonStore.listActive({
+            watchId: input.watchId,
+            category: "detecting",
+            limit: watch.feedback.max_active_lessons_per_category,
+          })
+        : [];
+      if (activeLessons.length > 0) {
+        await deps.lessonStore.incrementUsage(activeLessons.map((l) => l.id));
+      }
+
       const detectorPrompt = await loadPrompt("detector");
       const userPrompt = detectorPrompt.render({
         asset: snap.asset,
@@ -153,6 +165,7 @@ export function buildSchedulerActivities(deps: ActivityDeps) {
         tickAt: snap.tickAt.toISOString(),
         indicators: snap.indicators,
         aliveSetups: input.aliveSetups,
+        activeLessons: activeLessons.map((l) => ({ title: l.title, body: l.body })),
       });
       const result = await resolveAndCall(
         watch.analyzers.detector.provider,
