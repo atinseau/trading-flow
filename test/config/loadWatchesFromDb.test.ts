@@ -1,12 +1,12 @@
+import { describe, expect, test } from "bun:test";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { watchConfigs } from "@adapters/persistence/schema";
 import { loadWatchesConfig } from "@config/loadWatchesConfig";
 import { loadWatchesFromDb } from "@config/loadWatchesFromDb";
 import type { WatchConfig } from "@domain/schemas/WatchesConfig";
 import { startTestPostgres } from "@test-helpers/postgres";
-import { describe, expect, test } from "bun:test";
-import { mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 
 const FULL_WATCH = {
   id: "btc-1h",
@@ -64,18 +64,26 @@ describe("loadWatchesFromDb", () => {
     }
   });
 
-  test("throws WatchesConfigError with row id when config jsonb is malformed", async () => {
+  test("logs a warning and skips malformed rows (no throw)", async () => {
     const tp = await startTestPostgres();
     try {
-      await tp.db.insert(watchConfigs).values({
-        id: "broken-row",
-        enabled: true,
-        // Intentionally invalid: missing required fields
-        config: { id: "broken-row" } as unknown,
-        version: 1,
-      });
-
-      await expect(loadWatchesFromDb(tp.pool)).rejects.toThrow(/broken-row/);
+      // Seed: one valid + one broken
+      await tp.db.insert(watchConfigs).values([
+        {
+          id: "valid-row",
+          enabled: true,
+          config: { ...FULL_WATCH, id: "valid-row" } as unknown,
+          version: 1,
+        },
+        {
+          id: "broken-row",
+          enabled: true,
+          config: { id: "broken-row" } as unknown, // missing required fields
+          version: 1,
+        },
+      ]);
+      const watches = await loadWatchesFromDb(tp.pool);
+      expect(watches.map((w) => w.id)).toEqual(["valid-row"]);
     } finally {
       await tp.cleanup();
     }
