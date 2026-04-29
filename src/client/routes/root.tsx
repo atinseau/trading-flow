@@ -1,9 +1,6 @@
+import { LiveEventsSidebar } from "@client/components/live-events-sidebar";
 import { useSSEStream } from "@client/hooks/useSSEStream";
 import { Link, NavLink, Outlet } from "react-router-dom";
-
-function LiveEventsSidebarPlaceholder() {
-  return <div className="text-xs text-muted-foreground">Live events…</div>;
-}
 
 export function RootLayout() {
   useSSEStream();
@@ -35,7 +32,7 @@ export function RootLayout() {
           <Outlet />
         </main>
         <aside className="border-l border-border bg-card/50 p-4 sticky top-12 h-[calc(100vh-3rem)] overflow-auto">
-          <LiveEventsSidebarPlaceholder />
+          <LiveEventsSidebar />
         </aside>
       </div>
     </div>
