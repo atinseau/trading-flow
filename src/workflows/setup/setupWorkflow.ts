@@ -488,7 +488,7 @@ export async function setupWorkflow(initial: InitialEvidence): Promise<SetupStat
             takeProfit: decision.take_profit ?? [],
             reasoning: decision.reasoning,
           });
-          await trackingLoop({
+          const trackingResult = await trackingLoop({
             setupId: initial.setupId,
             watchId: initial.watchId,
             asset: initial.asset,
@@ -496,12 +496,16 @@ export async function setupWorkflow(initial: InitialEvidence): Promise<SetupStat
             direction: initial.direction,
             entry: decision.entry ?? 0,
             stopLoss: decision.stop_loss ?? 0,
+            invalidationLevel: state.invalidationLevel,
             takeProfit: decision.take_profit ?? [],
             scoreAtConfirmation: state.score,
           });
-          // trackingLoop updates DB to CLOSED but not workflow state — sync here
-          // so the active loop exits cleanly instead of blocking on `condition`.
-          state.status = "CLOSED";
+          // trackingLoop updates DB but not workflow state — sync here so the
+          // active loop exits cleanly instead of blocking on `condition`.
+          // `price_invalidated` ⇒ status INVALIDATED; everything else ⇒ CLOSED.
+          // Phase 9 (Task 32) will use `trackingResult` to start a child
+          // FeedbackLoopWorkflow on eligible close reasons.
+          state.status = trackingResult.reason === "price_invalidated" ? "INVALIDATED" : "CLOSED";
         } else {
           const stored = await dbActivities.persistEvent({
             event: {

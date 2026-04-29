@@ -241,7 +241,15 @@ describe("SetupWorkflow", () => {
     });
     await worker.runUntil(async () => {
       const handle = await env.client.workflow.start(setupWorkflow, {
-        args: [{ ...baseInitial, setupId: "test-tracking-tp" }],
+        args: [
+          {
+            ...baseInitial,
+            setupId: "test-tracking-tp",
+            // Below the SL=95 / entry=100 path so the trackingLoop's
+            // price-invalidation check doesn't trigger before the TP path.
+            invalidationLevel: 80,
+          },
+        ],
         workflowId: `test-tracking-tp-${__testCounter}`,
         taskQueue,
       });
@@ -326,7 +334,15 @@ describe("SetupWorkflow", () => {
     });
     await worker.runUntil(async () => {
       const handle = await env.client.workflow.start(setupWorkflow, {
-        args: [{ ...baseInitial, setupId: "test-tracking-sl" }],
+        args: [
+          {
+            ...baseInitial,
+            setupId: "test-tracking-sl",
+            // Below the SL=95 / target tick=90 path so trackingLoop's
+            // price-invalidation check doesn't fire before the SL path.
+            invalidationLevel: 50,
+          },
+        ],
         workflowId: `test-tracking-sl-${__testCounter}`,
         taskQueue,
       });
