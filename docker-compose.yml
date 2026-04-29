@@ -19,8 +19,8 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./docker/postgres/init-multiple-dbs.sh:/docker-entrypoint-initdb.d/init-multiple-dbs.sh:ro
-    ports:
-      - "127.0.0.1:5432:5432"
+    expose:
+      - "5432"
     deploy:
       resources:
         limits:
@@ -48,8 +48,8 @@ services:
       POSTGRES_DB: temporal
       POSTGRES_VISIBILITY_DB: temporal_visibility
       BIND_ON_IP: 0.0.0.0
-    ports:
-      - "127.0.0.1:7233:7233"
+    expose:
+      - "7233"
     deploy:
       resources:
         limits:
@@ -70,15 +70,23 @@ services:
       temporal:
         condition: service_healthy
     environment:
+      # Coolify magic var: empty = auto-FQDN; UI lets you override.
+      # Locally unset = no exposure via Traefik (we use docker-compose-dev.yaml ports instead).
+      SERVICE_FQDN_TEMPORALUI_8080: ${SERVICE_FQDN_TEMPORALUI_8080:-}
       TEMPORAL_ADDRESS: temporal:7233
-      TEMPORAL_CORS_ORIGINS: http://localhost:8080
-    ports:
-      - "127.0.0.1:8080:8080"
+      TEMPORAL_CORS_ORIGINS: ${SERVICE_FQDN_TEMPORALUI_8080:-http://localhost:8080}
+    expose:
+      - "8080"
     deploy:
       resources:
         limits:
           memory: 256m
 
+  # ⚠ COOLIFY: in the resource settings, mark `migrate` and `bootstrap-schedules`
+  # as "Exclude from health check" — they exit 0 once done and would otherwise
+  # flip the stack to unhealthy. The compose-spec `exclude_from_hc: true` flag
+  # exists in Coolify but breaks `docker compose config` validation, so we
+  # configure it via the UI instead.
   migrate:
     build: { context: ., dockerfile: docker/Dockerfile.worker }
     container_name: tf-migrate
@@ -127,6 +135,8 @@ services:
     container_name: tf-scheduler-worker
     restart: unless-stopped
     logging: *default_logging
+    security_opt:
+      - no-new-privileges:true
     depends_on:
       bootstrap-schedules:
         condition: service_completed_successfully
@@ -135,8 +145,8 @@ services:
       HEALTH_PORT: "8081"
     volumes: *worker_volumes
     command: bun run src/workers/scheduler-worker.ts
-    ports:
-      - "127.0.0.1:8081:8081"
+    expose:
+      - "8081"
     deploy:
       resources:
         limits:
@@ -153,6 +163,8 @@ services:
     container_name: tf-analysis-worker
     restart: unless-stopped
     logging: *default_logging
+    security_opt:
+      - no-new-privileges:true
     depends_on:
       bootstrap-schedules:
         condition: service_completed_successfully
@@ -161,8 +173,8 @@ services:
       HEALTH_PORT: "8082"
     volumes: *worker_volumes
     command: bun run src/workers/analysis-worker.ts
-    ports:
-      - "127.0.0.1:8082:8082"
+    expose:
+      - "8082"
     deploy:
       resources:
         limits:
@@ -179,6 +191,8 @@ services:
     container_name: tf-notification-worker
     restart: unless-stopped
     logging: *default_logging
+    security_opt:
+      - no-new-privileges:true
     depends_on:
       bootstrap-schedules:
         condition: service_completed_successfully
@@ -187,8 +201,8 @@ services:
       HEALTH_PORT: "8083"
     volumes: *worker_volumes
     command: bun run src/workers/notification-worker.ts
-    ports:
-      - "127.0.0.1:8083:8083"
+    expose:
+      - "8083"
     deploy:
       resources:
         limits:
@@ -205,11 +219,16 @@ services:
     container_name: tf-web
     restart: unless-stopped
     logging: *default_logging
+    security_opt:
+      - no-new-privileges:true
     depends_on:
       bootstrap-schedules:
         condition: service_completed_successfully
     environment:
       <<: *worker_env
+      # Coolify magic var: empty = auto-FQDN + Traefik routing + Let's Encrypt.
+      # Locally unset = port published via docker-compose-dev.yaml.
+      SERVICE_FQDN_TFWEB_8084: ${SERVICE_FQDN_TFWEB_8084:-}
       WEB_PORT: "8084"
       NODE_ENV: production
       TF_WEB_POLL_INTERVAL_MS: "1500"
@@ -220,8 +239,8 @@ services:
       - ./prompts:/app/prompts:ro
       - artifacts_data:/data/artifacts:ro
     command: bun run src/client/server.ts
-    ports:
-      - "127.0.0.1:8084:8084"
+    expose:
+      - "8084"
     deploy:
       resources:
         limits:

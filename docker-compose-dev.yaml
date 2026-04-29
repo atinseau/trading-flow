@@ -1,29 +1,60 @@
-# Dev overlay for tf-web — overrides the prod service to bind-mount the source,
-# run Tailwind in --watch mode, and use `bun --hot` for React + server HMR.
+# Local-dev overlay.
+#
+# The base docker-compose.yml is deliberately Coolify-friendly: it exposes
+# nothing to the host and lets Coolify's Traefik route traffic via
+# SERVICE_FQDN_* magic vars. That makes services unreachable from your laptop.
+#
+# This overlay adds back the port publishings you need locally (DB tools,
+# temporal CLI, browsing temporal-ui, the web app, worker /health endpoints)
+# AND wires up HMR for tf-web.
 #
 # Usage:
-#   docker compose -f docker-compose.yml -f docker-compose-dev.yaml up -d --build
+#   docker compose --env-file .env -f docker-compose.yml -f docker-compose-dev.yaml up -d --build
 #
 # Or via the convenience script:
 #   bun run compose:dev
 #
-# Services from docker-compose.yml not listed here (postgres, temporal, workers)
-# run unchanged. The override only affects tf-web.
+# Coolify ignores override files by default — only docker-compose.yml is used
+# in the Build Pack. So nothing here leaks into production.
 
 services:
+  postgres:
+    ports:
+      - "127.0.0.1:5432:5432"
+
+  temporal:
+    ports:
+      - "127.0.0.1:7233:7233"
+
+  temporal-ui:
+    ports:
+      - "127.0.0.1:8080:8080"
+
+  scheduler-worker:
+    ports:
+      - "127.0.0.1:8081:8081"
+
+  analysis-worker:
+    ports:
+      - "127.0.0.1:8082:8082"
+
+  notification-worker:
+    ports:
+      - "127.0.0.1:8083:8083"
+
   tf-web:
     environment:
       NODE_ENV: development
+    ports:
+      - "127.0.0.1:8084:8084"
     volumes:
       # Bind-mount the source tree so hot-reload picks up host file changes.
-      # The named volumes below are merged with the base file's mounts.
+      # Compose REPLACES volume lists (no deep-merge), so we must re-state the
+      # base mounts here too.
       - ./src:/app/src
       - ./tsconfig.json:/app/tsconfig.json:ro
       - ./bunfig.toml:/app/bunfig.toml:ro
       - ./components.json:/app/components.json:ro
-      # Re-state the base mounts here because Compose REPLACES volumes (it
-      # does not deep-merge lists). Without this the config/prompts/artifacts
-      # mounts from docker-compose.yml would be dropped.
       - ./config:/app/config:ro
       - ./prompts:/app/prompts:ro
       - artifacts_data:/data/artifacts:ro
