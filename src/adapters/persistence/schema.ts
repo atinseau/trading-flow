@@ -115,3 +115,32 @@ export const tickSnapshots = pgTable(
   },
   (t) => [index("idx_ticks_watch_time").on(t.watchId, t.tickAt)],
 );
+
+export const watchConfigs = pgTable(
+  "watch_configs",
+  {
+    id: text("id").primaryKey(),
+    enabled: boolean("enabled").notNull().default(true),
+    config: jsonb("config").$type<unknown>().notNull(),
+    version: integer("version").notNull().default(1),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  },
+  (t) => [index("idx_watch_configs_enabled").on(t.enabled)],
+);
+
+export const watchConfigRevisions = pgTable(
+  "watch_config_revisions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    watchId: text("watch_id")
+      .notNull()
+      .references(() => watchConfigs.id, { onDelete: "cascade" }),
+    config: jsonb("config").$type<unknown>().notNull(),
+    version: integer("version").notNull(),
+    appliedAt: timestamp("applied_at", { withTimezone: true }).notNull().defaultNow(),
+    appliedBy: text("applied_by").notNull().default("ui"),
+  },
+  (t) => [index("idx_watch_revisions_watch").on(t.watchId, t.appliedAt)],
+);

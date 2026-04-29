@@ -23,7 +23,8 @@
       "@workflows/*": ["./src/workflows/*"],
       "@config/*": ["./src/config/*"],
       "@observability/*": ["./src/observability/*"],
-      "@test-fakes/*": ["./test/fakes/*"]
+      "@test-fakes/*": ["./test/fakes/*"],
+      "@test-helpers/*": ["./test/helpers/*"]
     }
   },
   "include": ["src/**/*", "test/**/*"]

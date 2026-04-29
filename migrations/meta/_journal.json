@@ -15,6 +15,13 @@
       "when": 1777368197073,
       "tag": "0001_add_provider_time_index",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1777448348409,
+      "tag": "0002_silky_maginty",
+      "breakpoints": true
     }
   ]
 }
