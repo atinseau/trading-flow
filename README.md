@@ -26,6 +26,27 @@ après TP1, notifications Telegram à chaque transition.
 Tout est event-sourced en Postgres. Les prompts sont versionnés (Handlebars).
 Les budgets LLM sont durables. Les workflows sont déterministes (replay-able).
 
+### Feedback loop (apprentissage rétroactif)
+
+Quand un trade confirmé se ferme défavorablement (SL hit, SL après TP1 trailé, ou
+prix qui casse l'invalidation level), une **feedback loop** se déclenche
+automatiquement :
+
+1. Analyse rétroactive par `claude-opus-4-7` du trade complet (events, indicateurs,
+   OHLCV post-mortem, chart final).
+2. Production de **leçons génériques** (jamais d'actif, jamais de timeframe) qui
+   capturent un principe de trading universel.
+3. Validation manuelle via Telegram (boutons inline ✅ / ❌) ou CLI.
+4. Injection des leçons `ACTIVE` dans les prompts du Detector / Reviewer / Finalizer
+   au tick suivant.
+
+Le pool de leçons est **scopé par watch**. Le LLM gère lui-même le lifecycle :
+`CREATE`, `REINFORCE`, `REFINE`, `DEPRECATE`. Tout est event-sourcé en Postgres
+pour audit/replay.
+
+Voir [`docs/superpowers/specs/2026-04-29-feedback-loop-design.md`](docs/superpowers/specs/2026-04-29-feedback-loop-design.md)
+pour le design complet.
+
 ---
 
 ## Architecture
@@ -403,6 +424,31 @@ bun run src/cli/bootstrap-schedules.ts
 # Purger les artifacts anciens (charts, OHLCV) — respecte les setups vivants
 bun run src/cli/purge-artifacts.ts --older-than-days=30 --dry-run
 bun run src/cli/purge-artifacts.ts --older-than-days=30
+```
+
+### Feedback loop (lessons)
+
+```bash
+# Lister les leçons (filtrer par status)
+bun run src/cli/list-lessons.ts --status=PENDING
+bun run src/cli/list-lessons.ts --status=ACTIVE --watch=btc-1h
+
+# Détail d'une leçon (texte + révisions + traces)
+bun run src/cli/show-lesson.ts <id>
+
+# Validation manuelle (PENDING → ACTIVE / REJECTED)
+bun run src/cli/approve-lesson.ts <id>
+bun run src/cli/reject-lesson.ts <id> --reason="too vague"
+
+# Pin / unpin (immunise contre DEPRECATE automatique)
+bun run src/cli/pin-lesson.ts <id>
+bun run src/cli/unpin-lesson.ts <id>
+
+# Archiver une leçon (sortie du pool actif)
+bun run src/cli/archive-lesson.ts <id>
+
+# Rejouer le feedback loop sur un setup fermé (debug / réanalyse)
+bun run src/cli/replay-feedback.ts <setup-id>
 ```
 
 ---
