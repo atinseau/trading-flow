@@ -6,6 +6,7 @@ import type { NewEvent, SetupStateUpdate } from "@domain/ports/EventStore";
 import type { Verdict } from "@domain/schemas/Verdict";
 import { VerdictSchema } from "@domain/schemas/Verdict";
 import { computeInputHash } from "@domain/services/inputHash";
+import { getSession, getSessionState } from "@domain/services/marketSession";
 import { getLogger } from "@observability/logger";
 import type { ActivityDeps } from "@workflows/activityDependencies";
 import { z } from "zod";
@@ -72,6 +73,25 @@ export function buildSetupActivities(deps: ActivityDeps) {
       childLog.info({ tickSnapshotId: input.tickSnapshotId }, "runReviewer starting");
       const watch = deps.watchById(input.watchId);
       if (!watch) throw new InvalidConfigError(`Unknown watch: ${input.watchId}`);
+
+      const session = getSession(watch);
+      const marketState = getSessionState(session, deps.clock.now());
+      if (!marketState.isOpen) {
+        childLog.info(
+          { sessionKind: session.kind, nextOpenAt: marketState.nextOpenAt?.toISOString() },
+          "runReviewer skipped: market closed",
+        );
+        return {
+          verdictJson: "",
+          costUsd: 0,
+          eventAlreadyExisted: true,
+          inputHash: "",
+          promptVersion: "",
+          provider: "",
+          model: "",
+        };
+      }
+
       const setup = await deps.setupRepo.get(input.setupId);
       if (!setup) throw new Error(`Setup ${input.setupId} not found`);
       const snap = await deps.tickSnapshotStore.get(input.tickSnapshotId);
@@ -158,14 +178,32 @@ export function buildSetupActivities(deps: ActivityDeps) {
       };
     },
 
-    async runFinalizer(input: {
-      setupId: string;
-      watchId: string;
-    }): Promise<{ decisionJson: string; costUsd: number; promptVersion: string }> {
+    async runFinalizer(input: { setupId: string; watchId: string }): Promise<{
+      decisionJson: string;
+      costUsd: number;
+      promptVersion: string;
+      skipReason?: "market_closed";
+    }> {
       const childLog = log.child({ setupId: input.setupId, watchId: input.watchId });
       childLog.info({}, "runFinalizer starting");
       const watch = deps.watchById(input.watchId);
       if (!watch) throw new InvalidConfigError(`Unknown watch: ${input.watchId}`);
+
+      const session = getSession(watch);
+      const marketState = getSessionState(session, deps.clock.now());
+      if (!marketState.isOpen) {
+        childLog.info(
+          { sessionKind: session.kind, nextOpenAt: marketState.nextOpenAt?.toISOString() },
+          "runFinalizer skipped: market closed",
+        );
+        return {
+          decisionJson: "",
+          costUsd: 0,
+          promptVersion: "",
+          skipReason: "market_closed",
+        };
+      }
+
       const setup = await deps.setupRepo.get(input.setupId);
       if (!setup) throw new Error(`Setup ${input.setupId} not found`);
       const history = await deps.eventStore.listForSetup(input.setupId);
@@ -255,9 +293,7 @@ export function buildSetupActivities(deps: ActivityDeps) {
       const text = `${arrow} ${input.asset} ${input.timeframe}\nEntry: ${input.entry}\nSL: ${input.stopLoss}${tpStr}${reasoning}`;
 
       const images =
-        watch.include_chart_image && input.chartUri
-          ? [{ uri: input.chartUri }]
-          : undefined;
+        watch.include_chart_image && input.chartUri ? [{ uri: input.chartUri }] : undefined;
 
       const result = await deps.notifier.send({
         chatId: deps.infra.notifications.telegram.chat_id,

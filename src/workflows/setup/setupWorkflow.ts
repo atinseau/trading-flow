@@ -435,6 +435,17 @@ export async function setupWorkflow(initial: InitialEvidence): Promise<SetupStat
           setupId: initial.setupId,
           watchId: initial.watchId,
         });
+
+        if (finalizerResult.skipReason === "market_closed") {
+          // Market is closed; back off and re-evaluate when the condition
+          // unblocks again (state.status === "FINALIZING" stays true so the
+          // loop immediately re-enters after the sleep, by which point the
+          // market may have reopened). Phase 5 will provide proper
+          // Schedule-pause-driven gating; this is a defensive fallback.
+          await sleep("5m");
+          continue;
+        }
+
         const finalizerPromptVersion = finalizerResult.promptVersion;
         const decision = JSON.parse(finalizerResult.decisionJson) as {
           go: boolean;
