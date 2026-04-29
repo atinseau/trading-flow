@@ -42,3 +42,9 @@ export class CircularFallbackError extends TradingFlowError {
 export class StopRequestedError extends TradingFlowError {
   readonly retryable = false;
 }
+export class UnsupportedExchangeError extends TradingFlowError {
+  readonly retryable = false;
+  constructor(public readonly code: string | undefined) {
+    super(`Exchange '${code ?? "<undefined>"}' not yet supported`);
+  }
+}
