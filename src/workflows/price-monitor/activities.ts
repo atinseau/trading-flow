@@ -22,6 +22,24 @@ export function buildPriceMonitorActivities(deps: ActivityDeps) {
       return deps.setupRepo.listAliveWithInvalidation(input.watchId);
     },
 
+    async ensurePriceMonitorRunning(input: { symbol: string; source: string }): Promise<void> {
+      const workflowId = `price-monitor-${input.source}-${input.symbol}`;
+      try {
+        await deps.temporalClient.workflow.start("priceMonitorWorkflow", {
+          args: [{ symbol: input.symbol, source: input.source }],
+          workflowId,
+          taskQueue: deps.infra.temporal.task_queues.scheduler,
+        });
+        log.info({ workflowId }, "price monitor started");
+      } catch (err) {
+        if ((err as Error).message?.match(/already.*started|alreadystarted/i)) {
+          // running already — idempotent, all good
+          return;
+        }
+        throw err;
+      }
+    },
+
     async subscribeAndCheckPriceFeed(input: {
       watchId: string;
       adapter: string;
