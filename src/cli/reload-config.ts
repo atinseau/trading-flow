@@ -1,8 +1,8 @@
+import { applyReload } from "@config/applyReload";
 import { loadInfraConfig } from "@config/InfraConfig";
 import { loadWatchesConfig } from "@config/loadWatchesConfig";
 import { getLogger } from "@observability/logger";
 import { Client, Connection } from "@temporalio/client";
-import { schedulerWorkflowId } from "@workflows/scheduler/schedulerWorkflow";
 
 const log = getLogger({ component: "reload-config" });
 
@@ -13,11 +13,11 @@ const infra = loadInfraConfig();
 const watches = await loadWatchesConfig(configPath);
 
 if (watches === null) {
-  log.info({ configPath }, "no watches.yaml — nothing to reload");
+  log.info({ configPath }, "standby: no watches.yaml — nothing to reload");
   process.exit(0);
 }
 
-log.info({ count: watches.watches.length, configPath }, "loaded watches");
+log.info({ count: watches.watches.length }, "loaded watches");
 
 if (dryRun) {
   log.info("--dry-run, exiting before applying");
@@ -28,14 +28,12 @@ const connection = await Connection.connect({ address: infra.temporal.address })
 const client = new Client({ connection, namespace: infra.temporal.namespace });
 
 for (const watch of watches.watches.filter((w) => w.enabled)) {
-  const watchLog = log.child({ watchId: watch.id });
   try {
-    await client.workflow.getHandle(schedulerWorkflowId(watch.id)).signal("reloadConfig", watch);
-    watchLog.info("sent reloadConfig");
+    await applyReload({ client, watch, previous: null });
   } catch (err) {
-    watchLog.warn({ err: (err as Error).message }, "could not reload");
+    log.warn({ watchId: watch.id, err: (err as Error).message }, "could not reload");
   }
 }
 
-log.info("done. Note: cron schedule changes require running bootstrap-schedules again.");
+log.info("done");
 process.exit(0);
