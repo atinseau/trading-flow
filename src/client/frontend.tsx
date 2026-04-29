@@ -16,6 +16,8 @@ const router = createBrowserRouter([
     errorElement: <ErrorPage />,
     children: [
       { index: true, lazy: () => import("@client/routes/dashboard") },
+      { path: "search", lazy: () => import("@client/routes/search") },
+      { path: "assets/:source/:symbol", lazy: () => import("@client/routes/asset") },
       { path: "watches/new", lazy: () => import("@client/routes/watch-new") },
       { path: "watches/:id", lazy: () => import("@client/routes/watch") },
       { path: "setups/:id", lazy: () => import("@client/routes/setup") },

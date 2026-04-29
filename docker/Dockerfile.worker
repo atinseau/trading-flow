@@ -19,11 +19,13 @@ COPY package.json bun.lock ./
 RUN --mount=type=cache,target=/root/.bun/install/cache \
     bun install --frozen-lockfile
 
-# Playwright browsers go to /root/.cache/ms-playwright by default. We need them
-# in the final image, so we redirect to /app/.cache (chowned to bun later).
-ENV PLAYWRIGHT_BROWSERS_PATH=/app/.cache/ms-playwright
-RUN --mount=type=cache,target=/root/.cache/ms-playwright \
-    bun x playwright install chromium
+# Bake Playwright + Chromium into the image (no cache mount, so the binaries
+# persist in the final layer instead of being re-downloaded at runtime).
+# /ms-playwright is a fixed shared location so the same binaries are reachable
+# from any runtime user.
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+RUN bun x playwright install chromium && \
+    chmod -R a+rX /ms-playwright
 
 FROM deps AS runtime
 
@@ -33,8 +35,12 @@ COPY config ./config
 COPY prompts ./prompts
 COPY migrations ./migrations
 
+# Pre-create runtime data dirs with bun ownership so named volumes inherit it
+# on first mount (Docker copies dir ownership into a fresh named volume).
+RUN mkdir -p /data/artifacts /data/claude-workspace && \
+    chown -R bun:bun /app /data
+
 # Drop privileges. The official oven/bun image ships a `bun` user (uid 1000).
-RUN chown -R bun:bun /app
 USER bun
 
 ENV NODE_ENV=production

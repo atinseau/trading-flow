@@ -37,8 +37,17 @@ const SENSIBLE_DEFAULTS = {
   include_reasoning: true,
 };
 
+/** Loose partial — caller passes whatever subset of the shape they have. */
+export type WatchFormPreset = {
+  id?: string;
+  asset?: { symbol?: string; source?: string };
+  timeframes?: { primary?: string };
+};
+
 export type WatchFormProps = {
   initial?: WatchConfig;
+  /** Optional partial pre-fill (e.g. from /assets/.../create-watch). Merged on top of SENSIBLE_DEFAULTS. */
+  preset?: WatchFormPreset;
   mode: "create" | "edit";
   onSubmit: SubmitHandler<WatchConfig>;
 };
@@ -115,10 +124,25 @@ const WIZARD_STEPS: WizardStep[] = [
   },
 ];
 
-export function WatchForm({ initial, mode, onSubmit }: WatchFormProps) {
+export function WatchForm({ initial, preset, mode, onSubmit }: WatchFormProps) {
+  const merged = (() => {
+    if (initial) return initial as unknown as WatchFormInput;
+    if (!preset) return SENSIBLE_DEFAULTS as unknown as WatchFormInput;
+    // Deep-merge SENSIBLE_DEFAULTS + preset (one level deep on object branches).
+    return {
+      ...SENSIBLE_DEFAULTS,
+      ...preset,
+      asset: { ...(SENSIBLE_DEFAULTS as { asset?: object }).asset, ...preset.asset },
+      timeframes: {
+        ...(SENSIBLE_DEFAULTS as { timeframes?: object }).timeframes,
+        ...preset.timeframes,
+      },
+    } as unknown as WatchFormInput;
+  })();
+
   const form = useForm<WatchFormInput, unknown, WatchConfig>({
     resolver: zodResolver(WatchSchema),
-    defaultValues: (initial ?? SENSIBLE_DEFAULTS) as unknown as WatchFormInput,
+    defaultValues: merged,
     mode: "onBlur",
   });
 

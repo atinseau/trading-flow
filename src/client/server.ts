@@ -1,7 +1,9 @@
 import { makeAdminApi } from "@client/api/admin";
+import { assetOhlcv } from "@client/api/assets";
 import { makeCostsApi } from "@client/api/costs";
 import { makeEventsApi } from "@client/api/events";
 import { health } from "@client/api/health";
+import { search } from "@client/api/search";
 import { makeSetupsApi } from "@client/api/setups";
 import { makeStreamHandler } from "@client/api/stream";
 import { makeTicksApi } from "@client/api/ticks";
@@ -115,6 +117,8 @@ const server = Bun.serve({
     "/api/watches/:id/resume": { POST: withParams(adminApi.resume) },
     "/api/setups/:id/kill": { POST: withParams(adminApi.killSetup) },
     "/api/stream": { GET: makeStreamHandler({ broadcaster }) },
+    "/api/search": { GET: (req) => search(req) },
+    "/api/assets/:source/:symbol/ohlcv": { GET: (req) => assetOhlcv(req) },
     // Unknown /api/* → 404 JSON (must come before the SPA catch-all so it
     // wins for paths starting with /api/).
     "/api/*": () => Response.json({ error: "not found" }, { status: 404 }),

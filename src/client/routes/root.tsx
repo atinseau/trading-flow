@@ -15,6 +15,9 @@ export function RootLayout() {
             <NavLink to="/" end className={({ isActive }) => (isActive ? "text-foreground" : "")}>
               Dashboard
             </NavLink>
+            <NavLink to="/search" className={({ isActive }) => (isActive ? "text-foreground" : "")}>
+              Rechercher
+            </NavLink>
             <NavLink
               to="/live-events"
               className={({ isActive }) => (isActive ? "text-foreground" : "")}
