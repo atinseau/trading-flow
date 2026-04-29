@@ -8,6 +8,15 @@
 
 # Refining an active setup
 
+## Active setup
+
+- **ID**: `{{setup.id}}`
+- **Pattern**: {{setup.patternHint}}
+- **Direction**: `{{setup.direction}}`
+- **Current score**: {{setup.currentScore}}/100
+- **Invalidation level**: {{setup.invalidationLevel}}
+- **Age**: {{setup.ageInCandles}} candles
+
 {{#if activeLessons.length}}
 ## Active guidelines (learned from previous trades)
 
@@ -24,15 +33,6 @@ precedence over generic best practice when there is a conflict.
 {{/each}}
 
 {{/if}}
-## Active setup
-
-- **ID**: `{{setup.id}}`
-- **Pattern**: {{setup.patternHint}}
-- **Direction**: `{{setup.direction}}`
-- **Current score**: {{setup.currentScore}}/100
-- **Invalidation level**: {{setup.invalidationLevel}}
-- **Age**: {{setup.ageInCandles}} candles
-
 ## Memory — history
 
 {{#each history}}

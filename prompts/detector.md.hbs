@@ -7,6 +7,11 @@
 
 # Free-form pattern detection on a chart
 
+## Tick context
+
+- **Asset / Timeframe**: {{asset}} / {{timeframe}}
+- **Tick at**: {{tickAt}}
+
 {{#if activeLessons.length}}
 ## Active guidelines (learned from previous trades)
 
@@ -23,11 +28,6 @@ precedence over generic best practice when there is a conflict.
 {{/each}}
 
 {{/if}}
-## Tick context
-
-- **Asset / Timeframe**: {{asset}} / {{timeframe}}
-- **Tick at**: {{tickAt}}
-
 ## Indicators (fresh data)
 
 - RSI (14): `{{indicators.rsi}}` (extreme < 30 or > 70)

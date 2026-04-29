@@ -7,6 +7,15 @@
 
 # Final GO / NO_GO decision
 
+## Setup to arbitrate
+
+- **ID**: `{{setup.id}}`
+- **Asset / Timeframe**: {{setup.asset}} / {{setup.timeframe}}
+- **Pattern**: {{setup.patternHint}}
+- **Direction**: `{{setup.direction}}`
+- **Score reached**: {{setup.currentScore}}/100 (threshold crossed)
+- **Invalidation level**: {{setup.invalidationLevel}}
+
 {{#if activeLessons.length}}
 ## Active guidelines (learned from previous trades)
 
@@ -23,15 +32,6 @@ precedence over generic best practice when there is a conflict.
 {{/each}}
 
 {{/if}}
-## Setup to arbitrate
-
-- **ID**: `{{setup.id}}`
-- **Asset / Timeframe**: {{setup.asset}} / {{setup.timeframe}}
-- **Pattern**: {{setup.patternHint}}
-- **Direction**: `{{setup.direction}}`
-- **Score reached**: {{setup.currentScore}}/100 (threshold crossed)
-- **Invalidation level**: {{setup.invalidationLevel}}
-
 ## Full history ({{historyCount}} events)
 
 {{#each history}}
