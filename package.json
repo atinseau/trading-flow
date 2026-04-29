@@ -18,6 +18,7 @@
     "test:llm": "RUN_LLM_OPENROUTER=1 RUN_LLM_CLAUDE=1 bun test test/llm",
     "test:llm:openrouter": "RUN_LLM_OPENROUTER=1 bun test test/llm/promptSmoke.test.ts",
     "test:llm:claude": "RUN_LLM_CLAUDE=1 bun test test/llm/claudeSmoke.test.ts",
+    "test:llm:feedback": "RUN_LLM_CLAUDE=1 bun test test/llm/feedback.smoke.test.ts",
     "test:telegram": "RUN_LIVE_TELEGRAM=1 bun test test/adapters/notify/TelegramNotifier.test.ts",
     "test:full": "RUN_LLM_OPENROUTER=1 RUN_LLM_CLAUDE=1 RUN_LIVE_TELEGRAM=1 RUN_E2E=1 bun test",
     "db:generate": "drizzle-kit generate",
