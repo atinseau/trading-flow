@@ -1,12 +1,13 @@
-import { Button } from "@client/components/ui/button";
-import { Form } from "@client/components/ui/form";
-import { SectionAdvanced } from "@client/components/watch-form/section-advanced";
-import { SectionAnalyzers } from "@client/components/watch-form/section-analyzers";
-import { SectionAsset } from "@client/components/watch-form/section-asset";
-import { SectionBudget } from "@client/components/watch-form/section-budget";
-import { SectionLifecycle } from "@client/components/watch-form/section-lifecycle";
-import { SectionNotifications } from "@client/components/watch-form/section-notifications";
-import { SectionSchedule } from "@client/components/watch-form/section-schedule";
+import { Form } from "../ui/form";
+import { SectionAdvanced } from "./section-advanced";
+import { SectionAnalyzers } from "./section-analyzers";
+import { SectionAsset } from "./section-asset";
+import { SectionBudget } from "./section-budget";
+import { SectionLifecycle } from "./section-lifecycle";
+import { SectionNotifications } from "./section-notifications";
+import { SectionSchedule } from "./section-schedule";
+import { WatchFormWizard, type WizardStep } from "./wizard";
+import { Button } from "../ui/button";
 import { WatchSchema, type WatchConfig } from "@domain/schemas/WatchesConfig";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm, type SubmitHandler } from "react-hook-form";
@@ -42,27 +43,118 @@ export type WatchFormProps = {
   onSubmit: SubmitHandler<WatchConfig>;
 };
 
+const WIZARD_STEPS: WizardStep[] = [
+  {
+    id: "asset",
+    title: "Actif",
+    description:
+      "Quel marché tu veux surveiller, et avec quelle granularité de temps. Le timeframe principal détermine la fréquence par défaut des analyses.",
+    fields: [
+      "id",
+      "asset.symbol",
+      "asset.source",
+      "timeframes.primary",
+    ],
+    render: () => <SectionAsset />,
+  },
+  {
+    id: "schedule",
+    title: "Quand analyser",
+    description:
+      "À quelle fréquence le bot lance une nouvelle analyse. Si tu laisses le cron vide, il sera dérivé automatiquement du timeframe (ex: 1h → toutes les heures pile).",
+    fields: ["schedule.detector_cron", "schedule.timezone"],
+    render: () => <SectionSchedule />,
+  },
+  {
+    id: "lifecycle",
+    title: "Vie d'un setup",
+    description:
+      "Combien de temps un setup peut vivre avant d'expirer, et à partir de quel score de confiance il déclenche une notification.",
+    fields: [
+      "setup_lifecycle.ttl_candles",
+      "setup_lifecycle.score_threshold_finalizer",
+      "setup_lifecycle.invalidation_policy",
+    ],
+    render: () => <SectionLifecycle />,
+  },
+  {
+    id: "analyzers",
+    title: "Modèles d'IA",
+    description:
+      "Trois étapes (Detector → Reviewer → Finalizer). Tu peux mixer les providers et modèles pour optimiser coût vs qualité.",
+    fields: [
+      "analyzers.detector.provider",
+      "analyzers.detector.model",
+      "analyzers.reviewer.provider",
+      "analyzers.reviewer.model",
+      "analyzers.finalizer.provider",
+      "analyzers.finalizer.model",
+    ],
+    render: () => <SectionAnalyzers />,
+  },
+  {
+    id: "notify-budget",
+    title: "Notifs & budget",
+    description:
+      "Quand recevoir un message Telegram, et combien tu acceptes de dépenser en LLM par jour avant que la watch se mette automatiquement en pause.",
+    fields: ["notify_on"],
+    render: () => (
+      <div className="space-y-8">
+        <SectionNotifications />
+        <SectionBudget />
+      </div>
+    ),
+  },
+  {
+    id: "advanced",
+    title: "Réglages avancés",
+    description:
+      "Optionnel — ajuste le pré-filtre statistique, le score initial, et l'optimisation entre Detector et Reviewer. Les valeurs par défaut conviennent à la plupart des cas.",
+    fields: [],
+    render: () => <SectionAdvanced />,
+  },
+];
+
 export function WatchForm({ initial, mode, onSubmit }: WatchFormProps) {
   const form = useForm<WatchFormInput, unknown, WatchConfig>({
     resolver: zodResolver(WatchSchema),
     defaultValues: (initial ?? SENSIBLE_DEFAULTS) as unknown as WatchFormInput,
+    mode: "onBlur",
   });
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8 max-w-2xl">
-        <SectionAsset />
-        <SectionSchedule />
-        <SectionLifecycle />
-        <SectionAnalyzers />
-        <SectionNotifications />
-        <SectionBudget />
-        <SectionAdvanced />
-        <div className="flex gap-2 pt-4">
-          <Button type="submit" disabled={form.formState.isSubmitting}>
-            {mode === "create" ? "Créer la watch" : "Enregistrer"}
-          </Button>
-        </div>
+      <form onSubmit={(e) => e.preventDefault()}>
+        {mode === "create" ? (
+          <WatchFormWizard
+            steps={WIZARD_STEPS}
+            onSubmit={() => form.handleSubmit(onSubmit)()}
+            submitLabel="Créer la watch"
+            isSubmitting={form.formState.isSubmitting}
+          />
+        ) : (
+          // Edit mode: keep the linear single-page form (familiar to power users
+          // who already know their config — no need to walk through 6 steps to
+          // change one field).
+          <div className="space-y-8 max-w-2xl">
+            <SectionAsset />
+            <SectionSchedule />
+            <SectionLifecycle />
+            <SectionAnalyzers />
+            <SectionNotifications />
+            <SectionBudget />
+            <SectionAdvanced />
+            <div className="flex gap-2 pt-4 border-t">
+              <Button
+                type="button"
+                onClick={() => form.handleSubmit(onSubmit)()}
+                disabled={form.formState.isSubmitting}
+              >
+                Enregistrer
+              </Button>
+            </div>
+          </div>
+        )}
       </form>
     </Form>
   );

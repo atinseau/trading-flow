@@ -4,10 +4,12 @@ FROM oven/bun:1.3-debian AS deps
 
 WORKDIR /app
 
-# Playwright system deps for Chromium
+# Playwright system deps for Chromium (runtime libs — must stay in final image).
+# --no-install-recommends keeps the layer lean; cache mounts keep apt indices
+# out of the image entirely.
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    apt-get update && apt-get install -y \
+    apt-get update && apt-get install -y --no-install-recommends \
     libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 \
     libcups2 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 \
     libxfixes3 libxrandr2 libgbm1 libxshmfence1 libpango-1.0-0 \
@@ -17,6 +19,9 @@ COPY package.json bun.lock ./
 RUN --mount=type=cache,target=/root/.bun/install/cache \
     bun install --frozen-lockfile
 
+# Playwright browsers go to /root/.cache/ms-playwright by default. We need them
+# in the final image, so we redirect to /app/.cache (chowned to bun later).
+ENV PLAYWRIGHT_BROWSERS_PATH=/app/.cache/ms-playwright
 RUN --mount=type=cache,target=/root/.cache/ms-playwright \
     bun x playwright install chromium
 
@@ -27,5 +32,9 @@ COPY drizzle.config.ts biome.json tsconfig.json bunfig.toml ./
 COPY config ./config
 COPY prompts ./prompts
 COPY migrations ./migrations
+
+# Drop privileges. The official oven/bun image ships a `bun` user (uid 1000).
+RUN chown -R bun:bun /app
+USER bun
 
 ENV NODE_ENV=production
