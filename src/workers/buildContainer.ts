@@ -89,6 +89,7 @@ export async function buildContainer(
       watchById: () => undefined,
       temporalClient: null as unknown as Client,
       db,
+      pgPool: pool,
     };
     return {
       deps,
@@ -175,6 +176,7 @@ export async function buildContainer(
     watchById,
     temporalClient: temporalClient ?? (null as unknown as Client),
     db,
+    pgPool: pool,
   };
 
   return {
