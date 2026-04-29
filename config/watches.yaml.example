@@ -55,8 +55,23 @@ watches:
       detector:  { provider: claude_max, model: claude-sonnet-4-6 }
       reviewer:  { provider: claude_max, model: claude-haiku-4-5 }
       finalizer: { provider: claude_max, model: claude-opus-4-7 }
+      feedback:  { provider: claude_max, model: claude-opus-4-7 }
     optimization:
       reviewer_skip_when_detector_corroborated: true
-    notify_on: [confirmed, tp_hit, sl_hit, invalidated_after_confirmed]
+    notify_on:
+      [confirmed, tp_hit, sl_hit, invalidated_after_confirmed,
+       lesson_proposed, lesson_approved, lesson_rejected]
     budget:
       max_cost_usd_per_day: 5.00
+    # ─── Feedback loop (retroactive analysis after failed trades) ───
+    feedback:
+      enabled: true
+      max_active_lessons_per_category: 30
+      # Per-phase guideline injection. Set to false to skip injection in a given phase.
+      injection:
+        detector: true
+        reviewer: true
+        finalizer: true
+      # Available providers: setup-events, tick-snapshots, post-mortem-ohlcv, chart-post-mortem
+      # List provider IDs here to disable them; leave empty to enable all.
+      context_providers_disabled: []
