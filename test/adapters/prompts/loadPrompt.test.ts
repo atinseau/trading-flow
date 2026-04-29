@@ -135,6 +135,72 @@ test("activeLessons block renders when non-empty and disappears when empty", asy
   expect(finalizerWithout).not.toContain("Active guidelines");
 });
 
+test("activeLessons title/body are NOT HTML-escaped (triple-stache)", async () => {
+  const detector = await loadPrompt("detector");
+  const reviewer = await loadPrompt("reviewer");
+  const finalizer = await loadPrompt("finalizer");
+
+  const lessons = [
+    {
+      title: "RSI < 30 & EMA200 > price",
+      body: "When RSI < 30 & EMA200 > price, don't fade",
+    },
+  ];
+
+  const detectorOut = detector.render({
+    asset: "BTCUSDT",
+    timeframe: "1h",
+    tickAt: "2026-04-28T14:00:00Z",
+    indicators: { rsi: 50 },
+    aliveSetups: [],
+    activeLessons: lessons,
+  });
+  expect(detectorOut).toContain("When RSI < 30 & EMA200 > price, don't fade");
+  expect(detectorOut).toContain("RSI < 30 & EMA200 > price");
+  expect(detectorOut).not.toContain("&lt;");
+  expect(detectorOut).not.toContain("&gt;");
+  expect(detectorOut).not.toContain("&amp;");
+  expect(detectorOut).not.toContain("&#x27;");
+
+  const reviewerOut = reviewer.render({
+    setup: {
+      id: "abc",
+      patternHint: "double_bottom",
+      direction: "LONG",
+      currentScore: 50,
+      invalidationLevel: 100,
+      ageInCandles: 4,
+    },
+    history: [],
+    tick: { tickAt: "2026-04-28T14:00:00Z" },
+    fresh: { lastClose: 101, indicators: { rsi: 40, atr: 1 } },
+    activeLessons: lessons,
+  });
+  expect(reviewerOut).toContain("When RSI < 30 & EMA200 > price, don't fade");
+  expect(reviewerOut).not.toContain("&lt;");
+  expect(reviewerOut).not.toContain("&amp;");
+  expect(reviewerOut).not.toContain("&#x27;");
+
+  const finalizerOut = finalizer.render({
+    setup: {
+      id: "abc",
+      asset: "BTCUSDT",
+      timeframe: "1h",
+      patternHint: "double_bottom",
+      direction: "LONG",
+      currentScore: 85,
+      invalidationLevel: 100,
+    },
+    historyCount: 0,
+    history: [],
+    activeLessons: lessons,
+  });
+  expect(finalizerOut).toContain("When RSI < 30 & EMA200 > price, don't fade");
+  expect(finalizerOut).not.toContain("&lt;");
+  expect(finalizerOut).not.toContain("&amp;");
+  expect(finalizerOut).not.toContain("&#x27;");
+});
+
 test("loadPrompt is cached (same instance returned)", async () => {
   const a = await loadPrompt("detector");
   const b = await loadPrompt("detector");
