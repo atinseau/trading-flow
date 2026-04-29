@@ -59,25 +59,6 @@ describe("PostgresSetupRepository", () => {
     expect(alive.every((s) => s.status !== "CLOSED")).toBe(true);
   });
 
-  test("listAliveWithInvalidation filters out null invalidation", async () => {
-    await repo.create({
-      id: crypto.randomUUID(),
-      watchId,
-      asset: "DOGEUSDT",
-      timeframe: "1h",
-      status: "REVIEWING",
-      currentScore: 30,
-      patternHint: null,
-      invalidationLevel: null,
-      direction: "LONG",
-      ttlCandles: 50,
-      ttlExpiresAt: new Date(Date.now() + 86400_000),
-      workflowId: `wf-${crypto.randomUUID()}`,
-    });
-    const list = await repo.listAliveWithInvalidation(watchId);
-    expect(list.every((s) => s.invalidationLevel != null)).toBe(true);
-  });
-
   test("listAliveBySymbol returns alive setups filtered by (symbol, source)", async () => {
     // Insert two watch_configs — both binance but different timeframes
     const watchId1 = crypto.randomUUID();

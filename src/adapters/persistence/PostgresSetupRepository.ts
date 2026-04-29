@@ -2,7 +2,7 @@ import type { Setup } from "@domain/entities/Setup";
 import type { AliveSetupSummary, SetupRepository } from "@domain/ports/SetupRepository";
 import type { SetupStatus } from "@domain/state-machine/setupTransitions";
 import { TERMINAL_STATUSES } from "@domain/state-machine/setupTransitions";
-import { and, eq, isNotNull, notInArray, sql } from "drizzle-orm";
+import { and, eq, notInArray, sql } from "drizzle-orm";
 import type { drizzle } from "drizzle-orm/node-postgres";
 import { setups, watchConfigs } from "./schema";
 
@@ -46,21 +46,6 @@ export class PostgresSetupRepository implements SetupRepository {
       .select()
       .from(setups)
       .where(and(eq(setups.watchId, watchId), notInArray(setups.status, terminalArr)));
-    return rows.map((r) => this.toSummary(r));
-  }
-
-  async listAliveWithInvalidation(watchId: string): Promise<AliveSetupSummary[]> {
-    const terminalArr = [...TERMINAL_STATUSES];
-    const rows = await this.db
-      .select()
-      .from(setups)
-      .where(
-        and(
-          eq(setups.watchId, watchId),
-          notInArray(setups.status, terminalArr),
-          isNotNull(setups.invalidationLevel),
-        ),
-      );
     return rows.map((r) => this.toSummary(r));
   }
 
