@@ -3,6 +3,7 @@ import { ChartPostMortemContextProvider } from "@adapters/feedback-context/Chart
 import type { FeedbackContextScope } from "@domain/ports/FeedbackContextProvider";
 import { FakeChartRenderer } from "../../fakes/FakeChartRenderer";
 import { FakeMarketDataFetcher } from "../../fakes/FakeMarketDataFetcher";
+import { InMemoryArtifactStore } from "../../fakes/InMemoryArtifactStore";
 
 const scope: FeedbackContextScope = {
   setupId: "11111111-1111-1111-1111-111111111111",
@@ -16,9 +17,10 @@ const scope: FeedbackContextScope = {
 };
 
 describe("ChartPostMortemContextProvider", () => {
-  test("renders a chart covering the full setup window with margin", async () => {
+  test("renders a chart and persists it to ArtifactStore (returns durable URI)", async () => {
     const renderer = new FakeChartRenderer();
     const fetcher = new FakeMarketDataFetcher();
+    const artifactStore = new InMemoryArtifactStore();
     fetcher.seed("BTCUSDT", "1h", [
       {
         open: 42100,
@@ -40,6 +42,7 @@ describe("ChartPostMortemContextProvider", () => {
     const provider = new ChartPostMortemContextProvider({
       chartRenderer: renderer,
       marketDataFetcher: fetcher,
+      artifactStore,
     });
     expect(provider.id).toBe("chart-post-mortem");
     expect(provider.isApplicable(scope)).toBe(true);
@@ -48,23 +51,60 @@ describe("ChartPostMortemContextProvider", () => {
     expect(chunks[0]?.content.kind).toBe("image");
     if (chunks[0]?.content.kind === "image") {
       expect(chunks[0].content.mimeType).toBe("image/png");
-      expect(chunks[0].content.artifactUri).toMatch(/^file:\/\//);
+      // The URI must be the durable artifact-store URI (e.g. "mem://..."),
+      // not the ephemeral /tmp file path.
+      expect(chunks[0].content.artifactUri).toMatch(/^mem:\/\//);
+      expect(chunks[0].content.artifactUri).not.toMatch(/\/tmp\//);
+      // Artifact must actually be persisted in the store.
+      const stored = await artifactStore.get(chunks[0].content.artifactUri);
+      expect(stored.length).toBeGreaterThan(0);
     }
     expect(renderer.callCount).toBe(1);
+    expect(artifactStore.blobs.size).toBe(1);
   });
 
   test("queries the full setup window with margin (createdAt..closedAt+4h)", async () => {
     const renderer = new FakeChartRenderer();
     const fetcher = new FakeMarketDataFetcher();
+    const artifactStore = new InMemoryArtifactStore();
     fetcher.seed("BTCUSDT", "1h", []);
     const provider = new ChartPostMortemContextProvider({
       chartRenderer: renderer,
       marketDataFetcher: fetcher,
+      artifactStore,
     });
     await provider.gather(scope);
     expect(fetcher.rangeCallsLog).toHaveLength(1);
     const call = fetcher.rangeCallsLog[0]!;
     expect(call.from.toISOString()).toBe("2026-04-29T10:00:00.000Z");
     expect(call.to.toISOString()).toBe("2026-04-29T18:00:00.000Z");
+  });
+
+  test("persists chart bytes with kind 'chart_image' and mimeType 'image/png'", async () => {
+    const renderer = new FakeChartRenderer();
+    const fetcher = new FakeMarketDataFetcher();
+    const artifactStore = new InMemoryArtifactStore();
+    // Spy on artifactStore.put
+    const putCalls: { kind: string; mimeType: string; bytes: number }[] = [];
+    const originalPut = artifactStore.put.bind(artifactStore);
+    artifactStore.put = async (args) => {
+      putCalls.push({
+        kind: args.kind,
+        mimeType: args.mimeType,
+        bytes: args.content.length,
+      });
+      return originalPut(args);
+    };
+    fetcher.seed("BTCUSDT", "1h", []);
+    const provider = new ChartPostMortemContextProvider({
+      chartRenderer: renderer,
+      marketDataFetcher: fetcher,
+      artifactStore,
+    });
+    await provider.gather(scope);
+    expect(putCalls).toHaveLength(1);
+    expect(putCalls[0]!.kind).toBe("chart_image");
+    expect(putCalls[0]!.mimeType).toBe("image/png");
+    expect(putCalls[0]!.bytes).toBeGreaterThan(0);
   });
 });

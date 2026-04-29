@@ -1,3 +1,4 @@
+import type { ArtifactStore } from "@domain/ports/ArtifactStore";
 import type { ChartRenderer } from "@domain/ports/ChartRenderer";
 import type {
   FeedbackContextChunk,
@@ -16,6 +17,7 @@ export class ChartPostMortemContextProvider implements FeedbackContextProvider {
     private readonly deps: {
       chartRenderer: ChartRenderer;
       marketDataFetcher: MarketDataFetcher;
+      artifactStore: ArtifactStore;
     },
   ) {}
 
@@ -34,18 +36,23 @@ export class ChartPostMortemContextProvider implements FeedbackContextProvider {
     // ChartRenderer port — the chart still has value without them. When
     // the renderer gains marker support, the call site below should be
     // updated to pass them.
-    const outputUri = `file:///tmp/feedback-chart-${scope.setupId}-${crypto.randomUUID()}.png`;
+    const tempUri = `file:///tmp/feedback-chart-${scope.setupId}-${crypto.randomUUID()}.png`;
     const result = await this.deps.chartRenderer.render({
       candles,
       width: CHART_WIDTH,
       height: CHART_HEIGHT,
-      outputUri,
+      outputUri: tempUri,
+    });
+    const stored = await this.deps.artifactStore.put({
+      kind: "chart_image",
+      content: result.content,
+      mimeType: "image/png",
     });
     return [
       {
         providerId: this.id,
         title: "Chart post-mortem (full setup window)",
-        content: { kind: "image", artifactUri: result.uri, mimeType: result.mimeType },
+        content: { kind: "image", artifactUri: stored.uri, mimeType: result.mimeType },
       },
     ];
   }
