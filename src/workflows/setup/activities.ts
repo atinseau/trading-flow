@@ -35,7 +35,7 @@ export function buildSetupActivities(deps: ActivityDeps) {
       initialScore: number;
       workflowId: string;
     }) {
-      return deps.setupRepo.create({
+      const created = await deps.setupRepo.create({
         id: input.setupId,
         watchId: input.watchId,
         asset: input.asset,
@@ -49,6 +49,20 @@ export function buildSetupActivities(deps: ActivityDeps) {
         ttlExpiresAt: new Date(input.ttlExpiresAt),
         workflowId: input.workflowId,
       });
+      const watch = deps.watchById(input.watchId);
+      if (watch) {
+        // Idempotent. Spawns price-monitor-${source}-${symbol} if not already running.
+        await deps.temporalClient.workflow
+          .start("priceMonitorWorkflow", {
+            args: [{ symbol: input.asset, source: watch.asset.source }],
+            workflowId: `price-monitor-${watch.asset.source}-${input.asset}`,
+            taskQueue: deps.infra.temporal.task_queues.scheduler,
+          })
+          .catch((err: Error) => {
+            if (!/already.*started|alreadystarted/i.test(err.message)) throw err;
+          });
+      }
+      return created;
     },
 
     async persistEvent(input: { event: NewEvent; setupUpdate: SetupStateUpdate }) {
@@ -255,9 +269,7 @@ export function buildSetupActivities(deps: ActivityDeps) {
       const text = `${arrow} ${input.asset} ${input.timeframe}\nEntry: ${input.entry}\nSL: ${input.stopLoss}${tpStr}${reasoning}`;
 
       const images =
-        watch.include_chart_image && input.chartUri
-          ? [{ uri: input.chartUri }]
-          : undefined;
+        watch.include_chart_image && input.chartUri ? [{ uri: input.chartUri }] : undefined;
 
       const result = await deps.notifier.send({
         chatId: deps.infra.notifications.telegram.chat_id,
