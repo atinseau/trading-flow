@@ -2,12 +2,7 @@ import { loadWatchesFromDb } from "@config/loadWatchesFromDb";
 import { type WatchesConfig, WatchesConfigSchema } from "@domain/schemas/WatchesConfig";
 import type pg from "pg";
 
-export class WatchesConfigError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "WatchesConfigError";
-  }
-}
+export { WatchesConfigError } from "@config/WatchesConfigError";
 
 export async function loadWatchesConfig(
   path: string,
