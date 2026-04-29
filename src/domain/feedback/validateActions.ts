@@ -60,6 +60,10 @@ export function validateActions(actions: LessonAction[], pool: PoolSnapshot): Va
   const applied: LessonAction[] = [];
   const rejected: { action: LessonAction; reason: AutoRejectReason }[] = [];
 
+  // Cap accounting depends on action ordering within a batch: actions are
+  // processed sequentially, so a DEPRECATE must come BEFORE a same-category
+  // CREATE to free a slot for it. [CREATE, DEPRECATE] at cap rejects the
+  // CREATE; [DEPRECATE, CREATE] applies both. See validateActions.test.ts.
   // Track simulated pool growth from CREATE actions to enforce cap.
   const simulatedAdds: Record<LessonCategory, number> = {
     detecting: 0,

@@ -142,6 +142,60 @@ describe("validateActions", () => {
     expect(r.rejected[0]?.reason).toBe("timeframe_mention");
   });
 
+  test("DEPRECATE before CREATE in same batch frees a cap slot", () => {
+    const actives = Array.from({ length: 30 }, (_, i) => ({
+      ...baseLesson,
+      id: `00000000-0000-0000-0000-${String(i).padStart(12, "0")}`,
+    }));
+    const fullPool: PoolSnapshot = {
+      ...pool,
+      activeByCategory: { detecting: [], reviewing: actives, finalizing: [] },
+      pinnedById: new Map(actives.map((l) => [l.id, false])),
+    };
+    const targetId = actives[0]!.id;
+    const actions: LessonAction[] = [
+      { type: "DEPRECATE", lessonId: targetId, reason: "z".repeat(20) },
+      {
+        type: "CREATE",
+        category: "reviewing",
+        title: "New lesson after deprecate clears slot",
+        body: "z".repeat(60),
+        rationale: "y".repeat(30),
+      },
+    ];
+    const r = validateActions(actions, fullPool);
+    expect(r.applied).toHaveLength(2);
+    expect(r.rejected).toHaveLength(0);
+  });
+
+  test("CREATE before DEPRECATE in same batch is rejected (cap not yet freed)", () => {
+    const actives = Array.from({ length: 30 }, (_, i) => ({
+      ...baseLesson,
+      id: `00000000-0000-0000-0000-${String(i).padStart(12, "0")}`,
+    }));
+    const fullPool: PoolSnapshot = {
+      ...pool,
+      activeByCategory: { detecting: [], reviewing: actives, finalizing: [] },
+      pinnedById: new Map(actives.map((l) => [l.id, false])),
+    };
+    const targetId = actives[0]!.id;
+    const actions: LessonAction[] = [
+      {
+        type: "CREATE",
+        category: "reviewing",
+        title: "New lesson before deprecate fails cap",
+        body: "z".repeat(60),
+        rationale: "y".repeat(30),
+      },
+      { type: "DEPRECATE", lessonId: targetId, reason: "z".repeat(20) },
+    ];
+    const r = validateActions(actions, fullPool);
+    expect(r.applied).toHaveLength(1);
+    expect(r.applied[0]?.type).toBe("DEPRECATE");
+    expect(r.rejected).toHaveLength(1);
+    expect(r.rejected[0]?.reason).toBe("cap_exceeded");
+  });
+
   test.each<[string, AutoRejectReason]>([
     ["Bitcoin tends to spike on Asian session opens", "asset_mention"],
     ["Ethereum bouncing off resistance is reliable", "asset_mention"],
