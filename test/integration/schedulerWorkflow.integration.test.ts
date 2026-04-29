@@ -62,12 +62,19 @@ function makeWatch(id: string): WatchConfig {
       detector: { provider: "fake", model: "fake", max_tokens: 2000 },
       reviewer: { provider: "fake", model: "fake", max_tokens: 2000 },
       finalizer: { provider: "fake", model: "fake", max_tokens: 2000 },
+      feedback: { provider: "fake", model: "fake" },
     },
     optimization: { reviewer_skip_when_detector_corroborated: true },
     notify_on: ["confirmed", "rejected", "tp_hit", "sl_hit", "invalidated_after_confirmed"],
     include_chart_image: false,
     include_reasoning: true,
     budget: { pause_on_budget_exceeded: false },
+    feedback: {
+      enabled: true,
+      maxActiveLessonsPerCategory: 30,
+      injection: { detector: true, reviewer: true, finalizer: true },
+      contextProvidersDisabled: [],
+    },
   };
 }
 
@@ -130,7 +137,11 @@ async function buildDeps(
     config: makeConfig(watch),
     infra: {
       database: { url: "x", pool_size: 1, ssl: false },
-      temporal: { address: "x", namespace: "default", task_queues: { scheduler: "s", analysis: "a", notifications: "n" } },
+      temporal: {
+        address: "x",
+        namespace: "default",
+        task_queues: { scheduler: "s", analysis: "a", notifications: "n" },
+      },
       notifications: { telegram: { bot_token: "test-token", chat_id: "test-chat" } },
       llm: { openrouter_api_key: null },
       artifacts: { base_dir: "/tmp" },

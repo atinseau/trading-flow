@@ -11,14 +11,17 @@ const baseWatch = (overrides: Partial<WatchConfig> = {}): WatchConfig =>
     schedule: { timezone: "UTC" },
     candles: { detector_lookback: 200, reviewer_lookback: 500, reviewer_chart_window: 150 },
     setup_lifecycle: {
-      ttl_candles: 50, score_initial: 25,
-      score_threshold_finalizer: 80, score_threshold_dead: 10,
+      ttl_candles: 50,
+      score_initial: 25,
+      score_threshold_finalizer: 80,
+      score_threshold_dead: 10,
       invalidation_policy: "strict",
     },
     analyzers: {
       detector: { provider: "claude_max", model: "claude-sonnet-4-6" },
       reviewer: { provider: "claude_max", model: "claude-haiku-4-5" },
       finalizer: { provider: "claude_max", model: "claude-opus-4-7" },
+      feedback: { provider: "claude_max", model: "claude-opus-4-7" },
     },
     notify_on: ["confirmed"],
     ...overrides,
@@ -36,8 +39,10 @@ describe("applyReload", () => {
     const old = baseWatch();
     const next = baseWatch({
       setup_lifecycle: {
-        ttl_candles: 50, score_initial: 25,
-        score_threshold_finalizer: 75, score_threshold_dead: 10,
+        ttl_candles: 50,
+        score_initial: 25,
+        score_threshold_finalizer: 75,
+        score_threshold_dead: 10,
         invalidation_policy: "strict",
       } as WatchConfig["setup_lifecycle"],
     });

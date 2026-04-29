@@ -47,71 +47,116 @@ const NotifyEventSchema = z.enum([
   "invalidated",
   "invalidated_after_confirmed",
   "expired",
+  "lesson_proposed",
+  "lesson_approved",
+  "lesson_rejected",
 ]);
 
-export const WatchSchema = z.object({
-  id: z.string().regex(/^[a-z0-9-]+$/),
-  enabled: z.boolean().default(true),
-  asset: z.object({ symbol: z.string(), source: z.string() }),
-  timeframes: z.object({
-    primary: TimeframeSchema,
-    higher: z.array(TimeframeSchema).default([]),
-  }),
-  schedule: z.object({
-    detector_cron: z
-      .string()
-      .optional()
-      .refine((cron) => cron === undefined || isValidFiveFieldCron(cron), {
-        message:
-          "detector_cron must be a 5-field cron (no seconds field — minimum 1-minute interval enforced)",
-      }),
-    reviewer_cron: z
-      .string()
-      .optional()
-      .refine((cron) => cron === undefined || isValidFiveFieldCron(cron), {
-        message: "reviewer_cron must be a 5-field cron",
-      }),
-    timezone: z.string().default("UTC"),
-  }),
-  candles: z.object({
-    detector_lookback: z.number().int().positive(),
-    reviewer_lookback: z.number().int().positive(),
-    reviewer_chart_window: z.number().int().positive(),
-  }),
-  setup_lifecycle: SetupLifecycleSchema,
-  history_compaction: z
-    .object({
-      max_raw_events_in_context: z.number().int().positive().default(40),
-      summarize_after_age_hours: z.number().int().positive().default(48),
-    })
-    .prefault({}),
-  deduplication: z
-    .object({
-      similar_setup_window_candles: z.number().int().positive().default(5),
-      similar_price_tolerance_pct: z.number().positive().default(0.5),
-    })
-    .prefault({}),
-  pre_filter: PreFilterSchema,
-  analyzers: z.object({
-    detector: AnalyzerSchema,
-    reviewer: AnalyzerSchema,
-    finalizer: AnalyzerSchema,
-  }),
-  optimization: z
-    .object({
-      reviewer_skip_when_detector_corroborated: z.boolean().default(true),
-    })
-    .prefault({}),
-  notify_on: z.array(NotifyEventSchema).default([]),
-  include_chart_image: z.boolean().default(true),
-  include_reasoning: z.boolean().default(true),
-  budget: z
-    .object({
-      max_cost_usd_per_day: z.number().positive().optional(),
-      pause_on_budget_exceeded: z.boolean().default(true),
-    })
-    .prefault({}),
+const KNOWN_PROVIDER_IDS = [
+  "setup-events",
+  "tick-snapshots",
+  "post-mortem-ohlcv",
+  "chart-post-mortem",
+] as const;
+
+export const FeedbackInjectionSchema = z.object({
+  detector: z.boolean().default(true),
+  reviewer: z.boolean().default(true),
+  finalizer: z.boolean().default(true),
 });
+
+export const FeedbackAnalyzerSchema = z.object({
+  provider: z.string(),
+  model: z.string(),
+});
+
+export const FeedbackConfigSchema = z.object({
+  enabled: z.boolean().default(true),
+  maxActiveLessonsPerCategory: z.number().int().min(1).max(200).default(30),
+  injection: FeedbackInjectionSchema.default({ detector: true, reviewer: true, finalizer: true }),
+  contextProvidersDisabled: z.array(z.enum(KNOWN_PROVIDER_IDS)).default([]),
+  analyzer: FeedbackAnalyzerSchema.optional(),
+});
+
+export type FeedbackConfig = z.infer<typeof FeedbackConfigSchema>;
+export type FeedbackInjection = z.infer<typeof FeedbackInjectionSchema>;
+export type FeedbackAnalyzer = z.infer<typeof FeedbackAnalyzerSchema>;
+
+export const WatchSchema = z
+  .object({
+    id: z.string().regex(/^[a-z0-9-]+$/),
+    enabled: z.boolean().default(true),
+    asset: z.object({ symbol: z.string(), source: z.string() }),
+    timeframes: z.object({
+      primary: TimeframeSchema,
+      higher: z.array(TimeframeSchema).default([]),
+    }),
+    schedule: z.object({
+      detector_cron: z
+        .string()
+        .optional()
+        .refine((cron) => cron === undefined || isValidFiveFieldCron(cron), {
+          message:
+            "detector_cron must be a 5-field cron (no seconds field — minimum 1-minute interval enforced)",
+        }),
+      reviewer_cron: z
+        .string()
+        .optional()
+        .refine((cron) => cron === undefined || isValidFiveFieldCron(cron), {
+          message: "reviewer_cron must be a 5-field cron",
+        }),
+      timezone: z.string().default("UTC"),
+    }),
+    candles: z.object({
+      detector_lookback: z.number().int().positive(),
+      reviewer_lookback: z.number().int().positive(),
+      reviewer_chart_window: z.number().int().positive(),
+    }),
+    setup_lifecycle: SetupLifecycleSchema,
+    history_compaction: z
+      .object({
+        max_raw_events_in_context: z.number().int().positive().default(40),
+        summarize_after_age_hours: z.number().int().positive().default(48),
+      })
+      .prefault({}),
+    deduplication: z
+      .object({
+        similar_setup_window_candles: z.number().int().positive().default(5),
+        similar_price_tolerance_pct: z.number().positive().default(0.5),
+      })
+      .prefault({}),
+    pre_filter: PreFilterSchema,
+    analyzers: z.object({
+      detector: AnalyzerSchema,
+      reviewer: AnalyzerSchema,
+      finalizer: AnalyzerSchema,
+      feedback: FeedbackAnalyzerSchema.optional(),
+    }),
+    optimization: z
+      .object({
+        reviewer_skip_when_detector_corroborated: z.boolean().default(true),
+      })
+      .prefault({}),
+    notify_on: z.array(NotifyEventSchema).default([]),
+    include_chart_image: z.boolean().default(true),
+    include_reasoning: z.boolean().default(true),
+    budget: z
+      .object({
+        max_cost_usd_per_day: z.number().positive().optional(),
+        pause_on_budget_exceeded: z.boolean().default(true),
+      })
+      .prefault({}),
+    feedback: FeedbackConfigSchema.prefault({}),
+  })
+  .superRefine((watch, ctx) => {
+    if (watch.feedback.enabled && !watch.feedback.analyzer && !watch.analyzers.feedback) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["feedback", "analyzer"],
+        message: `watch '${watch.id}' has feedback.enabled: true but no LLM analyzer configured (set either feedback.analyzer or analyzers.feedback)`,
+      });
+    }
+  });
 
 const LLMProviderConfigSchema = z.discriminatedUnion("type", [
   z.object({
