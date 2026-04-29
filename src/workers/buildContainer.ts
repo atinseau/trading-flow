@@ -122,7 +122,7 @@ export async function buildContainer(
   const llmProviders =
     role === "notification"
       ? new Map<string, LLMProvider>()
-      : buildProviderRegistry(watches, infra, llmUsageStore);
+      : buildProviderRegistry(infra, llmUsageStore);
 
   // Notifier — console always; telegram appended via MultiNotifier when opted in.
   // chatId is supplied per-call by activities from `deps.infra.notifications.telegram.chat_id`.

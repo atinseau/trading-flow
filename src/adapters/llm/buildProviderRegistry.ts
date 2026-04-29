@@ -1,19 +1,43 @@
 import type { InfraConfig } from "@config/InfraConfig";
 import type { LLMProvider } from "@domain/ports/LLMProvider";
 import type { LLMUsageStore } from "@domain/ports/LLMUsageStore";
-import type { WatchesConfig } from "@domain/schemas/WatchesConfig";
 import { validateProviderGraph } from "@domain/services/validateProviderGraph";
 import { ClaudeAgentSdkProvider } from "./ClaudeAgentSdkProvider";
 import { OpenRouterProvider } from "./OpenRouterProvider";
 
+type ProviderDefault =
+  | {
+      type: "claude-agent-sdk";
+      daily_call_budget?: number;
+      fallback: string | null;
+    }
+  | {
+      type: "openrouter";
+      base_url?: string;
+      monthly_budget_usd?: number;
+      fallback: string | null;
+    };
+
+const PROVIDER_DEFAULTS: Record<string, ProviderDefault> = {
+  claude_max: {
+    type: "claude-agent-sdk",
+    daily_call_budget: 800,
+    fallback: "openrouter",
+  },
+  openrouter: {
+    type: "openrouter",
+    monthly_budget_usd: 50,
+    fallback: null,
+  },
+};
+
 export function buildProviderRegistry(
-  watches: WatchesConfig,
   infra: InfraConfig,
   usageStore?: LLMUsageStore,
 ): Map<string, LLMProvider> {
   const registry = new Map<string, LLMProvider>();
 
-  for (const [name, providerCfg] of Object.entries(watches.llm_providers)) {
+  for (const [name, providerCfg] of Object.entries(PROVIDER_DEFAULTS)) {
     if (providerCfg.type === "claude-agent-sdk") {
       registry.set(
         name,
@@ -24,10 +48,10 @@ export function buildProviderRegistry(
           usageStore,
         }),
       );
-    } else if (providerCfg.type === "openrouter") {
+    } else {
       if (infra.llm.openrouter_api_key === null) {
         throw new Error(
-          `OPENROUTER_API_KEY is required because llm_providers.${name}.type = openrouter`,
+          `OPENROUTER_API_KEY is required because provider "${name}" type = openrouter`,
         );
       }
       registry.set(
@@ -43,7 +67,7 @@ export function buildProviderRegistry(
     }
   }
 
-  // runtime safety: re-validate the graph (config validates too, but defense in depth)
+  // Defense in depth — even if PROVIDER_DEFAULTS is edited badly later
   const graphForValidation: Record<string, { fallback: string | null }> = {};
   for (const [name, p] of registry) graphForValidation[name] = { fallback: p.fallback };
   validateProviderGraph(graphForValidation);
