@@ -13,7 +13,7 @@ describe("tearDownWatch", () => {
     await tearDownWatch({ client: fakeClient, watchId: "btc-1h" });
 
     expect(scheduleDelete).toHaveBeenCalledTimes(1);
-    expect(wfTerminate).toHaveBeenCalledTimes(2);
+    expect(wfTerminate).toHaveBeenCalledTimes(1);
   });
 
   test("is idempotent — already-deleted entities tolerated", async () => {

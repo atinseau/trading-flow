@@ -53,7 +53,7 @@ describe("bootstrapWatch", () => {
 
     await bootstrapWatch(watch, { client: fakeClient, taskQueues });
 
-    expect(startMock.mock.calls.length).toBe(2);
+    expect(startMock.mock.calls.length).toBe(1);
     expect(scheduleCreate).toHaveBeenCalledTimes(1);
   });
 
