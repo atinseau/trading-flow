@@ -8,6 +8,7 @@ import { VerdictSchema } from "@domain/schemas/Verdict";
 import { computeInputHash } from "@domain/services/inputHash";
 import { getLogger } from "@observability/logger";
 import type { ActivityDeps } from "@workflows/activityDependencies";
+import { ensurePriceMonitorStarted } from "@workflows/price-monitor/ensureRunning";
 import { z } from "zod";
 
 const log = getLogger({ component: "setup-activities" });
@@ -51,16 +52,10 @@ export function buildSetupActivities(deps: ActivityDeps) {
       });
       const watch = deps.watchById(input.watchId);
       if (watch) {
-        // Idempotent. Spawns price-monitor-${source}-${symbol} if not already running.
-        await deps.temporalClient.workflow
-          .start("priceMonitorWorkflow", {
-            args: [{ symbol: input.asset, source: watch.asset.source }],
-            workflowId: `price-monitor-${watch.asset.source}-${input.asset}`,
-            taskQueue: deps.infra.temporal.task_queues.scheduler,
-          })
-          .catch((err: Error) => {
-            if (!/already.*started|alreadystarted/i.test(err.message)) throw err;
-          });
+        await ensurePriceMonitorStarted(deps.temporalClient, deps.infra, {
+          symbol: input.asset,
+          source: watch.asset.source,
+        });
       }
       return created;
     },

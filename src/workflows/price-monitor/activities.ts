@@ -2,6 +2,7 @@ import { InvalidConfigError, StopRequestedError } from "@domain/errors";
 import { getLogger } from "@observability/logger";
 import { Context } from "@temporalio/activity";
 import type { ActivityDeps } from "@workflows/activityDependencies";
+import { ensurePriceMonitorStarted } from "./ensureRunning";
 import { priceMonitorWorkflowId } from "./priceMonitorWorkflow";
 
 const log = getLogger({ component: "price-monitor-activities" });
@@ -24,20 +25,7 @@ export function buildPriceMonitorActivities(deps: ActivityDeps) {
     },
 
     async ensurePriceMonitorRunning(input: { symbol: string; source: string }): Promise<void> {
-      const workflowId = priceMonitorWorkflowId(input.symbol, input.source);
-      try {
-        await deps.temporalClient.workflow.start("priceMonitorWorkflow", {
-          args: [{ symbol: input.symbol, source: input.source }],
-          workflowId,
-          taskQueue: deps.infra.temporal.task_queues.scheduler,
-        });
-        log.info({ workflowId }, "price monitor started");
-      } catch (err) {
-        if ((err as Error).message?.match(/already.*started|alreadystarted/i)) {
-          return;
-        }
-        throw err;
-      }
+      await ensurePriceMonitorStarted(deps.temporalClient, deps.infra, input);
     },
 
     async subscribeAndCheckPriceFeed(input: { symbol: string; source: string }): Promise<void> {
