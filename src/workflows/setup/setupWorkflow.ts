@@ -1,21 +1,32 @@
 import {
   CancellationScope,
+  ChildWorkflowCancellationType,
   condition,
   defineQuery,
   defineSignal,
+  ParentClosePolicy,
   proxyActivities,
   setHandler,
   sleep,
+  startChild,
   workflowInfo,
 } from "@temporalio/workflow";
 import type { EventPayload } from "../../domain/events/schemas";
 import type { EventTypeName } from "../../domain/events/types";
+import { deriveCloseOutcome, shouldTriggerFeedback } from "../../domain/feedback/closeOutcome";
 import type { Verdict } from "../../domain/schemas/Verdict";
 import { applyVerdict } from "../../domain/scoring/applyVerdict";
 import type { SetupStatus } from "../../domain/state-machine/setupTransitions";
 import { isActive } from "../../domain/state-machine/setupTransitions";
+import { feedbackLoopWorkflow, feedbackWorkflowId } from "../feedback/feedbackLoopWorkflow";
 import type * as activities from "./activities";
 import { trackingLoop } from "./trackingLoop";
+
+// Re-export the child workflow so a single workflowsPath (the analysis worker
+// points at this file) bundles BOTH the parent setupWorkflow and the child
+// feedbackLoopWorkflow. Without this re-export, Temporal cannot resolve the
+// child workflow function by name at startChild time.
+export { feedbackLoopWorkflow };
 
 const SHARED_NON_RETRYABLE = [
   "InvalidConfigError",
@@ -78,6 +89,13 @@ export type InitialEvidence = {
   scoreThresholdDead: number;
   scoreMax: number;
   detectorPromptVersion: string;
+  /**
+   * Whether the post-close feedback loop should be triggered for this setup.
+   * Mirrors `watch.feedback.enabled` at the moment the setup is created;
+   * captured here (vs. read live) so concurrent watch-config edits cannot
+   * change a setup's feedback fate mid-flight.
+   */
+  feedbackEnabled: boolean;
 };
 
 export type ReviewSignalArgs = { tickSnapshotId: string };
@@ -503,9 +521,34 @@ export async function setupWorkflow(initial: InitialEvidence): Promise<SetupStat
           // trackingLoop updates DB but not workflow state — sync here so the
           // active loop exits cleanly instead of blocking on `condition`.
           // `price_invalidated` ⇒ status INVALIDATED; everything else ⇒ CLOSED.
-          // Phase 9 (Task 32) will use `trackingResult` to start a child
-          // FeedbackLoopWorkflow on eligible close reasons.
           state.status = trackingResult.reason === "price_invalidated" ? "INVALIDATED" : "CLOSED";
+
+          // Trigger the feedback loop on eligible close reasons. The child
+          // runs with parentClosePolicy:ABANDON so the parent setup workflow
+          // can complete immediately even if the feedback loop is still
+          // running — feedback analysis must not block the trading hot path.
+          if (initial.feedbackEnabled) {
+            const closeOutcome = deriveCloseOutcome({
+              finalStatus: "CLOSED",
+              trackingResult,
+              everConfirmed: true,
+            });
+            if (shouldTriggerFeedback(closeOutcome)) {
+              await startChild(feedbackLoopWorkflow, {
+                workflowId: feedbackWorkflowId(initial.setupId),
+                args: [
+                  {
+                    setupId: initial.setupId,
+                    watchId: initial.watchId,
+                    closeOutcome,
+                    scoreAtClose: state.score,
+                  },
+                ],
+                parentClosePolicy: ParentClosePolicy.ABANDON,
+                cancellationType: ChildWorkflowCancellationType.ABANDON,
+              });
+            }
+          }
         } else {
           const stored = await dbActivities.persistEvent({
             event: {

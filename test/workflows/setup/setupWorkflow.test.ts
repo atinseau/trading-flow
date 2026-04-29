@@ -43,6 +43,9 @@ const baseInitial: InitialEvidence = {
   scoreThresholdDead: 10,
   scoreMax: 100,
   detectorPromptVersion: "detector_v3",
+  // Feedback disabled — these tests focus on the setup workflow itself; the
+  // feedback child-workflow path is covered by setupWorkflow.feedback.test.ts.
+  feedbackEnabled: false,
 };
 
 const baseRunReviewerReturn = (

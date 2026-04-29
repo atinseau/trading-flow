@@ -266,6 +266,9 @@ describe("SetupWorkflow integration (real Postgres + real activities)", () => {
       scoreThresholdDead: 10,
       scoreMax: 100,
       detectorPromptVersion: "detector_v3",
+      // Disabled here — this integration test focuses on the setup workflow
+      // path, not the feedback loop (covered by setupWorkflow.feedback.test).
+      feedbackEnabled: false,
     };
 
     let finalStatus: string | undefined;
