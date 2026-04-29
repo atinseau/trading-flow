@@ -1,8 +1,9 @@
 import { loadWatchesFromDb } from "@config/loadWatchesFromDb";
+import { WatchesConfigError } from "@config/WatchesConfigError";
 import { type WatchesConfig, WatchesConfigSchema } from "@domain/schemas/WatchesConfig";
 import type pg from "pg";
 
-export { WatchesConfigError } from "@config/WatchesConfigError";
+export { WatchesConfigError };
 
 export async function loadWatchesConfig(
   path: string,
