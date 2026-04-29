@@ -1,14 +1,18 @@
-import { Button } from "../components/ui/button";
-import { ConfirmAction } from "../components/shared/confirm-action";
-import { WatchForm } from "../components/watch-form";
-import { api } from "../lib/api";
 import type { WatchConfig } from "@domain/schemas/WatchesConfig";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
 
+import { MarketStateBadge } from "../components/market-state-badge";
+import { ConfirmAction } from "../components/shared/confirm-action";
+import { Button } from "../components/ui/button";
+import { WatchForm } from "../components/watch-form";
+import { api } from "../lib/api";
+
 type WatchDetail = {
-  id: string; enabled: boolean; version: number;
+  id: string;
+  enabled: boolean;
+  version: number;
   config: WatchConfig;
   state: { lastTickAt: string | null } | null;
 };
@@ -53,7 +57,12 @@ export function Component() {
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-xl font-bold">Watch — {detail.data.id}</h1>
+        <div>
+          <h1 className="text-xl font-bold">Watch — {detail.data.id}</h1>
+          <div className="flex gap-2 mt-2">
+            <MarketStateBadge watch={{ asset: detail.data.config.asset }} />
+          </div>
+        </div>
         <ConfirmAction
           title={`Supprimer ${detail.data.id} ?`}
           description="Les workflows Temporal sont arrêtés. Les setups historiques restent en DB."

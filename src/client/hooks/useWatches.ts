@@ -1,15 +1,12 @@
 import { api } from "@client/lib/api";
+import type { WatchConfig } from "@domain/schemas/WatchesConfig";
 import { useQuery } from "@tanstack/react-query";
 
 export type WatchListItem = {
   id: string;
   enabled: boolean;
   version: number;
-  config: {
-    id: string;
-    asset: { symbol: string };
-    timeframes: { primary: string };
-  };
+  config: WatchConfig;
   createdAt: string;
   updatedAt: string;
 };

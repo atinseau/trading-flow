@@ -1,12 +1,18 @@
-import { AssetChart, type AssetCandle } from "../components/asset/asset-chart";
-import { Badge } from "../components/ui/badge";
-import { Button } from "../components/ui/button";
-import { useCandleAlignedRefetch } from "../hooks/useCandleAlignedRefetch";
-import { api } from "../lib/api";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, Plus, RefreshCw } from "lucide-react";
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
+
+import { type AssetCandle, AssetChart } from "../components/asset/asset-chart";
+import { Badge } from "../components/ui/badge";
+import { Button } from "../components/ui/button";
+import { useCandleAlignedRefetch } from "../hooks/useCandleAlignedRefetch";
+import { api } from "../lib/api";
+
+// MarketStateBadge intentionally not integrated here — the asset detail page only has
+// (source, symbol) from URL params, not quoteType/exchange. The badge requires these fields
+// to work with yahoo equities (the case where it's relevant). See watch-card.tsx and
+// watch.tsx for the meaningful integrations where the full asset metadata is available.
 
 const TIMEFRAMES = ["1m", "5m", "15m", "30m", "1h", "4h", "1d", "1w"] as const;
 type Timeframe = (typeof TIMEFRAMES)[number];
@@ -23,9 +29,7 @@ export function Component() {
     source: string;
     symbol: string;
   }>();
-  const source = (sourceParam === "binance" || sourceParam === "yahoo")
-    ? sourceParam
-    : null;
+  const source = sourceParam === "binance" || sourceParam === "yahoo" ? sourceParam : null;
   const symbol = symbolParam ? decodeURIComponent(symbolParam) : "";
 
   const [interval, setInterval] = useState<Timeframe>("1h");

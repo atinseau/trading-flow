@@ -1,8 +1,9 @@
+import { MarketStateBadge } from "@client/components/market-state-badge";
+import { ConfirmAction } from "@client/components/shared/confirm-action";
+import { RelativeTime } from "@client/components/shared/relative-time";
 import { Badge } from "@client/components/ui/badge";
 import { Button } from "@client/components/ui/button";
 import { Card, CardContent, CardHeader } from "@client/components/ui/card";
-import { ConfirmAction } from "@client/components/shared/confirm-action";
-import { RelativeTime } from "@client/components/shared/relative-time";
 import { useAdminAction } from "@client/hooks/useAdminAction";
 import type { WatchListItem } from "@client/hooks/useWatches";
 import { api } from "@client/lib/api";
@@ -41,17 +42,19 @@ export function WatchCard({ watch }: { watch: WatchListItem }) {
           </Link>
           <div className="text-xs text-muted-foreground mt-1">{watch.id}</div>
         </div>
-        <Badge variant={watch.enabled ? "default" : "secondary"}>
-          {watch.enabled ? "Active" : "Pause"}
-        </Badge>
+        <div className="flex gap-1">
+          <Badge variant={watch.enabled ? "default" : "secondary"}>
+            {watch.enabled ? "Active" : "Pause"}
+          </Badge>
+          <MarketStateBadge watch={{ asset: watch.config.asset }} />
+        </div>
       </CardHeader>
       <CardContent className="text-xs space-y-1">
         <div>
           Dernier tick : <RelativeTime date={detail.data?.state?.lastTickAt} />
         </div>
         <div>
-          Setups vivants :{" "}
-          <span className="font-mono">{aliveSetups.data?.length ?? "—"}</span>
+          Setups vivants : <span className="font-mono">{aliveSetups.data?.length ?? "—"}</span>
         </div>
         <div>
           Coût mois :{" "}
@@ -62,26 +65,22 @@ export function WatchCard({ watch }: { watch: WatchListItem }) {
         <div className="flex gap-2 pt-2">
           {watch.enabled ? (
             <>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => forceTick.mutate(watch.id)}
-              >
+              <Button size="sm" variant="outline" onClick={() => forceTick.mutate(watch.id)}>
                 Force tick
               </Button>
               <ConfirmAction
                 title={`Mettre en pause ${watch.id} ?`}
                 description="Les ticks programmés sont suspendus. Reprends quand tu veux."
-                trigger={<Button size="sm" variant="outline">Pause</Button>}
+                trigger={
+                  <Button size="sm" variant="outline">
+                    Pause
+                  </Button>
+                }
                 onConfirm={() => pause.mutate(watch.id)}
               />
             </>
           ) : (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => resume.mutate(watch.id)}
-            >
+            <Button size="sm" variant="outline" onClick={() => resume.mutate(watch.id)}>
               Reprendre
             </Button>
           )}
