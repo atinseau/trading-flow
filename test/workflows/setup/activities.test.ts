@@ -6,8 +6,7 @@
  * fakes and a controlled clock.
  */
 import { describe, expect, test } from "bun:test";
-import { buildSetupActivities } from "@workflows/setup/activities";
-import { WatchSchema, type WatchConfig } from "@domain/schemas/WatchesConfig";
+import { type WatchConfig, WatchSchema } from "@domain/schemas/WatchesConfig";
 import { FakeClock } from "@test-fakes/FakeClock";
 import { FakeLLMProvider } from "@test-fakes/FakeLLMProvider";
 import { InMemoryArtifactStore } from "@test-fakes/InMemoryArtifactStore";
@@ -15,6 +14,7 @@ import { InMemoryEventStore } from "@test-fakes/InMemoryEventStore";
 import { InMemorySetupRepository } from "@test-fakes/InMemorySetupRepository";
 import { InMemoryTickSnapshotStore } from "@test-fakes/InMemoryTickSnapshotStore";
 import type { ActivityDeps } from "@workflows/activityDependencies";
+import { buildSetupActivities } from "@workflows/setup/activities";
 
 // ---- helpers ----------------------------------------------------------------
 
