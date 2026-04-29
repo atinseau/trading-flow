@@ -24,6 +24,7 @@
       "@config/*": ["./src/config/*"],
       "@observability/*": ["./src/observability/*"],
       "@cli/*": ["./src/cli/*"],
+      "@client/*": ["./src/client/*"],
       "@test-fakes/*": ["./test/fakes/*"],
       "@test-helpers/*": ["./test/helpers/*"]
     }
