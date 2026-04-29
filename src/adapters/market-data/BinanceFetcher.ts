@@ -94,6 +94,56 @@ export class BinanceFetcher implements MarketDataFetcher {
     );
   }
 
+  async fetchRange(args: {
+    asset: string;
+    timeframe: string;
+    from: Date;
+    to: Date;
+  }): Promise<Candle[]> {
+    const interval = TIMEFRAME_MAP[args.timeframe];
+    if (!interval) throw new Error(`Timeframe non supporté: ${args.timeframe}`);
+
+    const url = new URL(`${BINANCE_BASE_URL}/api/v3/klines`);
+    url.searchParams.set("symbol", args.asset);
+    url.searchParams.set("interval", interval);
+    url.searchParams.set("startTime", String(args.from.getTime()));
+    url.searchParams.set("endTime", String(args.to.getTime()));
+    url.searchParams.set("limit", "1000");
+
+    const response = await fetch(url);
+    if (response.status === 418 || response.status === 429) {
+      log.warn({ asset: args.asset, status: response.status }, "binance rate limited");
+      throw new ExchangeRateLimitError(`Binance rate limited: ${response.status}`);
+    }
+    if (response.status === 400) {
+      const body = await response.text();
+      if (body.includes("Invalid symbol")) {
+        log.error({ asset: args.asset }, "binance asset not found");
+        throw new AssetNotFoundError(args.asset);
+      }
+      log.error({ asset: args.asset, body }, "binance 400");
+      throw new Error(`Binance 400: ${body}`);
+    }
+    if (!response.ok) {
+      const body = await response.text();
+      log.error({ asset: args.asset, status: response.status }, "binance fetch failed");
+      throw new Error(`Binance ${response.status}: ${body}`);
+    }
+
+    const raw = await response.json();
+    const rows = KlineArraySchema.parse(raw);
+    return rows.map((row) =>
+      CandleSchema.parse({
+        timestamp: new Date(row[0]),
+        open: Number.parseFloat(row[1]),
+        high: Number.parseFloat(row[2]),
+        low: Number.parseFloat(row[3]),
+        close: Number.parseFloat(row[4]),
+        volume: Number.parseFloat(row[5]),
+      }),
+    );
+  }
+
   async isAssetSupported(asset: string): Promise<boolean> {
     const now = Date.now();
     if (!this.supportedSymbolsCache || this.supportedSymbolsCache.expiresAt < now) {
