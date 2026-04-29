@@ -235,3 +235,24 @@ function computeForexState(now: Date): SessionState {
     ),
   };
 }
+
+export function watchesInSession<W extends WatchAssetInput & { id: string }>(
+  watches: W[],
+  target: Session,
+): W[] {
+  return watches.filter((w) => {
+    let s: Session;
+    try {
+      s = getSession(w);
+    } catch {
+      return false; // invalid watch (unknown exchange) → not in any session
+    }
+    if (s.kind !== target.kind) return false;
+    if (s.kind === "exchange" && target.kind === "exchange") return s.id === target.id;
+    return true;
+  });
+}
+
+export function sessionKey(s: Session): string {
+  return s.kind === "exchange" ? `exchange-${s.id}` : s.kind;
+}

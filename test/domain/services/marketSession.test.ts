@@ -206,3 +206,54 @@ describe("getSessionState — forex", () => {
     expect(state.nextCloseAt).toEqual(new Date("2026-04-17T21:00:00Z"));
   });
 });
+
+import { sessionKey, watchesInSession } from "@domain/services/marketSession";
+
+describe("watchesInSession", () => {
+  const w = (id: string, asset: object) => ({ id, asset }) as any;
+  const aapl = w("watch_aapl", {
+    source: "yahoo",
+    symbol: "AAPL",
+    quoteType: "EQUITY",
+    exchange: "NMS",
+  });
+  const cac = w("watch_cac", {
+    source: "yahoo",
+    symbol: "^FCHI",
+    quoteType: "INDEX",
+    exchange: "PAR",
+  });
+  const eurusd = w("watch_eurusd", { source: "yahoo", symbol: "EURUSD=X", quoteType: "CURRENCY" });
+  const btc = w("watch_btc", { source: "binance", symbol: "BTCUSDT" });
+  const broken = w("watch_broken", {
+    source: "yahoo",
+    symbol: "FOO",
+    quoteType: "EQUITY",
+    exchange: "XYZ",
+  });
+
+  test("filters to NASDAQ session", () => {
+    expect(watchesInSession([aapl, cac, eurusd, btc], { kind: "exchange", id: "NASDAQ" })).toEqual([
+      aapl,
+    ]);
+  });
+  test("filters to forex", () => {
+    expect(watchesInSession([aapl, cac, eurusd, btc], { kind: "forex" })).toEqual([eurusd]);
+  });
+  test("filters to always-open", () => {
+    expect(watchesInSession([aapl, cac, eurusd, btc], { kind: "always-open" })).toEqual([btc]);
+  });
+  test("invalid watches (unknown exchange) are silently excluded", () => {
+    expect(watchesInSession([aapl, broken], { kind: "exchange", id: "NASDAQ" })).toEqual([aapl]);
+  });
+});
+
+describe("sessionKey", () => {
+  test("always-open → 'always-open'", () =>
+    expect(sessionKey({ kind: "always-open" })).toBe("always-open"));
+  test("forex → 'forex'", () => expect(sessionKey({ kind: "forex" })).toBe("forex"));
+  test("exchange NASDAQ → 'exchange-NASDAQ'", () =>
+    expect(sessionKey({ kind: "exchange", id: "NASDAQ" })).toBe("exchange-NASDAQ"));
+  test("exchange PAR → 'exchange-PAR'", () =>
+    expect(sessionKey({ kind: "exchange", id: "PAR" })).toBe("exchange-PAR"));
+});
