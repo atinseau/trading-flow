@@ -1,4 +1,6 @@
+import { loadWatchesFromDb } from "@config/loadWatchesFromDb";
 import { type WatchesConfig, WatchesConfigSchema } from "@domain/schemas/WatchesConfig";
+import type pg from "pg";
 
 export class WatchesConfigError extends Error {
   constructor(message: string) {
@@ -7,7 +9,10 @@ export class WatchesConfigError extends Error {
   }
 }
 
-export async function loadWatchesConfig(path: string): Promise<WatchesConfig | null> {
+export async function loadWatchesConfig(
+  path: string,
+  opts?: { pool?: pg.Pool },
+): Promise<WatchesConfig | null> {
   const file = Bun.file(path);
   if (!(await file.exists())) return null;
 
@@ -25,7 +30,15 @@ export async function loadWatchesConfig(path: string): Promise<WatchesConfig | n
     throw new WatchesConfigError(`Malformed YAML in ${path}: ${(err as Error).message}`);
   }
 
-  const result = WatchesConfigSchema.safeParse(parsed);
+  // When a pool is provided, watches[] is sourced from the DB instead of YAML.
+  // The yaml's watches: array is ignored in that case.
+  let merged = parsed;
+  if (opts?.pool && parsed && typeof parsed === "object") {
+    const dbWatches = await loadWatchesFromDb(opts.pool);
+    merged = { ...(parsed as Record<string, unknown>), watches: dbWatches };
+  }
+
+  const result = WatchesConfigSchema.safeParse(merged);
   if (!result.success) {
     const issues = result.error.issues
       .map((i) => `  - ${i.path.join(".")}: ${i.message}`)

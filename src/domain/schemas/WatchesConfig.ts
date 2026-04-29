@@ -49,7 +49,7 @@ const NotifyEventSchema = z.enum([
   "expired",
 ]);
 
-const WatchSchema = z.object({
+export const WatchSchema = z.object({
   id: z.string().regex(/^[a-z0-9-]+$/),
   enabled: z.boolean().default(true),
   asset: z.object({ symbol: z.string(), source: z.string() }),
