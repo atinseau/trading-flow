@@ -91,6 +91,7 @@ type SerializedContext = {
     setupCreatedAt: string;
     setupClosedAt: string;
     confirmedAt: string | null;
+    scoreAtClose: number;
   };
   chunks: SerializedContextChunk[];
 };
@@ -111,6 +112,12 @@ export function buildFeedbackActivities(deps: ActivityDeps) {
 
       const events = await deps.eventStore.listForSetup(input.setupId);
       const confirmedEvent = events.find((e) => e.type === "Confirmed");
+      // Prefer the event-sourced source of truth (latest event's scoreAfter).
+      // Fall back to the projection (`setup.currentScore`) and finally 0 if
+      // neither is available — events are already loaded for `confirmedEvent`
+      // detection so this is free.
+      const scoreAtClose =
+        events[events.length - 1]?.scoreAfter ?? setup.currentScore ?? 0;
 
       const scope = {
         setupId: setup.id,
@@ -124,6 +131,7 @@ export function buildFeedbackActivities(deps: ActivityDeps) {
         // guard against bad ordering by using "now".
         setupClosedAt: setup.closedAt ?? new Date(),
         confirmedAt: confirmedEvent?.occurredAt ?? null,
+        scoreAtClose,
       };
 
       const providers = deps.feedbackContextRegistry.resolveForWatch(
@@ -143,6 +151,7 @@ export function buildFeedbackActivities(deps: ActivityDeps) {
           setupCreatedAt: scope.setupCreatedAt.toISOString(),
           setupClosedAt: scope.setupClosedAt.toISOString(),
           confirmedAt: scope.confirmedAt ? scope.confirmedAt.toISOString() : null,
+          scoreAtClose: scope.scoreAtClose,
         },
         chunks: chunks.map((c) => ({
           providerId: c.providerId,
@@ -228,7 +237,7 @@ export function buildFeedbackActivities(deps: ActivityDeps) {
 
       const userPrompt = feedbackPrompt.render({
         closeOutcome: ctx.scope.closeOutcome,
-        scoreAtClose: 0,
+        scoreAtClose: ctx.scope.scoreAtClose,
         poolStats,
         maxActivePerCategory: cap,
         existingLessons: flat.map((l) => ({
