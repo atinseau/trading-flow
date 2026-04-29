@@ -1,5 +1,5 @@
 import { UnsupportedExchangeError } from "@domain/errors";
-import { type ExchangeId, normalizeYahooExchange } from "./exchangeCalendars";
+import { EXCHANGE_DEFS, type ExchangeId, normalizeYahooExchange } from "./exchangeCalendars";
 
 export type Session =
   | { kind: "always-open" }
@@ -50,10 +50,113 @@ export function getSessionState(session: Session, now: Date): SessionState {
   return _exhaustive;
 }
 
-// Stubs — implemented in Tasks 1.4 and 1.5
-function computeExchangeState(_id: ExchangeId, _now: Date): SessionState {
-  throw new Error("computeExchangeState not implemented (Task 1.4)");
+// Extract local wall-clock parts in a given IANA tz at instant `date`.
+function localPartsInTz(date: Date, tz: string) {
+  const fmt = new Intl.DateTimeFormat("en-US", {
+    timeZone: tz,
+    hour12: false,
+    weekday: "short",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  const parts = Object.fromEntries(fmt.formatToParts(date).map((p) => [p.type, p.value]));
+  const wkMap: Record<string, number> = {
+    Mon: 1,
+    Tue: 2,
+    Wed: 3,
+    Thu: 4,
+    Fri: 5,
+    Sat: 6,
+    Sun: 7,
+  };
+  // Intl with hour12:false sometimes returns "24" for midnight — normalize to 0
+  const hourRaw = Number(parts.hour);
+  return {
+    isoWeekday: wkMap[parts.weekday as string],
+    hh: hourRaw === 24 ? 0 : hourRaw,
+    mm: Number(parts.minute),
+    yyyy: Number(parts.year),
+    MM: Number(parts.month),
+    dd: Number(parts.day),
+  };
 }
+
+// Given local wall-clock components in tz, return the UTC instant.
+// DST-safe: builds a candidate assuming UTC, then measures the drift between
+// what the tz reports back and what we intended, and subtracts it.
+// The dayDelta correction handles day-rollover near midnight (e.g., asking for
+// 00:30 local when the candidate maps to 23:30 of the previous day in that tz).
+function utcFromLocalInTz(
+  yyyy: number,
+  MM: number,
+  dd: number,
+  hh: number,
+  mm: number,
+  tz: string,
+): Date {
+  // Initial candidate as if components were UTC
+  const candidate = new Date(Date.UTC(yyyy, MM - 1, dd, hh, mm));
+  const localized = localPartsInTz(candidate, tz);
+  // How much is the local clock off from what we wanted?
+  const driftMin = (localized.hh - hh) * 60 + (localized.mm - mm);
+  // Day rollover: crude but correct for adjacent-day cases
+  const dayDelta = localized.dd - dd;
+  return new Date(candidate.getTime() - (driftMin + dayDelta * 24 * 60) * 60_000);
+}
+
+function parseHHmm(s: string): { hh: number; mm: number } {
+  const [hh, mm] = s.split(":").map(Number);
+  return { hh, mm };
+}
+
+function computeExchangeState(id: ExchangeId, now: Date): SessionState {
+  const def = EXCHANGE_DEFS[id];
+  const local = localPartsInTz(now, def.tz);
+  const minutesNow = local.hh * 60 + local.mm;
+
+  // 1. Are we currently in an open range on a trading day?
+  if (def.days.includes(local.isoWeekday)) {
+    for (const range of def.ranges) {
+      const open = parseHHmm(range.open);
+      const close = parseHHmm(range.close);
+      const minutesOpen = open.hh * 60 + open.mm;
+      const minutesClose = close.hh * 60 + close.mm;
+      if (minutesNow >= minutesOpen && minutesNow < minutesClose) {
+        return {
+          isOpen: true,
+          nextCloseAt: utcFromLocalInTz(local.yyyy, local.MM, local.dd, close.hh, close.mm, def.tz),
+        };
+      }
+    }
+  }
+
+  // 2. Find next open: walk forward up to 8 days, picking the first range that starts after `now`.
+  for (let dayOffset = 0; dayOffset < 8; dayOffset++) {
+    const probe = new Date(now.getTime() + dayOffset * 24 * 3600_000);
+    const probeLocal = localPartsInTz(probe, def.tz);
+    if (!def.days.includes(probeLocal.isoWeekday)) continue;
+    for (const range of def.ranges) {
+      const open = parseHHmm(range.open);
+      const candidate = utcFromLocalInTz(
+        probeLocal.yyyy,
+        probeLocal.MM,
+        probeLocal.dd,
+        open.hh,
+        open.mm,
+        def.tz,
+      );
+      if (candidate.getTime() > now.getTime()) {
+        return { isOpen: false, nextOpenAt: candidate };
+      }
+    }
+  }
+  throw new Error(`No open in next 8 days for ${id} — bug`);
+}
+
+// Stub — implemented in Task 1.5
 function computeForexState(_now: Date): SessionState {
   throw new Error("computeForexState not implemented (Task 1.5)");
 }

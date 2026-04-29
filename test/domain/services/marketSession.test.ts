@@ -83,3 +83,82 @@ describe("getSessionState — always-open", () => {
     expect(state.nextCloseAt).toBeUndefined();
   });
 });
+
+describe("getSessionState — exchange (single range, US)", () => {
+  test("NASDAQ open Mon 14:35 UTC in winter (= 09:35 ET)", () => {
+    const state = getSessionState(
+      { kind: "exchange", id: "NASDAQ" },
+      new Date("2026-01-12T14:35:00Z"),
+    );
+    expect(state.isOpen).toBe(true);
+    expect(state.nextCloseAt).toEqual(new Date("2026-01-12T21:00:00Z")); // 16:00 EST = 21:00 UTC
+  });
+
+  test("NASDAQ open Mon 14:35 UTC in summer (= 10:35 EDT)", () => {
+    const state = getSessionState(
+      { kind: "exchange", id: "NASDAQ" },
+      new Date("2026-07-13T14:35:00Z"),
+    );
+    expect(state.isOpen).toBe(true);
+    expect(state.nextCloseAt).toEqual(new Date("2026-07-13T20:00:00Z")); // 16:00 EDT = 20:00 UTC
+  });
+
+  test("NASDAQ closed Saturday → next open Mon 09:30 ET", () => {
+    const state = getSessionState(
+      { kind: "exchange", id: "NASDAQ" },
+      new Date("2026-01-10T15:00:00Z"),
+    );
+    expect(state.isOpen).toBe(false);
+    expect(state.nextOpenAt).toEqual(new Date("2026-01-12T14:30:00Z")); // Mon 09:30 EST
+  });
+
+  test("NYSE Friday 22:00 UTC → closed → next open Monday 14:30 UTC", () => {
+    const state = getSessionState(
+      { kind: "exchange", id: "NYSE" },
+      new Date("2026-01-09T22:00:00Z"),
+    );
+    expect(state.isOpen).toBe(false);
+    expect(state.nextOpenAt).toEqual(new Date("2026-01-12T14:30:00Z"));
+  });
+
+  test("DST transition spring 2026 (Sunday 2026-03-08 ahead): Mon 13:35 UTC = 09:35 EDT", () => {
+    const state = getSessionState(
+      { kind: "exchange", id: "NYSE" },
+      new Date("2026-03-09T13:35:00Z"),
+    );
+    expect(state.isOpen).toBe(true);
+  });
+});
+
+describe("getSessionState — exchange (multi-range, Asia)", () => {
+  test("Tokyo at 11:45 JST → closed (lunch), next open 12:30 JST", () => {
+    // 11:45 JST Mon = 02:45 UTC Mon
+    const state = getSessionState(
+      { kind: "exchange", id: "TSE" },
+      new Date("2026-04-13T02:45:00Z"),
+    );
+    expect(state.isOpen).toBe(false);
+    expect(state.nextOpenAt).toEqual(new Date("2026-04-13T03:30:00Z")); // 12:30 JST = 03:30 UTC
+  });
+
+  test("Tokyo at 13:00 JST → open, nextCloseAt 15:00 JST", () => {
+    // 13:00 JST Mon = 04:00 UTC Mon
+    const state = getSessionState(
+      { kind: "exchange", id: "TSE" },
+      new Date("2026-04-13T04:00:00Z"),
+    );
+    expect(state.isOpen).toBe(true);
+    expect(state.nextCloseAt).toEqual(new Date("2026-04-13T06:00:00Z")); // 15:00 JST = 06:00 UTC
+  });
+
+  test("Tokyo Saturday → closed, next open Mon 09:00 JST", () => {
+    // Sat 2026-04-11 04:00 UTC
+    const state = getSessionState(
+      { kind: "exchange", id: "TSE" },
+      new Date("2026-04-11T04:00:00Z"),
+    );
+    expect(state.isOpen).toBe(false);
+    // Mon 2026-04-13 09:00 JST = 00:00 UTC
+    expect(state.nextOpenAt).toEqual(new Date("2026-04-13T00:00:00Z"));
+  });
+});
