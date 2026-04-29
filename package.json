@@ -25,7 +25,9 @@
     "worker:scheduler": "bun run src/workers/scheduler-worker.ts",
     "worker:analysis": "bun run src/workers/analysis-worker.ts",
     "worker:notification": "bun run src/workers/notification-worker.ts",
-    "worker:web": "bun run src/client/server.ts"
+    "worker:web": "bun run src/client/server.ts",
+    "css:build": "bunx @tailwindcss/cli -i src/client/globals.css -o src/client/globals.compiled.css --minify",
+    "css:watch": "bunx @tailwindcss/cli -i src/client/globals.css -o src/client/globals.compiled.css --watch"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.0",

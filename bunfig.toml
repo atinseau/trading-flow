@@ -1,5 +1,8 @@
-[serve.static]
-plugins = ["bun-plugin-tailwind"]
+# Tailwind v4 is precompiled via the @tailwindcss/cli during the Docker build
+# (see docker/Dockerfile.worker). The compiled file lives at
+# src/client/globals.compiled.css and is referenced statically from index.html.
+# bun-plugin-tailwind v0.1.2 doesn't expand @tailwind utilities for v4 in HTML
+# bundle context, hence the precompile step.
 
 [test]
 preload = ["./test/client/frontend/setup.ts"]

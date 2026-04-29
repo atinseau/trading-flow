@@ -40,12 +40,22 @@ export function safeHandler(handler: Handler): Handler {
           { status: 400, headers: { "x-request-id": requestId } },
         );
       }
+      const e = err as Error & { cause?: { message?: string; code?: string }; code?: string };
       log.error(
-        { err: (err as Error).message, stack: (err as Error).stack },
+        {
+          err: e.message,
+          code: e.code ?? e.cause?.code,
+          causeMessage: e.cause?.message,
+          stack: e.stack,
+        },
         "unhandled error",
       );
       return Response.json(
-        { error: (err as Error).message ?? "internal error" },
+        {
+          error: e.message ?? "internal error",
+          ...(e.cause?.message ? { cause: e.cause.message } : {}),
+          ...(e.code ?? e.cause?.code ? { code: e.code ?? e.cause?.code } : {}),
+        },
         { status: 500, headers: { "x-request-id": requestId } },
       );
     }

@@ -1,38 +1,115 @@
 @import "tailwindcss";
 @plugin "tailwindcss-animate";
 
-@layer base {
-  :root {
-    --background: 0 0% 4%;
-    --foreground: 0 0% 95%;
-    --card: 0 0% 7%;
-    --card-foreground: 0 0% 95%;
-    --popover: 0 0% 7%;
-    --popover-foreground: 0 0% 95%;
-    --primary: 220 70% 60%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 0 0% 14%;
-    --secondary-foreground: 0 0% 95%;
-    --muted: 0 0% 14%;
-    --muted-foreground: 0 0% 60%;
-    --accent: 0 0% 14%;
-    --accent-foreground: 0 0% 95%;
-    --destructive: 0 70% 55%;
-    --destructive-foreground: 0 0% 100%;
-    --border: 0 0% 18%;
-    --input: 0 0% 18%;
-    --ring: 220 70% 60%;
-    --radius: 0.5rem;
+@source "./**/*.{ts,tsx,html}";
 
-    --chart-1: 220 70% 60%;
-    --chart-2: 160 60% 50%;
-    --chart-3: 30 80% 60%;
-    --chart-4: 280 70% 60%;
-    --chart-5: 0 70% 60%;
-  }
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  --radius: 0.5rem;
+
+  --background: hsl(0 0% 4%);
+  --foreground: hsl(0 0% 95%);
+
+  --card: hsl(0 0% 7%);
+  --card-foreground: hsl(0 0% 95%);
+
+  --popover: hsl(0 0% 7%);
+  --popover-foreground: hsl(0 0% 95%);
+
+  --primary: hsl(220 70% 60%);
+  --primary-foreground: hsl(0 0% 100%);
+
+  --secondary: hsl(0 0% 14%);
+  --secondary-foreground: hsl(0 0% 95%);
+
+  --muted: hsl(0 0% 14%);
+  --muted-foreground: hsl(0 0% 65%);
+
+  --accent: hsl(0 0% 18%);
+  --accent-foreground: hsl(0 0% 98%);
+
+  --destructive: hsl(0 70% 55%);
+  --destructive-foreground: hsl(0 0% 100%);
+
+  --border: hsl(0 0% 18%);
+  --input: hsl(0 0% 18%);
+  --ring: hsl(220 70% 60%);
+
+  --chart-1: hsl(220 70% 60%);
+  --chart-2: hsl(160 60% 50%);
+  --chart-3: hsl(30 80% 60%);
+  --chart-4: hsl(280 70% 60%);
+  --chart-5: hsl(0 70% 60%);
+
+  --sidebar: hsl(0 0% 6%);
+  --sidebar-foreground: hsl(0 0% 95%);
+  --sidebar-primary: hsl(220 70% 60%);
+  --sidebar-primary-foreground: hsl(0 0% 100%);
+  --sidebar-accent: hsl(0 0% 14%);
+  --sidebar-accent-foreground: hsl(0 0% 95%);
+  --sidebar-border: hsl(0 0% 18%);
+  --sidebar-ring: hsl(220 70% 60%);
 }
 
-body {
-  background-color: hsl(var(--background));
-  color: hsl(var(--foreground));
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
 }
