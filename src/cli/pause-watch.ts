@@ -1,3 +1,4 @@
+import { pauseWatch, resumeWatch } from "@config/watchOps";
 import { getLogger } from "@observability/logger";
 import { Client, Connection } from "@temporalio/client";
 
@@ -15,6 +16,7 @@ const connection = await Connection.connect({
 });
 const client = new Client({ connection });
 
-await client.workflow.getHandle(`scheduler-${watchId}`).signal(action);
-log.info({ watchId, action }, "sent signal");
+if (action === "pause") await pauseWatch({ client, watchId });
+else await resumeWatch({ client, watchId });
+
 process.exit(0);

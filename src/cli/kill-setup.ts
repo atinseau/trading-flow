@@ -1,3 +1,4 @@
+import { killSetup } from "@config/watchOps";
 import { getLogger } from "@observability/logger";
 import { Client, Connection } from "@temporalio/client";
 
@@ -14,7 +15,5 @@ const connection = await Connection.connect({
   address: process.env.TEMPORAL_ADDRESS ?? "localhost:7233",
 });
 const client = new Client({ connection });
-
-await client.workflow.getHandle(`setup-${setupId}`).signal("close", { reason });
-log.info({ setupId, reason }, "sent close signal");
+await killSetup({ client, setupId, reason });
 process.exit(0);

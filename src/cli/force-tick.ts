@@ -1,3 +1,4 @@
+import { forceTick } from "@config/watchOps";
 import { getLogger } from "@observability/logger";
 import { Client, Connection } from "@temporalio/client";
 
@@ -13,7 +14,5 @@ const connection = await Connection.connect({
   address: process.env.TEMPORAL_ADDRESS ?? "localhost:7233",
 });
 const client = new Client({ connection });
-
-await client.workflow.getHandle(`scheduler-${watchId}`).signal("doTick");
-log.info({ watchId }, "sent doTick signal");
+await forceTick({ client, watchId });
 process.exit(0);
