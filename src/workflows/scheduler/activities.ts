@@ -72,6 +72,8 @@ export function buildSchedulerActivities(deps: ActivityDeps) {
       const tempUri = `file:///tmp/temp-chart-${crypto.randomUUID()}.png`;
       const result = await deps.chartRenderer.render({
         candles: slice,
+        series: {}, // TODO(Task 29): pass computed indicator series
+        enabledIndicatorIds: [], // TODO(Task 29): resolve from watch config
         width: 1280,
         height: 720,
         outputUri: tempUri,

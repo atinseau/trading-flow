@@ -39,6 +39,8 @@ export class ChartPostMortemContextProvider implements FeedbackContextProvider {
     const tempUri = `file:///tmp/feedback-chart-${scope.setupId}-${crypto.randomUUID()}.png`;
     const result = await this.deps.chartRenderer.render({
       candles,
+      series: {}, // TODO(Task 30): pass computed indicator series for post-mortem
+      enabledIndicatorIds: [], // TODO(Task 30): resolve from watch config
       width: CHART_WIDTH,
       height: CHART_HEIGHT,
       outputUri: tempUri,

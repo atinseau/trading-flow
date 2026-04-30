@@ -2,6 +2,8 @@ import { createHash } from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import type { IndicatorSeriesContribution } from "@adapters/indicators/plugins/base/types";
+import { IndicatorRegistry } from "@adapters/indicators/IndicatorRegistry";
 import type { ChartRenderer, ChartRenderResult } from "@domain/ports/ChartRenderer";
 import type { Candle } from "@domain/schemas/Candle";
 import { type Browser, chromium, type Page } from "playwright";
@@ -13,7 +15,10 @@ export class PlaywrightChartRenderer implements ChartRenderer {
   private pagesInUse = 0;
   private pagePromiseQueue: Array<(page: Page) => void> = [];
 
-  constructor(private opts: { poolSize?: number; templatePath?: string } = {}) {}
+  constructor(
+    private registry: IndicatorRegistry,
+    private opts: { poolSize?: number; templatePath?: string } = {},
+  ) {}
 
   async warmUp(): Promise<void> {
     if (this.browser) return;
@@ -32,12 +37,24 @@ export class PlaywrightChartRenderer implements ChartRenderer {
       "lightweight-charts.standalone.production.js",
     );
     const libSource = await Bun.file(libPath).text();
-    this.templateHtml = rawTemplate.replace(
-      "<!-- {{LIGHTWEIGHT_CHARTS_INLINE}} - replaced by PlaywrightChartRenderer at warmUp -->",
-      `<script>${libSource}</script>`,
-    );
+
+    // Inline both the lightweight-charts bundle AND the indicator plugin scripts.
+    const pluginScripts = this.registry.allChartScripts();
+    this.templateHtml = rawTemplate
+      .replace(
+        "<!-- {{LIGHTWEIGHT_CHARTS_INLINE}} -->",
+        `<script>${libSource}</script>`,
+      )
+      .replace(
+        "<!-- {{INDICATOR_PLUGIN_SCRIPTS}} -->",
+        `<script>${pluginScripts}</script>`,
+      );
+
     for (let i = 0; i < size; i++) {
-      const page = await this.browser.newPage({ viewport: { width: 1280, height: 720 } });
+      const page = await this.browser.newPage({
+        viewport: { width: 1280, height: 720 },
+        locale: "en-US",
+      });
       await page.setContent(this.templateHtml);
       this.pagePool.push(page);
     }
@@ -45,6 +62,8 @@ export class PlaywrightChartRenderer implements ChartRenderer {
 
   async render(args: {
     candles: Candle[];
+    series: Record<string, IndicatorSeriesContribution>;
+    enabledIndicatorIds: ReadonlyArray<string>;
     width: number;
     height: number;
     outputUri: string;
@@ -54,18 +73,21 @@ export class PlaywrightChartRenderer implements ChartRenderer {
     try {
       await page.setViewportSize({ width: args.width, height: args.height });
       await page.setContent(this.templateHtml as string);
-      await page.evaluate(
-        (data) => {
-          (window as unknown as { __renderCandles: (c: unknown) => void }).__renderCandles(data);
-        },
-        args.candles.map((c) => ({
+      const payload = {
+        candles: args.candles.map((c) => ({
           time: Math.floor(c.timestamp.getTime() / 1000),
           open: c.open,
           high: c.high,
           low: c.low,
           close: c.close,
+          volume: c.volume,
         })),
-      );
+        indicators: args.series,
+        enabledIndicatorIds: args.enabledIndicatorIds,
+      };
+      await page.evaluate((data) => {
+        (window as unknown as { __renderCandles: (c: unknown) => void }).__renderCandles(data);
+      }, payload);
       await page.waitForFunction(
         () => (window as unknown as { __chartReady?: boolean }).__chartReady === true,
         { timeout: 5000 },

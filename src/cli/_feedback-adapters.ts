@@ -20,6 +20,7 @@ import { FeedbackContextProviderRegistry } from "@adapters/feedback-context/Feed
 import { PostMortemOhlcvContextProvider } from "@adapters/feedback-context/PostMortemOhlcvContextProvider";
 import { SetupEventsContextProvider } from "@adapters/feedback-context/SetupEventsContextProvider";
 import { TickSnapshotsContextProvider } from "@adapters/feedback-context/TickSnapshotsContextProvider";
+import { IndicatorRegistry } from "@adapters/indicators/IndicatorRegistry";
 import { PureJsIndicatorCalculator } from "@adapters/indicators/PureJsIndicatorCalculator";
 import { buildProviderRegistry } from "@adapters/llm/buildProviderRegistry";
 import { BinanceFetcher } from "@adapters/market-data/BinanceFetcher";
@@ -89,7 +90,8 @@ export async function wireFeedbackActivitiesForCli(): Promise<FeedbackCliWiring>
   if (usedSources.has("yahoo")) marketDataFetchers.set("yahoo", new YahooFinanceFetcher());
 
   // Chart renderer (poolSize=1: CLI runs once, then exits).
-  const chartRenderer = new PlaywrightChartRenderer({ poolSize: 1 });
+  const indicatorRegistry = new IndicatorRegistry();
+  const chartRenderer = new PlaywrightChartRenderer(indicatorRegistry, { poolSize: 1 });
   await chartRenderer.warmUp();
 
   const indicatorCalculator = new PureJsIndicatorCalculator();

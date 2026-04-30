@@ -4,6 +4,7 @@ import { FeedbackContextProviderRegistry } from "@adapters/feedback-context/Feed
 import { PostMortemOhlcvContextProvider } from "@adapters/feedback-context/PostMortemOhlcvContextProvider";
 import { SetupEventsContextProvider } from "@adapters/feedback-context/SetupEventsContextProvider";
 import { TickSnapshotsContextProvider } from "@adapters/feedback-context/TickSnapshotsContextProvider";
+import { IndicatorRegistry } from "@adapters/indicators/IndicatorRegistry";
 import { PureJsIndicatorCalculator } from "@adapters/indicators/PureJsIndicatorCalculator";
 import { buildProviderRegistry } from "@adapters/llm/buildProviderRegistry";
 import { BinanceFetcher } from "@adapters/market-data/BinanceFetcher";
@@ -116,12 +117,13 @@ export async function buildContainer(
 
   // Chart renderer: scheduler builds setup charts; analysis renders post-mortem
   // charts for the feedback loop.
+  const indicatorRegistry = new IndicatorRegistry();
   let chartRenderer: PlaywrightChartRenderer | null = null;
   if (role === "scheduler") {
-    chartRenderer = new PlaywrightChartRenderer({ poolSize: 2 });
+    chartRenderer = new PlaywrightChartRenderer(indicatorRegistry, { poolSize: 2 });
     await chartRenderer.warmUp();
   } else if (role === "analysis") {
-    chartRenderer = new PlaywrightChartRenderer({ poolSize: 1 });
+    chartRenderer = new PlaywrightChartRenderer(indicatorRegistry, { poolSize: 1 });
     await chartRenderer.warmUp();
   }
 

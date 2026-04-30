@@ -3,6 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PlaywrightChartRenderer } from "@adapters/chart/PlaywrightChartRenderer";
+import { IndicatorRegistry } from "@adapters/indicators/IndicatorRegistry";
 import { FakeMarketDataFetcher } from "@test-fakes/FakeMarketDataFetcher";
 
 describe("PlaywrightChartRenderer", () => {
@@ -11,7 +12,7 @@ describe("PlaywrightChartRenderer", () => {
 
   beforeAll(async () => {
     outDir = await mkdtemp(join(tmpdir(), "tf-chart-"));
-    renderer = new PlaywrightChartRenderer({ poolSize: 1 });
+    renderer = new PlaywrightChartRenderer(new IndicatorRegistry(), { poolSize: 1 });
     await renderer.warmUp();
   }, 30_000);
 
@@ -23,7 +24,14 @@ describe("PlaywrightChartRenderer", () => {
   test("renders 100 candles to PNG with valid sha256", async () => {
     const candles = FakeMarketDataFetcher.generateLinear(100, 100);
     const out = `file://${join(outDir, "test.png")}`;
-    const result = await renderer.render({ candles, width: 1280, height: 720, outputUri: out });
+    const result = await renderer.render({
+      candles,
+      series: {},
+      enabledIndicatorIds: [],
+      width: 1280,
+      height: 720,
+      outputUri: out,
+    });
     expect(result.mimeType).toBe("image/png");
     expect(result.sha256).toMatch(/^[a-f0-9]{64}$/);
     expect(result.bytes).toBeGreaterThan(1000);
@@ -34,12 +42,16 @@ describe("PlaywrightChartRenderer", () => {
     const candles = FakeMarketDataFetcher.generateLinear(50, 200);
     const a = await renderer.render({
       candles,
+      series: {},
+      enabledIndicatorIds: [],
       width: 800,
       height: 600,
       outputUri: `file://${join(outDir, "a.png")}`,
     });
     const b = await renderer.render({
       candles,
+      series: {},
+      enabledIndicatorIds: [],
       width: 800,
       height: 600,
       outputUri: `file://${join(outDir, "b.png")}`,

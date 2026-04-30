@@ -3,6 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PlaywrightChartRenderer } from "@adapters/chart/PlaywrightChartRenderer";
+import { IndicatorRegistry } from "@adapters/indicators/IndicatorRegistry";
 import { FakeMarketDataFetcher } from "@test-fakes/FakeMarketDataFetcher";
 
 describe("PlaywrightChartRenderer page pool semaphore", () => {
@@ -11,7 +12,7 @@ describe("PlaywrightChartRenderer page pool semaphore", () => {
 
   beforeAll(async () => {
     outDir = await mkdtemp(join(tmpdir(), "tf-chart-sem-"));
-    renderer = new PlaywrightChartRenderer({ poolSize: 2 });
+    renderer = new PlaywrightChartRenderer(new IndicatorRegistry(), { poolSize: 2 });
     await renderer.warmUp();
   }, 30_000);
 
@@ -25,6 +26,8 @@ describe("PlaywrightChartRenderer page pool semaphore", () => {
     const tasks = Array.from({ length: 5 }, (_, i) =>
       renderer.render({
         candles,
+        series: {},
+        enabledIndicatorIds: [],
         width: 800,
         height: 600,
         outputUri: `file://${join(outDir, `concurrent-${i}.png`)}`,
