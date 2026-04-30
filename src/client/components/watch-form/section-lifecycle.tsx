@@ -29,10 +29,9 @@ export function SectionLifecycle() {
               />
             </FormControl>
             <FormDescription>
-              Au-delà de N bougies sans confirmation, le setup expire automatiquement (status
-              {" "}
-              <span className="font-mono">EXPIRED</span>). Exemple : 50 bougies sur un timeframe
-              1h ≈ 50 heures.
+              Au-delà de N bougies sans confirmation, le setup expire automatiquement (status{" "}
+              <span className="font-mono">EXPIRED</span>). Exemple : 50 bougies sur un timeframe 1h
+              ≈ 50 heures.
             </FormDescription>
             <FormMessage />
           </FormItem>

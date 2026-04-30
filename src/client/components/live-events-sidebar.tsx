@@ -15,8 +15,12 @@ export function LiveEventsSidebar() {
 
   return (
     <div className="text-xs space-y-1">
-      <h4 className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">Live events</h4>
-      {data.length === 0 && <p className="text-muted-foreground italic">En attente d'événements…</p>}
+      <h4 className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">
+        Live events
+      </h4>
+      {data.length === 0 && (
+        <p className="text-muted-foreground italic">En attente d'événements…</p>
+      )}
       {data.map((e) => (
         <button
           key={e.id}

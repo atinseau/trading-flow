@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { PostgresSetupRepository } from "@adapters/persistence/PostgresSetupRepository";
+import { watchConfigs } from "@adapters/persistence/schema";
 import { parseTimeframeToMs } from "@domain/ports/Clock";
 import { startTestPostgres, type TestPostgres } from "../../helpers/postgres";
 
@@ -58,23 +59,80 @@ describe("PostgresSetupRepository", () => {
     expect(alive.every((s) => s.status !== "CLOSED")).toBe(true);
   });
 
-  test("listAliveWithInvalidation filters out null invalidation", async () => {
+  test("listAliveBySymbol returns alive setups filtered by (symbol, source)", async () => {
+    // Insert two watch_configs — both binance but different timeframes
+    const watchId1 = crypto.randomUUID();
+    const watchId2 = crypto.randomUUID();
+    const watchIdOther = crypto.randomUUID();
+    await pg.db.insert(watchConfigs).values([
+      {
+        id: watchId1,
+        enabled: true,
+        config: { asset: { symbol: "BTCUSDT", source: "binance" } },
+        version: 1,
+      },
+      {
+        id: watchId2,
+        enabled: true,
+        config: { asset: { symbol: "BTCUSDT", source: "binance" } },
+        version: 1,
+      },
+      {
+        id: watchIdOther,
+        enabled: true,
+        config: { asset: { symbol: "BTCUSDT", source: "yahoo" } },
+        version: 1,
+      },
+    ]);
+
+    // Two alive BTCUSDT setups on binance watches
     await repo.create({
       id: crypto.randomUUID(),
-      watchId,
-      asset: "DOGEUSDT",
+      watchId: watchId1,
+      asset: "BTCUSDT",
       timeframe: "1h",
       status: "REVIEWING",
-      currentScore: 30,
-      patternHint: null,
-      invalidationLevel: null,
+      currentScore: 50,
+      patternHint: "double_bottom",
+      invalidationLevel: 40000,
       direction: "LONG",
       ttlCandles: 50,
       ttlExpiresAt: new Date(Date.now() + 86400_000),
       workflowId: `wf-${crypto.randomUUID()}`,
     });
-    const list = await repo.listAliveWithInvalidation(watchId);
-    expect(list.every((s) => s.invalidationLevel != null)).toBe(true);
+    await repo.create({
+      id: crypto.randomUUID(),
+      watchId: watchId2,
+      asset: "BTCUSDT",
+      timeframe: "15m",
+      status: "REVIEWING",
+      currentScore: 60,
+      patternHint: "flag",
+      invalidationLevel: 39000,
+      direction: "LONG",
+      ttlCandles: 50,
+      ttlExpiresAt: new Date(Date.now() + 86400_000),
+      workflowId: `wf-${crypto.randomUUID()}`,
+    });
+    // One on a yahoo watch — should NOT be included
+    await repo.create({
+      id: crypto.randomUUID(),
+      watchId: watchIdOther,
+      asset: "BTCUSDT",
+      timeframe: "1d",
+      status: "REVIEWING",
+      currentScore: 40,
+      patternHint: null,
+      invalidationLevel: 38000,
+      direction: "LONG",
+      ttlCandles: 50,
+      ttlExpiresAt: new Date(Date.now() + 86400_000),
+      workflowId: `wf-${crypto.randomUUID()}`,
+    });
+
+    const result = await repo.listAliveBySymbol("BTCUSDT", "binance");
+    expect(result.length).toBe(2);
+    expect(result.every((s) => s.asset === "BTCUSDT")).toBe(true);
   });
 
   test("markClosed updates status + closedAt", async () => {

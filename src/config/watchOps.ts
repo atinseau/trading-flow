@@ -18,7 +18,11 @@ export async function forceTick(input: { client: Client; watchId: string }): Pro
   log.info({ watchId: input.watchId }, "force-tick triggered");
 }
 
-export async function killSetup(input: { client: Client; setupId: string; reason: string }): Promise<void> {
+export async function killSetup(input: {
+  client: Client;
+  setupId: string;
+  reason: string;
+}): Promise<void> {
   await input.client.workflow
     .getHandle(`setup-${input.setupId}`)
     .signal("close", { reason: input.reason });

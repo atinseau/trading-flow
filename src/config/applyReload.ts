@@ -31,8 +31,6 @@ export async function applyReload(input: ApplyReloadInput): Promise<void> {
     }
   }
 
-  await client.workflow
-    .getHandle(schedulerWorkflowId(watch.id))
-    .signal("reloadConfig", watch);
+  await client.workflow.getHandle(schedulerWorkflowId(watch.id)).signal("reloadConfig", watch);
   watchLog.info("sent reloadConfig signal");
 }

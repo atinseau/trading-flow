@@ -18,8 +18,8 @@ export function EventDetailModal(props: {
         {props.event && (
           <div className="space-y-4 text-sm">
             <p className="font-mono text-xs">
-              {props.event.provider} · {props.event.model} · ${Number(props.event.costUsd ?? 0).toFixed(2)} ·{" "}
-              {props.event.latencyMs}ms
+              {props.event.provider} · {props.event.model} · $
+              {Number(props.event.costUsd ?? 0).toFixed(2)} · {props.event.latencyMs}ms
             </p>
             <p>
               Score : <span className="font-mono">{Number(props.event.scoreAfter).toFixed(0)}</span>
@@ -32,17 +32,23 @@ export function EventDetailModal(props: {
             </p>
             {props.event.payload?.data?.reasoning && (
               <div>
-                <p className="font-bold text-xs uppercase text-muted-foreground mb-1">Raisonnement</p>
+                <p className="font-bold text-xs uppercase text-muted-foreground mb-1">
+                  Raisonnement
+                </p>
                 <p className="leading-relaxed">{props.event.payload.data.reasoning}</p>
               </div>
             )}
             {props.event.payload?.data?.observations &&
               props.event.payload.data.observations.length > 0 && (
                 <div>
-                  <p className="font-bold text-xs uppercase text-muted-foreground mb-1">Observations</p>
+                  <p className="font-bold text-xs uppercase text-muted-foreground mb-1">
+                    Observations
+                  </p>
                   <ul className="space-y-1">
                     {props.event.payload.data.observations.map((o, i) => (
-                      <li key={i} className="border-l-2 border-primary pl-2">{o}</li>
+                      <li key={i} className="border-l-2 border-primary pl-2">
+                        {o}
+                      </li>
                     ))}
                   </ul>
                 </div>

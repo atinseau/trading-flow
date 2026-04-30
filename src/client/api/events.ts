@@ -19,18 +19,28 @@ export function makeEventsApi(deps: { db: DB }) {
       // the boundary record isn't included on the next page.
       if (since)
         filters.push(
-          sql`date_trunc('milliseconds', ${events.occurredAt}) > ${new Date(since)}` as unknown as ReturnType<typeof eq>,
+          sql`date_trunc('milliseconds', ${events.occurredAt}) > ${new Date(since)}` as unknown as ReturnType<
+            typeof eq
+          >,
         );
       if (watchId) filters.push(eq(setups.watchId, watchId));
 
       const rows = await deps.db
         .select({
-          id: events.id, setupId: events.setupId, sequence: events.sequence,
-          occurredAt: events.occurredAt, type: events.type,
-          scoreDelta: events.scoreDelta, scoreAfter: events.scoreAfter,
-          statusBefore: events.statusBefore, statusAfter: events.statusAfter,
-          payload: events.payload, provider: events.provider, model: events.model,
-          costUsd: events.costUsd, latencyMs: events.latencyMs,
+          id: events.id,
+          setupId: events.setupId,
+          sequence: events.sequence,
+          occurredAt: events.occurredAt,
+          type: events.type,
+          scoreDelta: events.scoreDelta,
+          scoreAfter: events.scoreAfter,
+          statusBefore: events.statusBefore,
+          statusAfter: events.statusAfter,
+          payload: events.payload,
+          provider: events.provider,
+          model: events.model,
+          costUsd: events.costUsd,
+          latencyMs: events.latencyMs,
           watchId: setups.watchId,
         })
         .from(events)

@@ -54,7 +54,7 @@ export function safeHandler(handler: Handler): Handler {
         {
           error: e.message ?? "internal error",
           ...(e.cause?.message ? { cause: e.cause.message } : {}),
-          ...(e.code ?? e.cause?.code ? { code: e.code ?? e.cause?.code } : {}),
+          ...((e.code ?? e.cause?.code) ? { code: e.code ?? e.cause?.code } : {}),
         },
         { status: 500, headers: { "x-request-id": requestId } },
       );

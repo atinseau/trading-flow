@@ -93,19 +93,10 @@ export function WatchFormWizard(props: {
 
       {/* Nav */}
       <div className="flex items-center justify-between border-t pt-6">
-        <Button
-          type="button"
-          variant="ghost"
-          onClick={goPrev}
-          disabled={stepIdx === 0}
-        >
+        <Button type="button" variant="ghost" onClick={goPrev} disabled={stepIdx === 0}>
           ← Précédent
         </Button>
-        <Button
-          type="button"
-          onClick={goNext}
-          disabled={props.isSubmitting}
-        >
+        <Button type="button" onClick={goNext} disabled={props.isSubmitting}>
           {isLast ? props.submitLabel : "Suivant →"}
         </Button>
       </div>

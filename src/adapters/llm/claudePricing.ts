@@ -23,27 +23,27 @@ type ModelPricing = {
   input: number;
   output: number;
   cacheCreate: number; // 1.25× input typically
-  cacheRead: number;   // 0.10× input typically
+  cacheRead: number; // 0.10× input typically
 };
 
 const PRICING: Record<string, ModelPricing> = {
   // Claude 4.x family (current)
-  "claude-opus-4-7":    { input: 15.00, output: 75.00, cacheCreate: 18.75, cacheRead: 1.50 },
-  "claude-opus-4-6":    { input: 15.00, output: 75.00, cacheCreate: 18.75, cacheRead: 1.50 },
-  "claude-opus-4-1":    { input: 15.00, output: 75.00, cacheCreate: 18.75, cacheRead: 1.50 },
-  "claude-opus-4":      { input: 15.00, output: 75.00, cacheCreate: 18.75, cacheRead: 1.50 },
+  "claude-opus-4-7": { input: 15.0, output: 75.0, cacheCreate: 18.75, cacheRead: 1.5 },
+  "claude-opus-4-6": { input: 15.0, output: 75.0, cacheCreate: 18.75, cacheRead: 1.5 },
+  "claude-opus-4-1": { input: 15.0, output: 75.0, cacheCreate: 18.75, cacheRead: 1.5 },
+  "claude-opus-4": { input: 15.0, output: 75.0, cacheCreate: 18.75, cacheRead: 1.5 },
 
-  "claude-sonnet-4-6":  { input:  3.00, output: 15.00, cacheCreate:  3.75, cacheRead: 0.30 },
-  "claude-sonnet-4-5":  { input:  3.00, output: 15.00, cacheCreate:  3.75, cacheRead: 0.30 },
-  "claude-sonnet-4":    { input:  3.00, output: 15.00, cacheCreate:  3.75, cacheRead: 0.30 },
+  "claude-sonnet-4-6": { input: 3.0, output: 15.0, cacheCreate: 3.75, cacheRead: 0.3 },
+  "claude-sonnet-4-5": { input: 3.0, output: 15.0, cacheCreate: 3.75, cacheRead: 0.3 },
+  "claude-sonnet-4": { input: 3.0, output: 15.0, cacheCreate: 3.75, cacheRead: 0.3 },
 
-  "claude-haiku-4-5":   { input:  1.00, output:  5.00, cacheCreate:  1.25, cacheRead: 0.10 },
-  "claude-haiku-4":     { input:  1.00, output:  5.00, cacheCreate:  1.25, cacheRead: 0.10 },
+  "claude-haiku-4-5": { input: 1.0, output: 5.0, cacheCreate: 1.25, cacheRead: 0.1 },
+  "claude-haiku-4": { input: 1.0, output: 5.0, cacheCreate: 1.25, cacheRead: 0.1 },
 
   // Claude 3.5 family (legacy fallback)
-  "claude-3-5-sonnet":  { input:  3.00, output: 15.00, cacheCreate:  3.75, cacheRead: 0.30 },
-  "claude-3-5-haiku":   { input:  0.80, output:  4.00, cacheCreate:  1.00, cacheRead: 0.08 },
-  "claude-3-opus":      { input: 15.00, output: 75.00, cacheCreate: 18.75, cacheRead: 1.50 },
+  "claude-3-5-sonnet": { input: 3.0, output: 15.0, cacheCreate: 3.75, cacheRead: 0.3 },
+  "claude-3-5-haiku": { input: 0.8, output: 4.0, cacheCreate: 1.0, cacheRead: 0.08 },
+  "claude-3-opus": { input: 15.0, output: 75.0, cacheCreate: 18.75, cacheRead: 1.5 },
 };
 
 /**

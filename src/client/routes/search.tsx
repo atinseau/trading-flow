@@ -128,9 +128,7 @@ export function Component() {
         <div className="text-sm text-muted-foreground">Recherche en cours…</div>
       )}
 
-      {error && (
-        <div className="text-sm text-destructive">Erreur : {(error as Error).message}</div>
-      )}
+      {error && <div className="text-sm text-destructive">Erreur : {(error as Error).message}</div>}
 
       {data && data.length === 0 && q.length > 0 && !isLoading && (
         <div className="text-sm text-muted-foreground">Aucun résultat pour "{q}".</div>

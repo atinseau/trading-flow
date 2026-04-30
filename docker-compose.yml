@@ -122,7 +122,6 @@ services:
       ARTIFACTS_BASE_DIR: ${ARTIFACTS_BASE_DIR:-/data/artifacts}
       CLAUDE_WORKSPACE_DIR: ${CLAUDE_WORKSPACE_DIR:-/data/claude-workspace}
     volumes: &worker_volumes
-      - ./config:/app/config:ro
       - ./prompts:/app/prompts:ro
       - artifacts_data:/data/artifacts
       - claude_workspace:/data/claude-workspace
@@ -231,7 +230,6 @@ services:
       TF_WEB_POLL_BATCH_SIZE: "200"
       ARTIFACTS_BASE_DIR: "/data/artifacts"
     volumes:
-      - ./config:/app/config:ro
       - ./prompts:/app/prompts:ro
       - artifacts_data:/data/artifacts:ro
     command: bun run src/client/server.ts

@@ -1,9 +1,4 @@
-import {
-  createChart,
-  type IChartApi,
-  type ISeriesApi,
-  type Time,
-} from "lightweight-charts";
+import { createChart, type IChartApi, type ISeriesApi, type Time } from "lightweight-charts";
 import { useEffect, useRef } from "react";
 
 export type AssetCandle = {

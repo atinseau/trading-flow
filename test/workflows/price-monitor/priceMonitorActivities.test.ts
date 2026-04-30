@@ -52,12 +52,21 @@ describe("priceMonitor activity dispatch", () => {
 
     // Binance watch — always-open session, so the market-hours guard never blocks.
     const fakeWatch = { id: "btc-1h", asset: { source: "binance", symbol: "BTCUSDT" } };
+    const fakeWatchRepo = {
+      findEnabled: async () => [fakeWatch],
+      findAll: async () => [fakeWatch],
+      findById: async (_id: string) => fakeWatch,
+      findAllWithValidation: async () => [
+        { id: fakeWatch.id, raw: fakeWatch, watch: fakeWatch as never },
+      ],
+    };
 
     const deps = {
       setupRepo,
-      priceFeeds: new Map([["fake", priceFeed]]),
+      priceFeeds: new Map([["binance_ws", priceFeed]]),
       temporalClient: mockClient.client,
       clock: new SystemClock(),
+      watchRepo: fakeWatchRepo,
       watchById: async (_id: string) => fakeWatch,
     } as unknown as ActivityDeps;
 
@@ -69,6 +78,7 @@ describe("priceMonitor activity dispatch", () => {
   });
 
   test("REVIEWING setup: signals 'priceCheck' only on breach", async () => {
+    setupRepo.registerWatchSource("btc-1h", "binance");
     await setupRepo.create({
       id: "setup-1",
       watchId: "btc-1h",
@@ -85,9 +95,8 @@ describe("priceMonitor activity dispatch", () => {
     });
 
     const subscribePromise = activities.subscribeAndCheckPriceFeed({
-      watchId: "btc-1h",
-      adapter: "fake",
-      assets: ["BTCUSDT"],
+      symbol: "BTCUSDT",
+      source: "binance",
     });
 
     // Tick above invalidation -- should NOT signal.
@@ -109,6 +118,7 @@ describe("priceMonitor activity dispatch", () => {
   }, 10_000);
 
   test("TRACKING setup: signals 'trackingPrice' on every tick", async () => {
+    setupRepo.registerWatchSource("btc-1h", "binance");
     await setupRepo.create({
       id: "setup-2",
       watchId: "btc-1h",
@@ -125,9 +135,8 @@ describe("priceMonitor activity dispatch", () => {
     });
 
     const subscribePromise = activities.subscribeAndCheckPriceFeed({
-      watchId: "btc-1h",
-      adapter: "fake",
-      assets: ["BTCUSDT"],
+      symbol: "BTCUSDT",
+      source: "binance",
     });
 
     // First tick -- should signal trackingPrice (no breach filter for TRACKING).
@@ -151,10 +160,6 @@ describe("priceMonitor activity dispatch", () => {
 });
 
 describe("priceMonitor activity market-hours gate", () => {
-  afterEach(() => {
-    // nothing shared — each test creates its own feed
-  });
-
   test("skips emission when market is closed (NASDAQ Saturday)", async () => {
     // Saturday 2026-04-25 12:00 UTC — NASDAQ is closed on weekends.
     const clock = new FakeClock(new Date("2026-04-25T12:00:00Z"));
@@ -162,6 +167,7 @@ describe("priceMonitor activity market-hours gate", () => {
     const setupRepo = new InMemorySetupRepository();
     const mockClient = makeMockTemporalClient();
 
+    setupRepo.registerWatchSource("aapl-1h", "yahoo");
     await setupRepo.create({
       id: "setup-nasdaq-closed",
       watchId: "aapl-1h",
@@ -177,26 +183,33 @@ describe("priceMonitor activity market-hours gate", () => {
       workflowId: "setup-wf-nasdaq",
     });
 
-    // Watch on yahoo EQUITY NASDAQ
+    // Watch on yahoo EQUITY NASDAQ — market session will be derived from this.
     const fakeWatch = {
       id: "aapl-1h",
       asset: { source: "yahoo", symbol: "AAPL", quoteType: "EQUITY", exchange: "NMS" },
     };
+    const fakeWatchRepo = {
+      findEnabled: async () => [fakeWatch],
+      findAll: async () => [fakeWatch],
+      findById: async (_id: string) => fakeWatch,
+      findAllWithValidation: async () => [
+        { id: fakeWatch.id, raw: fakeWatch, watch: fakeWatch as never },
+      ],
+    };
 
     const deps = {
       setupRepo,
-      priceFeeds: new Map([["fake", priceFeed]]),
+      priceFeeds: new Map([["yahoo_polling", priceFeed]]),
       temporalClient: mockClient.client,
       clock,
-      watchById: async (_id: string) => fakeWatch,
+      watchRepo: fakeWatchRepo,
     } as unknown as ActivityDeps;
 
     const activities = buildPriceMonitorActivities(deps);
 
     const subscribePromise = activities.subscribeAndCheckPriceFeed({
-      watchId: "aapl-1h",
-      adapter: "fake",
-      assets: ["AAPL"],
+      symbol: "AAPL",
+      source: "yahoo",
     });
 
     // Emit a tick — market is closed, so no signal should be emitted.
@@ -217,6 +230,7 @@ describe("priceMonitor activity market-hours gate", () => {
     const setupRepo = new InMemorySetupRepository();
     const mockClient = makeMockTemporalClient();
 
+    setupRepo.registerWatchSource("btc-1h", "binance");
     await setupRepo.create({
       id: "setup-binance-open",
       watchId: "btc-1h",
@@ -237,21 +251,28 @@ describe("priceMonitor activity market-hours gate", () => {
       id: "btc-1h",
       asset: { source: "binance", symbol: "BTCUSDT" },
     };
+    const fakeWatchRepo = {
+      findEnabled: async () => [fakeWatch],
+      findAll: async () => [fakeWatch],
+      findById: async (_id: string) => fakeWatch,
+      findAllWithValidation: async () => [
+        { id: fakeWatch.id, raw: fakeWatch, watch: fakeWatch as never },
+      ],
+    };
 
     const deps = {
       setupRepo,
-      priceFeeds: new Map([["fake", priceFeed]]),
+      priceFeeds: new Map([["binance_ws", priceFeed]]),
       temporalClient: mockClient.client,
       clock,
-      watchById: async (_id: string) => fakeWatch,
+      watchRepo: fakeWatchRepo,
     } as unknown as ActivityDeps;
 
     const activities = buildPriceMonitorActivities(deps);
 
     const subscribePromise = activities.subscribeAndCheckPriceFeed({
-      watchId: "btc-1h",
-      adapter: "fake",
-      assets: ["BTCUSDT"],
+      symbol: "BTCUSDT",
+      source: "binance",
     });
 
     // Emit a tick — Binance is always open, so signal should be emitted.

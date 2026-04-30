@@ -31,9 +31,9 @@ const validBinanceWatch = {
     score_max: 100,
   },
   analyzers: {
-    detector: { provider: "p", model: "m", max_tokens: 2000 },
-    reviewer: { provider: "p", model: "m", max_tokens: 2000 },
-    finalizer: { provider: "p", model: "m", max_tokens: 2000 },
+    detector: { provider: "claude_max", model: "claude-opus-4-7", max_tokens: 2000 },
+    reviewer: { provider: "claude_max", model: "claude-opus-4-7", max_tokens: 2000 },
+    finalizer: { provider: "claude_max", model: "claude-opus-4-7", max_tokens: 2000 },
   },
 };
 

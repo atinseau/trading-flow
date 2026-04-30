@@ -30,8 +30,8 @@ export function SectionAsset() {
               <Input placeholder="btc-1h" {...field} />
             </FormControl>
             <FormDescription>
-              Slug unique pour cette watch (lettres minuscules, chiffres, tirets). Apparaît dans
-              les notifications, les logs, et les commandes admin. Pas modifiable après création.
+              Slug unique pour cette watch (lettres minuscules, chiffres, tirets). Apparaît dans les
+              notifications, les logs, et les commandes admin. Pas modifiable après création.
             </FormDescription>
             <FormMessage />
           </FormItem>
@@ -51,8 +51,8 @@ export function SectionAsset() {
               Le ticker tel qu'il est exposé par la source. Exemples :
               <span className="font-mono"> BTCUSDT</span>,
               <span className="font-mono"> ETHUSDT</span> (Binance),
-              <span className="font-mono"> AAPL</span>,
-              <span className="font-mono"> ^GSPC</span> (Yahoo).
+              <span className="font-mono"> AAPL</span>,<span className="font-mono"> ^GSPC</span>{" "}
+              (Yahoo).
             </FormDescription>
             <FormMessage />
           </FormItem>

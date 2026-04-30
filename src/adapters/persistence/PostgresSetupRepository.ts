@@ -2,9 +2,9 @@ import type { Setup } from "@domain/entities/Setup";
 import type { AliveSetupSummary, SetupRepository } from "@domain/ports/SetupRepository";
 import type { SetupStatus } from "@domain/state-machine/setupTransitions";
 import { TERMINAL_STATUSES } from "@domain/state-machine/setupTransitions";
-import { and, eq, isNotNull, notInArray } from "drizzle-orm";
+import { and, eq, getTableColumns, notInArray, sql } from "drizzle-orm";
 import type { drizzle } from "drizzle-orm/node-postgres";
-import { setups } from "./schema";
+import { setups, watchConfigs } from "./schema";
 
 type DB = ReturnType<typeof drizzle>;
 
@@ -49,16 +49,19 @@ export class PostgresSetupRepository implements SetupRepository {
     return rows.map((r) => this.toSummary(r));
   }
 
-  async listAliveWithInvalidation(watchId: string): Promise<AliveSetupSummary[]> {
+  async listAliveBySymbol(symbol: string, source: string): Promise<AliveSetupSummary[]> {
     const terminalArr = [...TERMINAL_STATUSES];
+    // getTableColumns(setups) projects every column on `setups`, keeping the
+    // row type structurally `typeof setups.$inferSelect` after the JOIN — no cast needed.
     const rows = await this.db
-      .select()
+      .select(getTableColumns(setups))
       .from(setups)
+      .innerJoin(watchConfigs, eq(setups.watchId, watchConfigs.id))
       .where(
         and(
-          eq(setups.watchId, watchId),
+          eq(setups.asset, symbol),
+          sql`${watchConfigs.config}->'asset'->>'source' = ${source}`,
           notInArray(setups.status, terminalArr),
-          isNotNull(setups.invalidationLevel),
         ),
       );
     return rows.map((r) => this.toSummary(r));

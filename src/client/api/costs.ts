@@ -25,10 +25,14 @@ export function makeCostsApi(deps: { db: DB }) {
 
       const keyExpr = (() => {
         switch (groupBy) {
-          case "watch": return setups.watchId;
-          case "provider": return events.provider;
-          case "model": return events.model;
-          case "day": return sql<string>`to_char(${events.occurredAt}, 'YYYY-MM-DD')`;
+          case "watch":
+            return setups.watchId;
+          case "provider":
+            return events.provider;
+          case "model":
+            return events.model;
+          case "day":
+            return sql<string>`to_char(${events.occurredAt}, 'YYYY-MM-DD')`;
         }
       })();
 

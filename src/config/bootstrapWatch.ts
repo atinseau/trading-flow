@@ -7,8 +7,6 @@ import { getLogger } from "@observability/logger";
 import type { Client } from "@temporalio/client";
 import { ScheduleNotFoundError } from "@temporalio/client";
 import { ensureMarketClock } from "@workflows/marketClock/ensureMarketClock";
-import { pickPriceFeedAdapter } from "@workflows/price-monitor/activities";
-import { priceMonitorWorkflowId } from "@workflows/price-monitor/priceMonitorWorkflow";
 import { schedulerWorkflowId } from "@workflows/scheduler/schedulerWorkflow";
 
 export type TaskQueues = {
@@ -37,16 +35,6 @@ export async function bootstrapWatch(watch: WatchConfig, deps: BootstrapDeps): P
     .start("schedulerWorkflow", {
       args: [{ watchId: watch.id, analysisTaskQueue: taskQueues.analysis }],
       workflowId: schedulerWorkflowId(watch.id),
-      taskQueue: taskQueues.scheduler,
-    })
-    .catch((err: Error) => {
-      if (!ALREADY_RUNNING.test(err.message)) throw err;
-    });
-
-  await client.workflow
-    .start("priceMonitorWorkflow", {
-      args: [{ watchId: watch.id, adapter: pickPriceFeedAdapter(watch.asset.source) }],
-      workflowId: priceMonitorWorkflowId(watch.id),
       taskQueue: taskQueues.scheduler,
     })
     .catch((err: Error) => {

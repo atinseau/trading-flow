@@ -11,7 +11,7 @@ export const search = safeHandler(async (req) => {
   }
   const types = url.searchParams.get("types");
   const parsedTypes = types
-    ? (types.split(",").filter((t): t is AssetType => VALID_TYPES.includes(t as AssetType)))
+    ? types.split(",").filter((t): t is AssetType => VALID_TYPES.includes(t as AssetType))
     : undefined;
 
   const results = await searchAssets({ query: q, types: parsedTypes });

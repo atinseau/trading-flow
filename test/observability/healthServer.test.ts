@@ -64,14 +64,3 @@ test("setActivity updates lastActivityAt timestamp", async () => {
   )) as { lastActivityAt: string | null };
   expect(after.lastActivityAt).not.toBeNull();
 });
-
-test("HealthServer responds 200 with standby status and reason", async () => {
-  server = new HealthServer("test-component", 0);
-  server.start();
-  server.setStatus("standby", { reason: "no watches.yaml" });
-  const res = await fetch(`http://localhost:${server.actualPort}/health`);
-  expect(res.status).toBe(200);
-  const body = (await res.json()) as { status: string; metadata?: Record<string, unknown> };
-  expect(body.status).toBe("standby");
-  expect(body.metadata).toEqual({ reason: "no watches.yaml" });
-});

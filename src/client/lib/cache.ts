@@ -36,11 +36,7 @@ export class TTLCache<T> {
   }
 
   /** Read-through: returns cached value or runs `fetcher` and caches its result. */
-  async getOrFetch(
-    key: string,
-    fetcher: () => Promise<T>,
-    ttlMs?: number,
-  ): Promise<T> {
+  async getOrFetch(key: string, fetcher: () => Promise<T>, ttlMs?: number): Promise<T> {
     const cached = this.get(key);
     if (cached !== undefined) return cached;
     const fresh = await fetcher();

@@ -18,6 +18,6 @@ export interface SetupRepository {
   create(setup: Omit<Setup, "createdAt" | "updatedAt" | "closedAt">): Promise<Setup>;
   get(id: string): Promise<Setup | null>;
   listAlive(watchId: string): Promise<AliveSetupSummary[]>;
-  listAliveWithInvalidation(watchId: string): Promise<AliveSetupSummary[]>;
+  listAliveBySymbol(symbol: string, source: string): Promise<AliveSetupSummary[]>;
   markClosed(id: string, finalStatus: SetupStatus): Promise<void>;
 }

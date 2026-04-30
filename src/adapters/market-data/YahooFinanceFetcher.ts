@@ -70,9 +70,7 @@ export class YahooFinanceFetcher implements MarketDataFetcher {
     if (!interval) throw new Error(`Timeframe non supporté: ${args.timeframe}`);
     const range = RANGE_BY_TIMEFRAME[args.timeframe];
 
-    const url = new URL(
-      `${YAHOO_BASE_URL}/v8/finance/chart/${encodeURIComponent(args.asset)}`,
-    );
+    const url = new URL(`${YAHOO_BASE_URL}/v8/finance/chart/${encodeURIComponent(args.asset)}`);
     url.searchParams.set("interval", interval);
     if (range) url.searchParams.set("range", range);
 

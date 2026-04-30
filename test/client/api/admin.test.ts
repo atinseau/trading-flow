@@ -13,7 +13,9 @@ describe("admin API", () => {
     const calls: string[] = [];
     const api = makeAdminApi({
       ops: {
-        forceTick: async ({ watchId }) => { calls.push(`tick:${watchId}`); },
+        forceTick: async ({ watchId }) => {
+          calls.push(`tick:${watchId}`);
+        },
         pauseWatch: async () => undefined,
         resumeWatch: async () => undefined,
         killSetup: async () => undefined,
@@ -29,8 +31,12 @@ describe("admin API", () => {
     const api = makeAdminApi({
       ops: {
         forceTick: async () => undefined,
-        pauseWatch: async ({ watchId }) => { calls.push(`pause:${watchId}`); },
-        resumeWatch: async ({ watchId }) => { calls.push(`resume:${watchId}`); },
+        pauseWatch: async ({ watchId }) => {
+          calls.push(`pause:${watchId}`);
+        },
+        resumeWatch: async ({ watchId }) => {
+          calls.push(`resume:${watchId}`);
+        },
         killSetup: async () => undefined,
       },
     });
@@ -46,7 +52,9 @@ describe("admin API", () => {
         forceTick: async () => undefined,
         pauseWatch: async () => undefined,
         resumeWatch: async () => undefined,
-        killSetup: async ({ setupId, reason }) => { calls.push(`${setupId}:${reason}`); },
+        killSetup: async ({ setupId, reason }) => {
+          calls.push(`${setupId}:${reason}`);
+        },
       },
     });
     const res = await api.killSetup(POST({}), { id: "abc" });
@@ -61,7 +69,9 @@ describe("admin API", () => {
         forceTick: async () => undefined,
         pauseWatch: async () => undefined,
         resumeWatch: async () => undefined,
-        killSetup: async ({ setupId, reason }) => { calls.push(`${setupId}:${reason}`); },
+        killSetup: async ({ setupId, reason }) => {
+          calls.push(`${setupId}:${reason}`);
+        },
       },
     });
     await api.killSetup(POST({ reason: "stale" }), { id: "abc" });

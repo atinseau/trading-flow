@@ -10,7 +10,7 @@ import { tickSnapshots } from "@adapters/persistence/schema";
 import { SystemClock } from "@adapters/time/SystemClock";
 import { parseTimeframeToMs } from "@domain/ports/Clock";
 import type { LLMProvider } from "@domain/ports/LLMProvider";
-import type { WatchConfig, WatchesConfig } from "@domain/schemas/WatchesConfig";
+import type { WatchConfig } from "@domain/schemas/WatchesConfig";
 import { TestWorkflowEnvironment } from "@temporalio/testing";
 import { Worker } from "@temporalio/worker";
 import { FakeChartRenderer } from "@test-fakes/FakeChartRenderer";
@@ -59,9 +59,12 @@ function makeWatch(id: string): WatchConfig {
       thresholds: { atr_ratio_min: 1.3, volume_spike_min: 1.5, rsi_extreme_distance: 25 },
     },
     analyzers: {
-      detector: { provider: "fake", model: "fake", max_tokens: 2000 },
-      reviewer: { provider: "fake", model: "fake", max_tokens: 2000 },
-      finalizer: { provider: "fake", model: "fake", max_tokens: 2000 },
+      // biome-ignore lint/suspicious/noExplicitAny: test fake provider
+      detector: { provider: "fake" as any, model: "fake", max_tokens: 2000 },
+      // biome-ignore lint/suspicious/noExplicitAny: test fake provider
+      reviewer: { provider: "fake" as any, model: "fake", max_tokens: 2000 },
+      // biome-ignore lint/suspicious/noExplicitAny: test fake provider
+      finalizer: { provider: "fake" as any, model: "fake", max_tokens: 2000 },
     },
     optimization: { reviewer_skip_when_detector_corroborated: true },
     notify_on: ["confirmed", "rejected", "tp_hit", "sl_hit", "invalidated_after_confirmed"],
@@ -71,15 +74,8 @@ function makeWatch(id: string): WatchConfig {
   };
 }
 
-function makeConfig(watch: WatchConfig): WatchesConfig {
-  return {
-    version: 1,
-    market_data: ["fake"],
-    llm_providers: {},
-    artifacts: { type: "filesystem", retention: { keep_days: 30, keep_for_active_setups: true } },
-    notifications: { telegram: false },
-    watches: [watch],
-  };
+function makeConfig(watch: WatchConfig): { watches: WatchConfig[] } {
+  return { watches: [watch] };
 }
 
 beforeAll(async () => {
@@ -123,7 +119,12 @@ async function buildDeps(
     priceFeeds: new Map([["binance", new FakePriceFeed()]]),
     notifier: new FakeNotifier(),
     setupRepo,
-    watchRepo: { findAll: async () => [], findById: async () => null, findEnabled: async () => [], findAllWithValidation: async () => [] },
+    watchRepo: {
+      findAll: async () => [],
+      findById: async () => null,
+      findEnabled: async () => [],
+      findAllWithValidation: async () => [],
+    },
     eventStore,
     artifactStore,
     tickSnapshotStore,
@@ -131,7 +132,11 @@ async function buildDeps(
     config: makeConfig(watch),
     infra: {
       database: { url: "x", pool_size: 1, ssl: false },
-      temporal: { address: "x", namespace: "default", task_queues: { scheduler: "s", analysis: "a", notifications: "n" } },
+      temporal: {
+        address: "x",
+        namespace: "default",
+        task_queues: { scheduler: "s", analysis: "a", notifications: "n" },
+      },
       notifications: { telegram: { bot_token: "test-token", chat_id: "test-chat" } },
       llm: { openrouter_api_key: null },
       artifacts: { base_dir: "/tmp" },
@@ -141,6 +146,7 @@ async function buildDeps(
     temporalClient: env.client,
     scheduleController: { pause: async () => {}, unpause: async () => {} },
     db,
+    pgPool: pool,
   };
 }
 

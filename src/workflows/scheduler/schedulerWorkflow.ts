@@ -88,13 +88,7 @@ export async function schedulerWorkflow(args: SchedulerArgs): Promise<void> {
     paused = false;
   });
   setHandler(reloadConfigSignal, async () => {
-    // Reload watches.yaml from disk and mutate the worker-level config
-    // in place. Note: watch lookups (watchById) now query the DB live,
-    // so this reload is only needed for top-level config fields
-    // (market_data sources, notifications, etc.). Changes to
-    // `temporal.address`, watch IDs, or schedule cron require a worker
-    // restart or a Schedule update — they are not picked up here.
-    await dbActivities.reloadConfigFromDisk({});
+    await dbActivities.reloadConfigFromDb({});
   });
   setHandler(getSchedulerStateQuery, () => ({ paused, lastTickAt }));
 

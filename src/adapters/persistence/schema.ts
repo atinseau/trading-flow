@@ -3,6 +3,7 @@ import type { Indicators } from "@domain/schemas/Indicators";
 import { sql } from "drizzle-orm";
 import {
   boolean,
+  check,
   index,
   integer,
   jsonb,
@@ -48,8 +49,19 @@ export const setups = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
     closedAt: timestamp("closed_at", { withTimezone: true }),
+    outcome: text("outcome"),
   },
-  (t) => [index("idx_setups_watch_status").on(t.watchId, t.status)],
+  (t) => [
+    index("idx_setups_watch_status").on(t.watchId, t.status),
+    index("idx_setups_outcome").on(t.outcome),
+    // Lock down the outcome string so a future code path / manual SQL update
+    // can't silently corrupt the dashboard with an unknown value (the
+    // category= filters and stats query would silently drop those rows).
+    check(
+      "setups_outcome_chk",
+      sql`outcome IS NULL OR outcome IN ('WIN','LOSS','PARTIAL_WIN','TIME_OUT','REJECTED','INVALIDATED_PRE_TRADE','INVALIDATED_POST_TRADE','EXPIRED_NO_FILL')`,
+    ),
+  ],
 );
 
 export const events = pgTable(
@@ -128,11 +140,7 @@ export const watchConfigs = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
   },
-  (t) => [
-    index("idx_watch_configs_enabled")
-      .on(t.enabled)
-      .where(sql`${t.deletedAt} IS NULL`),
-  ],
+  (t) => [index("idx_watch_configs_enabled").on(t.enabled).where(sql`${t.deletedAt} IS NULL`)],
 );
 
 export const watchConfigRevisions = pgTable(

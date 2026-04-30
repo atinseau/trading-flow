@@ -160,7 +160,14 @@ export class ClaudeAgentSdkProvider implements LLMProvider {
     });
 
     this.log.info(
-      { promptTokens, completionTokens, cacheReadTokens, cacheCreateTokens, costUsd, model: input.model },
+      {
+        promptTokens,
+        completionTokens,
+        cacheReadTokens,
+        cacheCreateTokens,
+        costUsd,
+        model: input.model,
+      },
       "claude-agent-sdk call complete",
     );
     return {

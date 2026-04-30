@@ -2,25 +2,34 @@ import { TemporalScheduleController } from "@adapters/temporal/TemporalScheduleC
 import { SystemClock } from "@adapters/time/SystemClock";
 import { bootstrapWatch } from "@config/bootstrapWatch";
 import { loadInfraConfig } from "@config/InfraConfig";
-import { loadWatchesConfig } from "@config/loadWatchesConfig";
+import { loadWatchesFromDb } from "@config/loadWatchesFromDb";
 import { getLogger } from "@observability/logger";
 import { Client, Connection } from "@temporalio/client";
+import pg from "pg";
 
 const log = getLogger({ component: "bootstrap-schedules" });
 
-const configPath = process.argv[2] ?? "config/watches.yaml";
 const infra = loadInfraConfig();
-const watches = await loadWatchesConfig(configPath);
 
-if (watches === null) {
-  log.info({ configPath }, "standby: no watches.yaml — skipping schedule bootstrap");
+const pool = new pg.Pool({
+  connectionString: infra.database.url,
+  max: 2,
+  ssl: infra.database.ssl,
+});
+
+const watches = await loadWatchesFromDb(pool);
+await pool.end();
+
+const enabled = watches.filter((w) => w.enabled);
+
+if (enabled.length === 0) {
+  log.info("no enabled watches in DB — nothing to bootstrap");
   process.exit(0);
 }
 
 const connection = await Connection.connect({ address: infra.temporal.address });
 const client = new Client({ connection, namespace: infra.temporal.namespace });
 
-const enabled = watches.watches.filter((w) => w.enabled);
 for (const watch of enabled) {
   await bootstrapWatch(watch, {
     client,

@@ -3,6 +3,8 @@ import { getSession, getSessionState } from "@domain/services/marketSession";
 import { getLogger } from "@observability/logger";
 import { Context } from "@temporalio/activity";
 import type { ActivityDeps } from "@workflows/activityDependencies";
+import { ensurePriceMonitorStarted } from "./ensureRunning";
+import { priceMonitorWorkflowId } from "./priceMonitorWorkflow";
 
 const log = getLogger({ component: "price-monitor-activities" });
 
@@ -19,27 +21,46 @@ export function pickPriceFeedAdapter(assetSource: string): string {
 
 export function buildPriceMonitorActivities(deps: ActivityDeps) {
   return {
-    async listAliveSetupsWithInvalidation(input: { watchId: string }) {
-      return deps.setupRepo.listAliveWithInvalidation(input.watchId);
+    async listAliveSetupsForSymbol(input: { symbol: string; source: string }) {
+      return deps.setupRepo.listAliveBySymbol(input.symbol, input.source);
     },
 
-    async subscribeAndCheckPriceFeed(input: {
-      watchId: string;
-      adapter: string;
-      assets: string[];
-    }): Promise<void> {
-      const childLog = log.child({ watchId: input.watchId, adapter: input.adapter });
-      const feed = deps.priceFeeds.get(input.adapter);
-      if (!feed) throw new InvalidConfigError(`Unknown price feed adapter: ${input.adapter}`);
+    async ensurePriceMonitorRunning(input: { symbol: string; source: string }): Promise<void> {
+      await ensurePriceMonitorStarted(deps.temporalClient, deps.infra, input);
+    },
 
-      const watch = await deps.watchById(input.watchId);
-      if (!watch) throw new InvalidConfigError(`Unknown watch: ${input.watchId}`);
-      const session = getSession(watch);
+    async subscribeAndCheckPriceFeed(input: { symbol: string; source: string }): Promise<void> {
+      const adapter = pickPriceFeedAdapter(input.source);
+      const childLog = log.child({ symbol: input.symbol, source: input.source, adapter });
+      const feed = deps.priceFeeds.get(adapter);
+      if (!feed) throw new InvalidConfigError(`Unknown price feed adapter: ${adapter}`);
 
-      childLog.info({ assetCount: input.assets.length }, "subscribing to price feed");
-      const stream = feed.subscribe({ watchId: input.watchId, assets: input.assets });
+      // Derive market session from any enabled watch for this (symbol, source).
+      // All watches on the same asset share the same session — pick the first one.
+      const allWatches = await deps.watchRepo.findEnabled();
+      const representativeWatch = allWatches.find(
+        (w) => w.asset.symbol === input.symbol && w.asset.source === input.source,
+      );
+      const session = representativeWatch
+        ? (() => {
+            try {
+              return getSession(representativeWatch);
+            } catch {
+              return null;
+            }
+          })()
+        : null;
+
+      childLog.info("subscribing to price feed");
+      // PriceFeed.subscribe takes { watchId, assets } today; watchId is used as
+      // a logging tag inside the adapter, not for routing. Pass the workflow
+      // id for traceability.
+      const stream = feed.subscribe({
+        watchId: priceMonitorWorkflowId(input.symbol, input.source),
+        assets: [input.symbol],
+      });
       let lastRefresh = Date.now();
-      let cachedSetups = await deps.setupRepo.listAliveWithInvalidation(input.watchId);
+      let cachedSetups = await deps.setupRepo.listAliveBySymbol(input.symbol, input.source);
 
       for await (const tick of stream) {
         Context.current().heartbeat({ lastTickAt: tick.timestamp.toISOString() });
@@ -47,20 +68,22 @@ export function buildPriceMonitorActivities(deps: ActivityDeps) {
         // Skip signal emission if the market is closed (avoids waking setups
         // during overnight/weekend/holiday). Activity stays alive — next tick
         // after reopen will resume normal emission.
-        if (!getSessionState(session, deps.clock.now()).isOpen) {
+        if (session && !getSessionState(session, deps.clock.now()).isOpen) {
           continue;
         }
 
         if (Date.now() - lastRefresh > 60_000) {
-          cachedSetups = await deps.setupRepo.listAliveWithInvalidation(input.watchId);
+          cachedSetups = await deps.setupRepo.listAliveBySymbol(input.symbol, input.source);
           lastRefresh = Date.now();
+          if (cachedSetups.length === 0) {
+            childLog.info("no alive setups remaining — exiting");
+            return;
+          }
         }
 
         for (const setup of cachedSetups) {
           if (setup.asset !== tick.asset) continue;
 
-          // TRACKING phase: forward every tick to the trackingLoop's signal so
-          // it can detect TP/SL hits. Level comparison happens inside the loop.
           if (setup.status === "TRACKING") {
             await deps.temporalClient.workflow
               .getHandle(setup.workflowId)
@@ -77,7 +100,6 @@ export function buildPriceMonitorActivities(deps: ActivityDeps) {
             continue;
           }
 
-          // REVIEWING/FINALIZING: only signal on invalidation breach.
           if (setup.invalidationLevel == null) continue;
           const breached =
             (setup.direction === "LONG" && tick.price < setup.invalidationLevel) ||

@@ -12,9 +12,10 @@ import type { ScheduleController } from "@domain/ports/ScheduleController";
 import type { SetupRepository } from "@domain/ports/SetupRepository";
 import type { TickSnapshotStore } from "@domain/ports/TickSnapshotStore";
 import type { WatchRepository } from "@domain/ports/WatchRepository";
-import type { WatchConfig, WatchesConfig } from "@domain/schemas/WatchesConfig";
+import type { WatchConfig } from "@domain/schemas/WatchesConfig";
 import type { Client } from "@temporalio/client";
 import type { drizzle } from "drizzle-orm/node-postgres";
+import type pg from "pg";
 
 export type ActivityDeps = {
   marketDataFetchers: Map<string, MarketDataFetcher>;
@@ -29,10 +30,11 @@ export type ActivityDeps = {
   artifactStore: ArtifactStore;
   tickSnapshotStore: TickSnapshotStore;
   clock: Clock;
-  config: WatchesConfig;
+  config: { watches: WatchConfig[] };
   infra: InfraConfig;
   watchById: (id: string) => Promise<WatchConfig | null>;
   temporalClient: Client;
   scheduleController: ScheduleController;
   db: ReturnType<typeof drizzle>;
+  pgPool: pg.Pool;
 };

@@ -6,7 +6,7 @@
  * fakes and a controlled clock.
  */
 import { describe, expect, test } from "bun:test";
-import { type WatchConfig, WatchSchema } from "@domain/schemas/WatchesConfig";
+import type { WatchConfig } from "@domain/schemas/WatchesConfig";
 import { FakeClock } from "@test-fakes/FakeClock";
 import { FakeLLMProvider } from "@test-fakes/FakeLLMProvider";
 import { InMemoryArtifactStore } from "@test-fakes/InMemoryArtifactStore";
@@ -22,7 +22,7 @@ import { buildSetupActivities } from "@workflows/setup/activities";
  * A NASDAQ equity watch (Mon–Fri 09:30–16:00 ET). Used for the
  * closed-market tests (we supply a Saturday timestamp).
  */
-const nasdaqWatch: WatchConfig = WatchSchema.parse({
+const nasdaqWatch: WatchConfig = {
   id: "aapl-1h",
   enabled: true,
   asset: { symbol: "AAPL", source: "yahoo", quoteType: "EQUITY", exchange: "NMS" },
@@ -34,20 +34,35 @@ const nasdaqWatch: WatchConfig = WatchSchema.parse({
     score_initial: 25,
     score_threshold_finalizer: 80,
     score_threshold_dead: 10,
+    score_max: 100,
     invalidation_policy: "strict",
   },
-  analyzers: {
-    detector: { provider: "fake", model: "fake-model" },
-    reviewer: { provider: "fake", model: "fake-model" },
-    finalizer: { provider: "fake", model: "fake-model" },
+  history_compaction: { max_raw_events_in_context: 40, summarize_after_age_hours: 48 },
+  deduplication: { similar_setup_window_candles: 5, similar_price_tolerance_pct: 0.5 },
+  pre_filter: {
+    enabled: true,
+    mode: "lenient",
+    thresholds: { atr_ratio_min: 1.3, volume_spike_min: 1.5, rsi_extreme_distance: 25 },
   },
+  analyzers: {
+    // biome-ignore lint/suspicious/noExplicitAny: test fake provider
+    detector: { provider: "fake" as any, model: "fake-model", max_tokens: 2000 },
+    // biome-ignore lint/suspicious/noExplicitAny: test fake provider
+    reviewer: { provider: "fake" as any, model: "fake-model", max_tokens: 2000 },
+    // biome-ignore lint/suspicious/noExplicitAny: test fake provider
+    finalizer: { provider: "fake" as any, model: "fake-model", max_tokens: 2000 },
+  },
+  optimization: { reviewer_skip_when_detector_corroborated: true },
   notify_on: [],
-});
+  include_chart_image: true,
+  include_reasoning: true,
+  budget: { pause_on_budget_exceeded: true },
+};
 
 /**
  * A Binance (always-open) watch. Used for the open-market tests.
  */
-const binanceWatch: WatchConfig = WatchSchema.parse({
+const binanceWatch: WatchConfig = {
   id: "btc-1h",
   enabled: true,
   asset: { symbol: "BTCUSDT", source: "binance" },
@@ -59,15 +74,30 @@ const binanceWatch: WatchConfig = WatchSchema.parse({
     score_initial: 25,
     score_threshold_finalizer: 80,
     score_threshold_dead: 10,
+    score_max: 100,
     invalidation_policy: "strict",
   },
-  analyzers: {
-    detector: { provider: "fake", model: "fake-model" },
-    reviewer: { provider: "fake", model: "fake-model" },
-    finalizer: { provider: "fake", model: "fake-model" },
+  history_compaction: { max_raw_events_in_context: 40, summarize_after_age_hours: 48 },
+  deduplication: { similar_setup_window_candles: 5, similar_price_tolerance_pct: 0.5 },
+  pre_filter: {
+    enabled: true,
+    mode: "lenient",
+    thresholds: { atr_ratio_min: 1.3, volume_spike_min: 1.5, rsi_extreme_distance: 25 },
   },
+  analyzers: {
+    // biome-ignore lint/suspicious/noExplicitAny: test fake provider
+    detector: { provider: "fake" as any, model: "fake-model", max_tokens: 2000 },
+    // biome-ignore lint/suspicious/noExplicitAny: test fake provider
+    reviewer: { provider: "fake" as any, model: "fake-model", max_tokens: 2000 },
+    // biome-ignore lint/suspicious/noExplicitAny: test fake provider
+    finalizer: { provider: "fake" as any, model: "fake-model", max_tokens: 2000 },
+  },
+  optimization: { reviewer_skip_when_detector_corroborated: true },
   notify_on: [],
-});
+  include_chart_image: true,
+  include_reasoning: true,
+  budget: { pause_on_budget_exceeded: true },
+};
 
 // A Saturday 12:00 UTC — NASDAQ is always closed on Saturday.
 const SATURDAY_UTC = new Date("2026-05-02T12:00:00Z"); // 2026-05-02 is a Saturday
@@ -122,6 +152,7 @@ function makeDeps(
     temporalClient: null as never,
     scheduleController: null as never,
     db: null as never,
+    pgPool: null as never,
   };
 }
 
@@ -150,7 +181,7 @@ describe("runReviewer — market-hours guard", () => {
 
   test("runReviewer — invalid asset metadata (UnsupportedExchangeError) → guard skipped, LLM called", async () => {
     // A yahoo EQUITY watch with an unknown exchange code — getSession() will throw.
-    const unknownExchangeWatch: WatchConfig = WatchSchema.parse({
+    const unknownExchangeWatch: WatchConfig = {
       id: "xyz-1h",
       enabled: true,
       asset: { symbol: "XYZ", source: "yahoo", quoteType: "EQUITY", exchange: "XYZ_UNKNOWN" },
@@ -162,15 +193,30 @@ describe("runReviewer — market-hours guard", () => {
         score_initial: 25,
         score_threshold_finalizer: 80,
         score_threshold_dead: 10,
+        score_max: 100,
         invalidation_policy: "strict",
       },
-      analyzers: {
-        detector: { provider: "fake", model: "fake-model" },
-        reviewer: { provider: "fake", model: "fake-model" },
-        finalizer: { provider: "fake", model: "fake-model" },
+      history_compaction: { max_raw_events_in_context: 40, summarize_after_age_hours: 48 },
+      deduplication: { similar_setup_window_candles: 5, similar_price_tolerance_pct: 0.5 },
+      pre_filter: {
+        enabled: true,
+        mode: "lenient",
+        thresholds: { atr_ratio_min: 1.3, volume_spike_min: 1.5, rsi_extreme_distance: 25 },
       },
+      analyzers: {
+        // biome-ignore lint/suspicious/noExplicitAny: test fake provider
+        detector: { provider: "fake" as any, model: "fake-model", max_tokens: 2000 },
+        // biome-ignore lint/suspicious/noExplicitAny: test fake provider
+        reviewer: { provider: "fake" as any, model: "fake-model", max_tokens: 2000 },
+        // biome-ignore lint/suspicious/noExplicitAny: test fake provider
+        finalizer: { provider: "fake" as any, model: "fake-model", max_tokens: 2000 },
+      },
+      optimization: { reviewer_skip_when_detector_corroborated: true },
       notify_on: [],
-    });
+      include_chart_image: true,
+      include_reasoning: true,
+      budget: { pause_on_budget_exceeded: true },
+    };
 
     const clock = new FakeClock(SATURDAY_UTC);
     const llm = new FakeLLMProvider({ name: "fake" });

@@ -17,8 +17,16 @@ const PreFilterSchema = z
   })
   .prefault({});
 
+// Names that can appear in a watch must match what the runtime exposes:
+// - providers: PROVIDER_DEFAULTS in src/adapters/llm/buildProviderRegistry.ts
+// - sources: BinanceFetcher / YahooFinanceFetcher in src/adapters/market-data/
+// Adding a new provider or source requires touching this schema, the
+// registry/fetcher wiring, and the tf-web wizard pickers — by design.
+export const KNOWN_PROVIDERS = ["claude_max", "openrouter"] as const;
+export const KNOWN_ASSET_SOURCES = ["binance", "yahoo"] as const;
+
 const AnalyzerSchema = z.object({
-  provider: z.string(),
+  provider: z.enum(KNOWN_PROVIDERS),
   model: z.string(),
   max_tokens: z.number().int().positive().default(2000),
   fetch_higher_timeframe: z.boolean().optional(),
@@ -39,7 +47,7 @@ const SetupLifecycleSchema = z
     { message: "Doit avoir score_threshold_dead < score_initial < score_threshold_finalizer" },
   );
 
-const NotifyEventSchema = z.enum([
+export const NotifyEventSchema = z.enum([
   "confirmed",
   "rejected",
   "tp_hit",
@@ -48,6 +56,7 @@ const NotifyEventSchema = z.enum([
   "invalidated_after_confirmed",
   "expired",
 ]);
+export type NotifyEvent = z.infer<typeof NotifyEventSchema>;
 
 const QuoteTypeSchema = z.enum(["EQUITY", "ETF", "INDEX", "CURRENCY", "FUTURE", "CRYPTOCURRENCY"]);
 const SourceSchema = z.enum(["binance", "yahoo"]);
@@ -146,91 +155,4 @@ export const WatchSchema = z.object({
     .prefault({}),
 });
 
-const LLMProviderConfigSchema = z.discriminatedUnion("type", [
-  z.object({
-    type: z.literal("claude-agent-sdk"),
-    daily_call_budget: z.number().int().positive().optional(),
-    fallback: z.string().nullable().default(null),
-  }),
-  z.object({
-    type: z.literal("openrouter"),
-    base_url: z.url().default("https://openrouter.ai/api/v1"),
-    monthly_budget_usd: z.number().positive().optional(),
-    fallback: z.string().nullable().default(null),
-  }),
-]);
-
-export const WatchesConfigSchema = z
-  .object({
-    version: z.literal(1),
-    market_data: z.array(z.string()),
-    notifications: z
-      .object({
-        telegram: z.boolean().default(false),
-      })
-      .prefault({}),
-    llm_providers: z.record(z.string(), LLMProviderConfigSchema),
-    artifacts: z.object({
-      type: z.enum(["filesystem", "s3"]),
-      retention: z
-        .object({
-          keep_days: z.number().int().positive().default(30),
-          keep_for_active_setups: z.boolean().default(true),
-        })
-        .prefault({}),
-    }),
-    watches: z.array(WatchSchema),
-  })
-  .superRefine((cfg, ctx) => {
-    for (const watch of cfg.watches) {
-      if (!cfg.market_data.includes(watch.asset.source)) {
-        ctx.addIssue({
-          code: "custom",
-          path: ["watches", watch.id, "asset", "source"],
-          message: `Source "${watch.asset.source}" inconnue (not in market_data)`,
-        });
-      }
-      for (const role of ["detector", "reviewer", "finalizer"] as const) {
-        const provider = watch.analyzers[role].provider;
-        if (!cfg.llm_providers[provider]) {
-          ctx.addIssue({
-            code: "custom",
-            path: ["watches", watch.id, "analyzers", role, "provider"],
-            message: `Provider "${provider}" inconnu`,
-          });
-        }
-      }
-    }
-    for (const startName of Object.keys(cfg.llm_providers)) {
-      const visited = new Set<string>();
-      let cur: string | null = startName;
-      while (cur !== null) {
-        if (visited.has(cur)) {
-          ctx.addIssue({
-            code: "custom",
-            path: ["llm_providers"],
-            message: `Cycle dans le graphe fallback: ${[...visited, cur].join(" → ")}`,
-          });
-          break;
-        }
-        visited.add(cur);
-        const node: z.infer<typeof LLMProviderConfigSchema> | undefined = cfg.llm_providers[cur];
-        cur = node?.fallback ?? null;
-      }
-    }
-    const ids = new Set<string>();
-    for (const w of cfg.watches) {
-      if (ids.has(w.id)) {
-        ctx.addIssue({
-          code: "custom",
-          path: ["watches"],
-          message: `ID dupliqué: ${w.id}`,
-        });
-      }
-      ids.add(w.id);
-    }
-  });
-
-export type WatchesConfig = z.infer<typeof WatchesConfigSchema>;
 export type WatchConfig = z.infer<typeof WatchSchema>;
-export type NotifyEvent = z.infer<typeof NotifyEventSchema>;

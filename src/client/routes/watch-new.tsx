@@ -51,11 +51,7 @@ export function Component() {
   return (
     <div>
       <h1 className="text-xl font-bold mb-6">Nouvelle watch</h1>
-      <WatchForm
-        mode="create"
-        preset={preset}
-        onSubmit={(c) => create.mutate(c)}
-      />
+      <WatchForm mode="create" preset={preset} onSubmit={(c) => create.mutate(c)} />
     </div>
   );
 }

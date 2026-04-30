@@ -1,10 +1,25 @@
 import { events, setups, tickSnapshots } from "@adapters/persistence/schema";
 import { NotFoundError, safeHandler } from "@client/api/safeHandler";
 import { streamArtifact } from "@client/lib/artifacts";
-import { and, asc, desc, eq } from "drizzle-orm";
+import { TERMINAL_STATUSES } from "@domain/state-machine/setupTransitions";
+import { and, asc, desc, eq, inArray, isNotNull, notInArray, sql } from "drizzle-orm";
 import type { drizzle } from "drizzle-orm/node-postgres";
 
 type DB = ReturnType<typeof drizzle>;
+
+// "Live" in the dashboard sense = "any non-terminal status" (includes
+// CANDIDATE, which the domain's ACTIVE_STATUSES excludes for workflow
+// transition reasons we don't want to touch). Single source of truth via
+// TERMINAL_STATUSES — invert it.
+const TERMINAL = [...TERMINAL_STATUSES];
+const WIN_OUTCOMES = ["WIN", "PARTIAL_WIN"] as const;
+const OTHER_OUTCOMES = [
+  "TIME_OUT",
+  "REJECTED",
+  "INVALIDATED_PRE_TRADE",
+  "INVALIDATED_POST_TRADE",
+  "EXPIRED_NO_FILL",
+] as const;
 
 export function makeSetupsApi(deps: { db: DB }) {
   const { db } = deps;
@@ -13,11 +28,24 @@ export function makeSetupsApi(deps: { db: DB }) {
       const url = new URL(req.url);
       const watchId = url.searchParams.get("watchId");
       const status = url.searchParams.get("status");
+      const outcome = url.searchParams.get("outcome");
+      const category = url.searchParams.get("category");
       const limit = Math.min(500, Number(url.searchParams.get("limit") ?? 200));
 
       const filters = [];
       if (watchId) filters.push(eq(setups.watchId, watchId));
       if (status) filters.push(eq(setups.status, status));
+      if (outcome) filters.push(eq(setups.outcome, outcome));
+
+      if (category === "live") {
+        filters.push(notInArray(setups.status, TERMINAL));
+      } else if (category === "wins") {
+        filters.push(inArray(setups.outcome, [...WIN_OUTCOMES]));
+      } else if (category === "losses") {
+        filters.push(eq(setups.outcome, "LOSS"));
+      } else if (category === "other") {
+        filters.push(inArray(setups.outcome, [...OTHER_OUTCOMES]));
+      }
 
       const rows = await db
         .select()
@@ -26,6 +54,65 @@ export function makeSetupsApi(deps: { db: DB }) {
         .orderBy(desc(setups.updatedAt))
         .limit(limit);
       return Response.json(rows);
+    }),
+
+    stats: safeHandler(async (req) => {
+      const url = new URL(req.url);
+      const watchId = url.searchParams.get("watchId");
+      const watchFilter = watchId ? eq(setups.watchId, watchId) : undefined;
+
+      // Aggregate counts in a single query: total, live, wins, losses, other.
+      // The `live` filter uses TERMINAL_STATUSES inverted via sql.raw — same
+      // single source of truth as the list endpoint.
+      const terminalSqlList = sql.raw(`(${[...TERMINAL_STATUSES].map((s) => `'${s}'`).join(",")})`);
+      const [agg] = await db
+        .select({
+          total: sql<number>`count(*)::int`,
+          live: sql<number>`count(*) filter (where ${setups.status} not in ${terminalSqlList})::int`,
+          wins: sql<number>`count(*) filter (where ${setups.outcome} in ('WIN','PARTIAL_WIN'))::int`,
+          losses: sql<number>`count(*) filter (where ${setups.outcome} = 'LOSS')::int`,
+          other: sql<number>`count(*) filter (where ${setups.outcome} in ('TIME_OUT','REJECTED','INVALIDATED_PRE_TRADE','INVALIDATED_POST_TRADE','EXPIRED_NO_FILL'))::int`,
+        })
+        .from(setups)
+        .where(watchFilter);
+
+      const wins = agg?.wins ?? 0;
+      const losses = agg?.losses ?? 0;
+      const winRate = wins + losses > 0 ? wins / (wins + losses) : null;
+
+      // avg score at confirmation event — read events.score_after.
+      const [avgRow] = await db
+        .select({
+          avg: sql<string | null>`avg(${events.scoreAfter}::numeric)`,
+        })
+        .from(events)
+        .innerJoin(setups, eq(events.setupId, setups.id))
+        .where(
+          and(eq(events.type, "Confirmed"), watchId ? eq(setups.watchId, watchId) : undefined),
+        );
+      const avgScoreAtConfirmation =
+        avgRow?.avg !== null && avgRow?.avg !== undefined ? Number(avgRow.avg) : null;
+
+      // total cost in scope.
+      const [costRow] = await db
+        .select({
+          total: sql<string | null>`coalesce(sum(${events.costUsd}::numeric), 0)`,
+        })
+        .from(events)
+        .innerJoin(setups, eq(events.setupId, setups.id))
+        .where(and(isNotNull(events.costUsd), watchId ? eq(setups.watchId, watchId) : undefined));
+      const totalCostUsd = Number(costRow?.total ?? 0);
+
+      return Response.json({
+        total: agg?.total ?? 0,
+        live: agg?.live ?? 0,
+        wins,
+        losses,
+        other: agg?.other ?? 0,
+        winRate,
+        avgScoreAtConfirmation,
+        totalCostUsd,
+      });
     }),
 
     get: safeHandler(async (_req, params) => {

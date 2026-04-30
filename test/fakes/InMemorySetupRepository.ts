@@ -24,8 +24,22 @@ export class InMemorySetupRepository implements SetupRepository {
       .map((s) => this.toSummary(s));
   }
 
-  async listAliveWithInvalidation(watchId: string): Promise<AliveSetupSummary[]> {
-    return (await this.listAlive(watchId)).filter((s) => s.invalidationLevel != null);
+  /** Map of watchId → source for listAliveBySymbol. Set via registerWatchSource in tests. */
+  private watchSources = new Map<string, string>();
+
+  registerWatchSource(watchId: string, source: string): void {
+    this.watchSources.set(watchId, source);
+  }
+
+  async listAliveBySymbol(symbol: string, source: string): Promise<AliveSetupSummary[]> {
+    return [...this.setups.values()]
+      .filter(
+        (s) =>
+          s.asset === symbol &&
+          !TERMINAL_STATUSES.has(s.status) &&
+          this.watchSources.get(s.watchId) === source,
+      )
+      .map((s) => this.toSummary(s));
   }
 
   async markClosed(id: string, finalStatus: SetupStatus): Promise<void> {

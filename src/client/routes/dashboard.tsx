@@ -14,7 +14,12 @@ type Setup = { id: string; status: string; watchId: string; currentScore: string
 type EventRow = { id: string; type: string };
 type CostAgg = { key: string; totalUsd: number; count: number };
 
-const FEATURED_ASSETS: { source: "binance" | "yahoo"; symbol: string; name: string; type: string }[] = [
+const FEATURED_ASSETS: {
+  source: "binance" | "yahoo";
+  symbol: string;
+  name: string;
+  type: string;
+}[] = [
   { source: "binance", symbol: "BTCUSDT", name: "Bitcoin", type: "Crypto" },
   { source: "binance", symbol: "ETHUSDT", name: "Ethereum", type: "Crypto" },
   { source: "binance", symbol: "SOLUSDT", name: "Solana", type: "Crypto" },
@@ -36,7 +41,9 @@ function StatCard(props: {
     <Card>
       <CardContent className="p-4 space-y-2">
         <div className="flex items-center justify-between">
-          <span className="text-xs uppercase tracking-wide text-muted-foreground">{props.label}</span>
+          <span className="text-xs uppercase tracking-wide text-muted-foreground">
+            {props.label}
+          </span>
           <span className="text-muted-foreground">{props.icon}</span>
         </div>
         {props.loading ? (
@@ -71,13 +78,11 @@ export function Component() {
   const enabledWatches = watches.data?.filter((w) => w.enabled) ?? [];
   const aliveSetups =
     setups.data?.filter(
-      (s) => !["EXPIRED", "REJECTED", "INVALIDATED", "TP_HIT", "SL_HIT", "KILLED"].includes(s.status),
+      (s) =>
+        !["EXPIRED", "REJECTED", "INVALIDATED", "TP_HIT", "SL_HIT", "KILLED"].includes(s.status),
     ) ?? [];
   const totalCost = costs.data?.reduce((sum, c) => sum + c.totalUsd, 0) ?? 0;
-  const topScore = aliveSetups.reduce(
-    (max, s) => Math.max(max, Number(s.currentScore)),
-    0,
-  );
+  const topScore = aliveSetups.reduce((max, s) => Math.max(max, Number(s.currentScore)), 0);
   const topSetup = aliveSetups.find((s) => Number(s.currentScore) === topScore && topScore > 0);
 
   // Watches preview: 3 most recently active (proxied by updatedAt order from API)

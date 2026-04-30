@@ -55,7 +55,6 @@ services:
       - ./tsconfig.json:/app/tsconfig.json:ro
       - ./bunfig.toml:/app/bunfig.toml:ro
       - ./components.json:/app/components.json:ro
-      - ./config:/app/config:ro
       - ./prompts:/app/prompts:ro
       - artifacts_data:/data/artifacts:ro
       # Bind-mount manifests so the container sees `bun add`/`bun remove`
