@@ -3,6 +3,8 @@ import { watchStates } from "@adapters/persistence/schema";
 import { loadWatchesFromDb } from "@config/loadWatchesFromDb";
 import { InvalidConfigError } from "@domain/errors";
 import { CandleSchema } from "@domain/schemas/Candle";
+import { buildDetectorOutputSchema } from "@domain/schemas/DetectorOutput";
+import { buildIndicatorsSchema } from "@domain/schemas/Indicators";
 import { getLogger } from "@observability/logger";
 import type { ActivityDeps } from "@workflows/activityDependencies";
 import { sql } from "drizzle-orm";
@@ -11,30 +13,6 @@ import { dedupNewSetups, type ProposedSetup } from "./dedup";
 import { evaluatePreFilter } from "./preFilter";
 
 const log = getLogger({ component: "scheduler-activities" });
-
-const DetectorVerdictSchema = z.object({
-  corroborations: z.array(
-    z.object({
-      setup_id: z.string(),
-      evidence: z.array(z.string()),
-      confidence_delta_suggested: z.number(),
-    }),
-  ),
-  new_setups: z.array(
-    z.object({
-      type: z.string(),
-      direction: z.enum(["LONG", "SHORT"]),
-      key_levels: z.object({
-        entry: z.number().optional(),
-        invalidation: z.number(),
-        target: z.number().optional(),
-      }),
-      initial_score: z.number().min(0).max(100),
-      raw_observation: z.string(),
-    }),
-  ),
-  ignore_reason: z.string().nullable(),
-});
 
 function dateReviver(_key: string, value: unknown): unknown {
   if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}T/.test(value)) {
@@ -97,7 +75,8 @@ export function buildSchedulerActivities(deps: ActivityDeps) {
       const candles = z.array(CandleSchema).parse(JSON.parse(input.ohlcvJson, dateReviver));
       const plugins = deps.indicatorRegistry.resolveActive(watch.indicators);
       const scalars = await deps.indicatorCalculator.compute(candles, plugins);
-      return { indicatorsJson: JSON.stringify(scalars) };
+      const validated = buildIndicatorsSchema(plugins).parse(scalars);
+      return { indicatorsJson: JSON.stringify(validated) };
     },
 
     async evaluatePreFilter(input: {
@@ -171,6 +150,9 @@ export function buildSchedulerActivities(deps: ActivityDeps) {
       }
 
       await deps.promptBuilder.warmUp();
+      const plugins = deps.indicatorRegistry.resolveActive(watch.indicators);
+      const htfEnabled = watch.timeframes.higher.length > 0;
+      const detectorOutputSchema = buildDetectorOutputSchema(plugins, htfEnabled);
       const scalars = (snap.indicators ?? {}) as Record<string, unknown>;
       const userPrompt = await deps.promptBuilder.buildDetectorPrompt({
         asset: snap.asset,
@@ -189,7 +171,7 @@ export function buildSchedulerActivities(deps: ActivityDeps) {
           images: [{ sourceUri: snap.chartUri, mimeType: "image/png" }],
           model: watch.analyzers.detector.model,
           maxTokens: watch.analyzers.detector.max_tokens,
-          responseSchema: DetectorVerdictSchema,
+          responseSchema: detectorOutputSchema,
         },
         deps.llmProviders,
       );
