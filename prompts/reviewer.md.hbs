@@ -1,9 +1,7 @@
 {{!--
-  version: reviewer_v4
-  description: Refine an existing setup with fresh data + accumulated memory.
-               v4 = adds the activeLessons head block (feedback loop
-               integration). v3 was full English translation for optimal LLM
-               performance.
+  version: reviewer_v5
+  description: Modular indicators. Skeleton — fresh-data scalars and
+               output spec composed by PromptBuilder from active plugins.
 --}}
 
 # Refining an active setup
@@ -19,10 +17,6 @@
 
 {{#if activeLessons.length}}
 ## Active guidelines (learned from previous trades)
-
-These principles emerged from retrospective analysis of past failed trades on
-this watch. Apply them whenever they apply to the current decision. They take
-precedence over generic best practice when there is a conflict.
 
 {{#each activeLessons}}
 ### {{{this.title}}}
@@ -57,88 +51,65 @@ precedence over generic best practice when there is a conflict.
 ## Fresh data (tick {{tick.tickAt}})
 
 - Last close: `{{fresh.lastClose}}`
-- Indicators: RSI `{{fresh.indicators.rsi}}`, ATR `{{fresh.indicators.atr}}`
-- Chart image attached.
+{{#if hasIndicators}}
+{{{reviewerIndicatorFragments}}}
+{{else}}
+- Mode: naked (chart only).
+{{/if}}
+- Chart image attached (timeframe primary).
+
+{{#if htf}}
+## Higher-timeframe context
+
+- **Daily regime**: `{{htf.dailyTrend}}`
+- **Weekly range**: H=`{{htf.weeklyHigh}}` L=`{{htf.weeklyLow}}` — current price at `{{htf.positionInWeeklyRange}}` of the range
+- **Last 5 daily candles**:
+{{#each htf.daily5}}
+  - {{this.date}}: H={{this.high}} L={{this.low}} C={{this.close}}
+{{/each}}
+
+{{#if funding}}
+### Funding / Open Interest (crypto perp)
+
+- **Last funding rate**: `{{funding.lastFundingRatePct}}%`
+- **7-cycle avg**: `{{funding.avg7dFundingRatePct}}%`
+- **Open Interest**: `{{funding.openInterest}}` (24h delta `{{funding.openInterest24hDeltaPct}}%`)
+{{/if}}
+
+### Tool: request HTF chart
+
+If you cannot judge the macro context from the text alone, you may emit
+`request_additional: { htfChart: true, reason: "..." }`. Use at most ONCE
+per setup lifecycle. Round 2 is FINAL — produce a complete verdict.
+{{/if}}
 
 ## `scoreDelta` calibration
 
 | Delta | When to use |
 |-------|-------------|
-| `+15 / +20` | Strong confluence: 2-3 concordant signals confirm the setup |
-| `+5 / +10` | 1 clear additional signal (volume, divergence, level respected) |
-| `0` (NEUTRAL) | Nothing new since the last tick |
-| `-5 / -10` | 1 contrary signal (weak volume on retest, RSI diverging the wrong way) |
-| `-15 / -25` | Multiple contrary signals, structure threatened but not broken |
-| INVALIDATE | Structure clearly broken, level crossed, major contradiction |
-
-## Few-shot examples
-
-### Example 1 — STRENGTHEN
-
-Setup `double_bottom` LONG score 50. Memory: volume confirmed on the previous tick. Fresh data: RSI moves from 35 to 42, EMA20 crosses above EMA50 on this tick.
-
-→ Output:
-```
-{
-  "type": "STRENGTHEN",
-  "scoreDelta": 15,
-  "observations": [
-    { "kind": "ema_cross", "text": "EMA20 crosses above EMA50", "evidence": { "ema20": 42100, "ema50": 42050 } },
-    { "kind": "rsi_recovery", "text": "RSI exits oversold zone: 35 → 42", "evidence": { "previous": 35, "current": 42 } }
-  ],
-  "reasoning": "Bearish confluence fades: EMA cross + RSI recovery confirm the double bottom recovery",
-  "invalidationLevelUpdate": null
-}
-```
-
-### Example 2 — INVALIDATE
-
-Setup score 60. Fresh data: price drops below the invalidation level, structure clearly broken (close < invalidation for the 2nd consecutive candle).
-
-→ Output:
-```
-{
-  "type": "INVALIDATE",
-  "reason": "structure_break_confirmed",
-  "observations": [
-    { "kind": "price_below_invalidation", "text": "Close 41420 below invalidation 41500 across 2 candles" }
-  ]
-}
-```
-
-### Example 3 — NEUTRAL
-
-Setup score 45. Fresh data: tight range across 3 candles, anemic volume, stable indicators.
-
-→ Output:
-```
-{
-  "type": "NEUTRAL",
-  "observations": [
-    { "kind": "consolidation", "text": "Range 41850-41920 across 3 candles, volume <0.7x average" }
-  ]
-}
-```
+| `+15 / +20` | Strong confluence |
+| `+5 / +10` | 1 clear additional signal |
+| `0` (NEUTRAL) | Nothing new |
+| `-5 / -10` | 1 contrary signal |
+| `-15 / -25` | Multiple contrary signals |
+| INVALIDATE | Structure clearly broken |
 
 ## Fail-closed rules
 
-- **If nothing notable since the previous tick** → `NEUTRAL` (preserve the score, just add a contextual observation).
-- **If signals are ambiguous** (1 for, 1 against) → `NEUTRAL`, not STRENGTHEN nor WEAKEN.
-- **If you hesitate between WEAKEN and INVALIDATE** → choose WEAKEN. INVALIDATE is terminal and should only fire on a clear break.
-- **Important constraint**: do NOT inflate the score on marginal observations. The Finalizer relies on your restraint.
+- **Nothing notable since previous tick** → `NEUTRAL`.
+- **Ambiguous signals** → `NEUTRAL`.
+- **Hesitating between WEAKEN and INVALIDATE** → choose WEAKEN.
 
 ## Output format
 
-Expected response schema:
-
 | Field | Type | Description |
 |-------|------|-------------|
-| `type` | string | "STRENGTHEN", "WEAKEN", "NEUTRAL", or "INVALIDATE" |
-| `scoreDelta` | number between -30 and +30 | Required for STRENGTHEN/WEAKEN. Omitted for NEUTRAL/INVALIDATE |
-| `observations` | array | Always non-empty even for NEUTRAL |
-| `observations[i].kind` | string | Free-form label (e.g. "volume_spike", "rsi_divergence") |
+| `type` | string | "STRENGTHEN" / "WEAKEN" / "NEUTRAL" / "INVALIDATE" |
+| `scoreDelta` | number -30..+30 | Required for STRENGTHEN/WEAKEN |
+| `observations` | array | Always non-empty |
+| `observations[i].kind` | string | Free-form label |
 | `observations[i].text` | string | Explanation |
-| `observations[i].evidence` | object optional | Quantified data that supports |
-| `reasoning` | string | Required for STRENGTHEN/WEAKEN. 2-3 sentences |
-| `reason` | string | Required for INVALIDATE (e.g. "structure_break", "volume_collapse") |
-| `invalidationLevelUpdate` | number or null | If you want to adjust the invalidation level |
+| `reasoning` | string | Required for STRENGTHEN/WEAKEN |
+| `reason` | string | Required for INVALIDATE |
+| `invalidationLevelUpdate` | number or null | Adjust invalidation level |
+| `request_additional` | object optional | `{ htfChart: true, reason: "..." }` round-1 only |
