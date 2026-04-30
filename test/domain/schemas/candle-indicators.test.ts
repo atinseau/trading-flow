@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
+import { LegacyIndicatorsSchema as IndicatorsSchema } from "@adapters/indicators/PureJsIndicatorCalculator";
 import { CandleSchema } from "@domain/schemas/Candle";
-import { IndicatorsSchema } from "@domain/schemas/Indicators";
 
 test("CandleSchema parses valid OHLCV", () => {
   const raw = {

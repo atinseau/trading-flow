@@ -1,12 +1,12 @@
+import type { LegacyIndicatorScalars } from "@adapters/indicators/PureJsIndicatorCalculator";
 import type { Candle } from "@domain/schemas/Candle";
-import type { Indicators } from "@domain/schemas/Indicators";
 import type { WatchConfig } from "@domain/schemas/WatchesConfig";
 
 export type PreFilterResult = { passed: boolean; reasons: string[] };
 
 export function evaluatePreFilter(
   candles: Candle[],
-  indicators: Indicators,
+  indicators: LegacyIndicatorScalars,
   config: WatchConfig["pre_filter"],
 ): PreFilterResult {
   if (!config.enabled || config.mode === "off") {

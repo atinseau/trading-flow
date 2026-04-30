@@ -1,10 +1,36 @@
 import type { IndicatorCalculator } from "@domain/ports/IndicatorCalculator";
 import type { Candle } from "@domain/schemas/Candle";
-import type { Indicators } from "@domain/schemas/Indicators";
-import { IndicatorsSchema } from "@domain/schemas/Indicators";
+import { z } from "zod";
+
+/** Typed shape for the scalars this legacy monolithic calculator emits. */
+export interface LegacyIndicatorScalars extends Record<string, unknown> {
+  rsi: number;
+  ema20: number;
+  ema50: number;
+  ema200: number;
+  atr: number;
+  atrMa20: number;
+  volumeMa20: number;
+  lastVolume: number;
+  recentHigh: number;
+  recentLow: number;
+}
+
+export const LegacyIndicatorsSchema = z.object({
+  rsi: z.number().min(0).max(100),
+  ema20: z.number(),
+  ema50: z.number(),
+  ema200: z.number(),
+  atr: z.number().nonnegative(),
+  atrMa20: z.number().nonnegative(),
+  volumeMa20: z.number().nonnegative(),
+  lastVolume: z.number().nonnegative(),
+  recentHigh: z.number(),
+  recentLow: z.number(),
+});
 
 export class PureJsIndicatorCalculator implements IndicatorCalculator {
-  async compute(candles: Candle[]): Promise<Indicators> {
+  async compute(candles: Candle[]): Promise<LegacyIndicatorScalars> {
     if (candles.length < 200) {
       throw new Error(`Need ≥200 candles for ema200, got ${candles.length}`);
     }
@@ -14,7 +40,7 @@ export class PureJsIndicatorCalculator implements IndicatorCalculator {
     const volumes = candles.map((c) => c.volume);
 
     const atrSeries = this.atrSeries(highs, lows, closes, 14);
-    return IndicatorsSchema.parse({
+    return LegacyIndicatorsSchema.parse({
       rsi: this.rsi(closes, 14),
       ema20: this.ema(closes, 20),
       ema50: this.ema(closes, 50),
