@@ -15,8 +15,8 @@ export function SetupsStatsBar({ stats, loading }: { stats?: SetupsStats; loadin
   if (loading || !stats) {
     return (
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-        {Array.from({ length: 6 }).map((_, i) => (
-          <Skeleton key={i} className="h-16" />
+        {["total", "live", "wins", "losses", "winRate", "cost"].map((k) => (
+          <Skeleton key={k} className="h-16" />
         ))}
       </div>
     );

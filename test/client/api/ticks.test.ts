@@ -1,10 +1,10 @@
-import { tickSnapshots } from "@adapters/persistence/schema";
-import { startTestPostgres } from "@test-helpers/postgres";
-import { makeTicksApi } from "@client/api/ticks";
 import { describe, expect, test } from "bun:test";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { tickSnapshots } from "@adapters/persistence/schema";
+import { makeTicksApi } from "@client/api/ticks";
+import { startTestPostgres } from "@test-helpers/postgres";
 
 describe("ticks API", () => {
   test("GET /api/ticks?watchId=X returns ordered ticks", async () => {
@@ -36,7 +36,7 @@ describe("ticks API", () => {
       const res = await api.list(new Request("http://x/api/ticks?watchId=btc-1h"));
       const items = (await res.json()) as { preFilterPass: boolean }[];
       expect(items.length).toBe(2);
-      expect(items[0]!.preFilterPass).toBe(false); // most recent first
+      expect(items[0]?.preFilterPass).toBe(false); // most recent first
     } finally {
       await tp.cleanup();
     }
@@ -76,7 +76,8 @@ describe("ticks API", () => {
         .returning();
 
       const api = makeTicksApi({ db: tp.db });
-      const res = await api.chartPng(new Request("http://x"), { id: tick!.id });
+      if (!tick) throw new Error("no tick inserted");
+      const res = await api.chartPng(new Request("http://x"), { id: tick.id });
       expect(res.status).toBe(200);
       expect(res.headers.get("content-type")).toBe("image/png");
     } finally {

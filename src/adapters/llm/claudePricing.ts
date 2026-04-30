@@ -57,16 +57,20 @@ const PRICING: Record<string, ModelPricing> = {
  * model ID that doesn't even contain a known family substring).
  */
 export function lookupClaudePricing(model: string): ModelPricing | null {
-  if (PRICING[model]) return PRICING[model];
+  const exact = PRICING[model];
+  if (exact) return exact;
 
   const candidates = Object.keys(PRICING).sort((a, b) => b.length - a.length);
   for (const key of candidates) {
-    if (model.startsWith(key)) return PRICING[key]!;
+    if (model.startsWith(key)) {
+      const p = PRICING[key];
+      if (p) return p;
+    }
   }
 
-  if (model.includes("opus")) return PRICING["claude-opus-4-7"]!;
-  if (model.includes("sonnet")) return PRICING["claude-sonnet-4-6"]!;
-  if (model.includes("haiku")) return PRICING["claude-haiku-4-5"]!;
+  if (model.includes("opus")) return PRICING["claude-opus-4-7"] ?? null;
+  if (model.includes("sonnet")) return PRICING["claude-sonnet-4-6"] ?? null;
+  if (model.includes("haiku")) return PRICING["claude-haiku-4-5"] ?? null;
 
   return null;
 }

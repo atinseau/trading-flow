@@ -1,16 +1,18 @@
-import { Badge } from "../components/ui/badge";
-import { Button } from "../components/ui/button";
-import { ConfirmAction } from "../components/shared/confirm-action";
+import { useQuery } from "@tanstack/react-query";
+import { Zap } from "lucide-react";
+import { Link, useParams } from "react-router-dom";
+import { SetupLessonsSpotlight } from "../components/lessons/setup-lessons-spotlight";
 import type { SetupEvent } from "../components/setup/events-timeline";
 import { KeyLevels } from "../components/setup/key-levels";
 import { NarrativeTimeline } from "../components/setup/narrative-timeline";
-import { TVChart, type Candle, type Level } from "../components/setup/tv-chart";
+import { type Candle, type Level, TVChart } from "../components/setup/tv-chart";
+import { ConfirmAction } from "../components/shared/confirm-action";
+import { Badge } from "../components/ui/badge";
+import { Button } from "../components/ui/button";
 import { useAdminAction } from "../hooks/useAdminAction";
 import { api } from "../lib/api";
 import { liveBadgeClass, outcomeMeta } from "../lib/outcome";
 import { cn } from "../lib/utils";
-import { useQuery } from "@tanstack/react-query";
-import { Link, useParams } from "react-router-dom";
 
 type Setup = {
   id: string;
@@ -42,7 +44,7 @@ function fmtDuration(fromIso: string, toIso: string | null): string {
 
 export function Component() {
   const { id } = useParams<{ id: string }>();
-  const { killSetup } = useAdminAction();
+  const { killSetup, forceTick } = useAdminAction();
 
   const setup = useQuery({
     queryKey: ["setups", id],
@@ -110,17 +112,31 @@ export function Component() {
             {headerBadgeLabel}
           </Badge>
           {live && (
-            <ConfirmAction
-              title={`Tuer le setup ${s.id.slice(0, 8)} ?`}
-              description="Le workflow Setup est terminé. L'historique reste en DB."
-              trigger={
-                <Button size="sm" variant="destructive" className="ml-auto">
-                  Kill setup
-                </Button>
-              }
-              onConfirm={() => killSetup.mutate({ setupId: id! })}
-              destructive
-            />
+            <div className="ml-auto flex gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => forceTick.mutate(s.watchId)}
+                disabled={forceTick.isPending}
+                title="Re-scan immédiat de la watch parent"
+              >
+                <Zap className="size-3.5" />
+                Force tick
+              </Button>
+              <ConfirmAction
+                title={`Tuer le setup ${s.id.slice(0, 8)} ?`}
+                description="Le workflow Setup est terminé. L'historique reste en DB."
+                trigger={
+                  <Button size="sm" variant="destructive">
+                    Kill setup
+                  </Button>
+                }
+                onConfirm={() => {
+                  if (id) killSetup.mutate({ setupId: id });
+                }}
+                destructive
+              />
+            </div>
           )}
         </div>
         <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground font-mono">
@@ -164,6 +180,8 @@ export function Component() {
           )}
         </div>
       </div>
+
+      <SetupLessonsSpotlight setupId={s.id} />
     </div>
   );
 }

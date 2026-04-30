@@ -1,3 +1,4 @@
+import { useFormContext } from "react-hook-form";
 import {
   FormControl,
   FormDescription,
@@ -9,7 +10,6 @@ import {
 import { Input } from "../ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { Slider } from "../ui/slider";
-import { useFormContext } from "react-hook-form";
 
 export function SectionLifecycle() {
   const f = useFormContext();

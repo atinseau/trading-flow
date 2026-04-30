@@ -1,7 +1,7 @@
-import { Badge } from "../ui/badge";
+import { Link } from "react-router-dom";
 import { liveBadgeClass, outcomeMeta } from "../../lib/outcome";
 import { cn } from "../../lib/utils";
-import { Link } from "react-router-dom";
+import { Badge } from "../ui/badge";
 
 export type SetupListItem = {
   id: string;

@@ -1,9 +1,9 @@
-import { WatchForm } from "../components/watch-form";
-import { api } from "../lib/api";
 import type { WatchConfig } from "@domain/schemas/WatchesConfig";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
+import { WatchForm } from "../components/watch-form";
+import { api } from "../lib/api";
 
 const VALID_TIMEFRAMES = ["1m", "5m", "15m", "30m", "1h", "2h", "4h", "1d", "1w"] as const;
 const VALID_SOURCES = ["binance", "yahoo"] as const;

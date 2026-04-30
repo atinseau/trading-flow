@@ -1,3 +1,4 @@
+import { useFormContext } from "react-hook-form";
 import {
   FormControl,
   FormDescription,
@@ -8,7 +9,6 @@ import {
 } from "../ui/form";
 import { Input } from "../ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
-import { useFormContext } from "react-hook-form";
 
 const TIMEFRAMES = ["1m", "5m", "15m", "30m", "1h", "2h", "4h", "1d", "1w"] as const;
 const SOURCES = [

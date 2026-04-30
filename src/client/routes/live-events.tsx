@@ -1,9 +1,9 @@
-import { EventDetailModal } from "../components/event-detail-modal";
-import { Badge } from "../components/ui/badge";
-import type { SetupEvent } from "../components/setup/events-timeline";
-import { api } from "../lib/api";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
+import { EventDetailModal } from "../components/event-detail-modal";
+import type { SetupEvent } from "../components/setup/events-timeline";
+import { Badge } from "../components/ui/badge";
+import { api } from "../lib/api";
 
 type LiveEvent = SetupEvent & { setupId: string; watchId?: string };
 

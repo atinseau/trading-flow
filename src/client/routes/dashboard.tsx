@@ -1,17 +1,17 @@
+import { useQuery } from "@tanstack/react-query";
+import { Activity, ArrowRight, DollarSign, Eye, Lightbulb, TrendingUp } from "lucide-react";
+import { Link } from "react-router-dom";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
 import { Skeleton } from "../components/ui/skeleton";
 import { WatchCard } from "../components/watch-card";
+import { useLessonCounts } from "../hooks/useLessonCounts";
 import { useWatches } from "../hooks/useWatches";
 import { api } from "../lib/api";
 import { fmtCost } from "../lib/format";
-import { useQuery } from "@tanstack/react-query";
-import { Activity, ArrowRight, DollarSign, Eye, TrendingUp, Zap } from "lucide-react";
-import { Link } from "react-router-dom";
 
 type Setup = { id: string; status: string; watchId: string; currentScore: string; asset: string };
-type EventRow = { id: string; type: string };
 type CostAgg = { key: string; totalUsd: number; count: number };
 
 const FEATURED_ASSETS: {
@@ -64,11 +64,7 @@ export function Component() {
     queryFn: () => api<Setup[]>("/api/setups?limit=200"),
     staleTime: 5_000,
   });
-  const recentEvents = useQuery({
-    queryKey: ["events"],
-    queryFn: () => api<EventRow[]>("/api/events?limit=200"),
-    staleTime: 10_000,
-  });
+  const lessonCounts = useLessonCounts();
   const costs = useQuery({
     queryKey: ["costs", { groupBy: "watch" }],
     queryFn: () => api<CostAgg[]>("/api/costs?groupBy=watch"),
@@ -118,11 +114,15 @@ export function Component() {
           loading={setups.isLoading}
         />
         <StatCard
-          icon={<Zap className="size-4" />}
-          label="Events (récents)"
-          value={recentEvents.data?.length ?? 0}
-          hint="200 derniers"
-          loading={recentEvents.isLoading}
+          icon={<Lightbulb className="size-4" />}
+          label="Leçons actives"
+          value={lessonCounts.data?.ACTIVE ?? 0}
+          hint={
+            lessonCounts.data && lessonCounts.data.PENDING > 0
+              ? `${lessonCounts.data.PENDING} en attente`
+              : "feedback loop"
+          }
+          loading={lessonCounts.isLoading}
         />
         <StatCard
           icon={<DollarSign className="size-4" />}

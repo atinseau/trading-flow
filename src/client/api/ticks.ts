@@ -1,5 +1,5 @@
 import { tickSnapshots } from "@adapters/persistence/schema";
-import { NotFoundError, safeHandler } from "@client/api/safeHandler";
+import { NotFoundError, requireParam, safeHandler } from "@client/api/safeHandler";
 import { streamArtifact } from "@client/lib/artifacts";
 import { desc, eq } from "drizzle-orm";
 import type { drizzle } from "drizzle-orm/node-postgres";
@@ -24,7 +24,7 @@ export function makeTicksApi(deps: { db: DB }) {
     }),
 
     chartPng: safeHandler(async (_req, params) => {
-      const id = params!.id!;
+      const id = requireParam(params, "id");
       const [tick] = await deps.db.select().from(tickSnapshots).where(eq(tickSnapshots.id, id));
       if (!tick) throw new NotFoundError(`tick ${id} not found`);
       const baseDir = process.env.ARTIFACTS_BASE_DIR ?? "/data/artifacts";

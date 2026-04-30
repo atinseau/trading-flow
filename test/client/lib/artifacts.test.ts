@@ -1,8 +1,8 @@
-import { streamArtifact } from "@client/lib/artifacts";
 import { describe, expect, test } from "bun:test";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, sep } from "node:path";
+import { streamArtifact } from "@client/lib/artifacts";
 
 describe("streamArtifact", () => {
   test("returns 200 with content-type for PNG", async () => {

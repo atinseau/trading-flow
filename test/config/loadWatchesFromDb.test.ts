@@ -22,6 +22,7 @@ const FULL_WATCH = {
     detector: { provider: "claude_max", model: "claude-sonnet-4-6" },
     reviewer: { provider: "claude_max", model: "claude-haiku-4-5" },
     finalizer: { provider: "claude_max", model: "claude-opus-4-7" },
+    feedback: { provider: "claude_max", model: "claude-opus-4-7" },
   },
   notify_on: ["confirmed", "tp_hit", "sl_hit"],
 };

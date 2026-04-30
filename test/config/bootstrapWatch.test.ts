@@ -22,6 +22,7 @@ const watch: WatchConfig = WatchSchema.parse({
     detector: { provider: "claude_max", model: "claude-sonnet-4-6" },
     reviewer: { provider: "claude_max", model: "claude-haiku-4-5" },
     finalizer: { provider: "claude_max", model: "claude-opus-4-7" },
+    feedback: { provider: "claude_max", model: "claude-opus-4-7" },
   },
   notify_on: ["confirmed"],
 });
@@ -125,7 +126,7 @@ describe("bootstrapWatch", () => {
       { spec: { cronExpressions: string[] } },
     ][];
     const call = calls[0]?.[0];
-    expect(call.spec.cronExpressions[0]).toBe("0 * * * *"); // 1h cron
+    expect(call?.spec.cronExpressions[0]).toBe("0 * * * *"); // 1h cron
   });
 
   test("pauses freshly-created schedule when market is closed at creation", async () => {

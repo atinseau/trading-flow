@@ -1,3 +1,6 @@
+import { Check, ChevronsUpDown } from "lucide-react";
+import { useState } from "react";
+import { cn } from "../../lib/utils";
 import {
   Command,
   CommandEmpty,
@@ -7,9 +10,6 @@ import {
   CommandList,
 } from "../ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
-import { cn } from "../../lib/utils";
-import { Check, ChevronsUpDown } from "lucide-react";
-import { useState } from "react";
 
 export type ComboOption = {
   value: string;

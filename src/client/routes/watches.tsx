@@ -1,7 +1,7 @@
+import { Link } from "react-router-dom";
 import { Button } from "../components/ui/button";
 import { WatchCard } from "../components/watch-card";
 import { useWatches } from "../hooks/useWatches";
-import { Link } from "react-router-dom";
 
 /**
  * /watches — list of all configured watches with admin actions.

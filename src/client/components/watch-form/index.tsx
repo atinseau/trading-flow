@@ -1,16 +1,16 @@
-import { Form } from "../ui/form";
-import { SectionAdvanced } from "./section-advanced";
-import { SectionAnalyzers } from "./section-analyzers";
-import { SectionAsset } from "./section-asset";
-import { SectionBudget } from "./section-budget";
-import { SectionLifecycle } from "./section-lifecycle";
-import { SectionNotifications } from "./section-notifications";
-import { SectionSchedule } from "./section-schedule";
-import { WatchFormWizard, type WizardStep } from "./wizard";
-import { Button } from "../ui/button";
-import { WatchSchema, type WatchConfig } from "@domain/schemas/WatchesConfig";
+import { Button } from "@client/components/ui/button";
+import { Form } from "@client/components/ui/form";
+import { SectionAdvanced } from "@client/components/watch-form/section-advanced";
+import { SectionAnalyzers } from "@client/components/watch-form/section-analyzers";
+import { SectionAsset } from "@client/components/watch-form/section-asset";
+import { SectionBudget } from "@client/components/watch-form/section-budget";
+import { SectionLifecycle } from "@client/components/watch-form/section-lifecycle";
+import { SectionNotifications } from "@client/components/watch-form/section-notifications";
+import { SectionSchedule } from "@client/components/watch-form/section-schedule";
+import { WatchFormWizard, type WizardStep } from "@client/components/watch-form/wizard";
+import { type WatchConfig, WatchSchema } from "@domain/schemas/WatchesConfig";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm, type SubmitHandler } from "react-hook-form";
+import { type SubmitHandler, useForm } from "react-hook-form";
 import type { z } from "zod";
 
 type WatchFormInput = z.input<typeof WatchSchema>;
@@ -31,10 +31,12 @@ const SENSIBLE_DEFAULTS = {
     detector: { provider: "claude_max", model: "claude-sonnet-4-6", max_tokens: 2000 },
     reviewer: { provider: "claude_max", model: "claude-haiku-4-5", max_tokens: 2000 },
     finalizer: { provider: "claude_max", model: "claude-opus-4-7", max_tokens: 2000 },
+    feedback: { provider: "claude_max", model: "claude-opus-4-7" },
   },
   notify_on: ["confirmed", "tp_hit", "sl_hit"],
   include_chart_image: true,
   include_reasoning: true,
+  feedback: {},
 };
 
 /** Loose partial — caller passes whatever subset of the shape they have. */

@@ -5,10 +5,18 @@ export class ConflictError extends Error {}
 export class NotFoundError extends Error {}
 export class ValidationError extends Error {}
 
-export type Handler = (req: Request, params?: Record<string, string>) => Promise<Response>;
+export type RouteParams = Record<string, string>;
+export type Handler = (req: Request, params?: RouteParams) => Promise<Response>;
+export type ParamsHandler = (req: Request, params: RouteParams) => Promise<Response>;
 
-export function safeHandler(handler: Handler): Handler {
-  return async (req, params) => {
+export function requireParam(params: RouteParams, name: string): string {
+  const v = params[name];
+  if (!v) throw new ValidationError(`missing route param: ${name}`);
+  return v;
+}
+
+export function safeHandler(handler: ParamsHandler): Handler {
+  return async (req, params = {}) => {
     const requestId = req.headers.get("x-request-id") ?? crypto.randomUUID();
     const log = childLogger({ requestId, method: req.method, url: req.url });
     try {

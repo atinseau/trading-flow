@@ -1,5 +1,5 @@
 import { events, setups, tickSnapshots } from "@adapters/persistence/schema";
-import { NotFoundError, safeHandler } from "@client/api/safeHandler";
+import { NotFoundError, requireParam, safeHandler } from "@client/api/safeHandler";
 import { streamArtifact } from "@client/lib/artifacts";
 import { TERMINAL_STATUSES } from "@domain/state-machine/setupTransitions";
 import { and, asc, desc, eq, inArray, isNotNull, notInArray, sql } from "drizzle-orm";
@@ -116,14 +116,14 @@ export function makeSetupsApi(deps: { db: DB }) {
     }),
 
     get: safeHandler(async (_req, params) => {
-      const id = params!.id!;
+      const id = requireParam(params, "id");
       const [row] = await db.select().from(setups).where(eq(setups.id, id));
       if (!row) throw new NotFoundError(`setup ${id} not found`);
       return Response.json(row);
     }),
 
     events: safeHandler(async (_req, params) => {
-      const id = params!.id!;
+      const id = requireParam(params, "id");
       const rows = await db
         .select()
         .from(events)
@@ -133,7 +133,7 @@ export function makeSetupsApi(deps: { db: DB }) {
     }),
 
     ohlcv: safeHandler(async (_req, params) => {
-      const id = params!.id!;
+      const id = requireParam(params, "id");
       const [setup] = await db.select().from(setups).where(eq(setups.id, id));
       if (!setup) throw new NotFoundError(`setup ${id} not found`);
 

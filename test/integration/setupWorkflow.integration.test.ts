@@ -19,6 +19,7 @@ import { FakeLLMProvider } from "@test-fakes/FakeLLMProvider";
 import { FakeMarketDataFetcher } from "@test-fakes/FakeMarketDataFetcher";
 import { FakeNotifier } from "@test-fakes/FakeNotifier";
 import { FakePriceFeed } from "@test-fakes/FakePriceFeed";
+import { InMemoryLessonStore } from "@test-fakes/InMemoryLessonStore";
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 import type { ActivityDeps } from "@workflows/activityDependencies";
 import { buildSetupActivities } from "@workflows/setup/activities";
@@ -36,7 +37,8 @@ let env: TestWorkflowEnvironment;
 let baseDir: string;
 
 const watchId = "btc-1h";
-const testWatch: WatchConfig = {
+// "fake" provider values key into test-only llmProviders maps.
+const testWatch = {
   id: watchId,
   enabled: true,
   asset: { symbol: "BTCUSDT", source: "binance" },
@@ -59,19 +61,23 @@ const testWatch: WatchConfig = {
     thresholds: { atr_ratio_min: 1.3, volume_spike_min: 1.5, rsi_extreme_distance: 25 },
   },
   analyzers: {
-    // biome-ignore lint/suspicious/noExplicitAny: test fake provider
-    detector: { provider: "fake" as any, model: "fake", max_tokens: 2000 },
-    // biome-ignore lint/suspicious/noExplicitAny: test fake provider
-    reviewer: { provider: "fake" as any, model: "fake", max_tokens: 2000 },
-    // biome-ignore lint/suspicious/noExplicitAny: test fake provider
-    finalizer: { provider: "fake" as any, model: "fake", max_tokens: 2000 },
+    detector: { provider: "fake", model: "fake", max_tokens: 2000 },
+    reviewer: { provider: "fake", model: "fake", max_tokens: 2000 },
+    finalizer: { provider: "fake", model: "fake", max_tokens: 2000 },
+    feedback: { provider: "fake", model: "fake" },
   },
   optimization: { reviewer_skip_when_detector_corroborated: true },
   notify_on: ["confirmed", "rejected", "tp_hit", "sl_hit", "invalidated_after_confirmed"],
   include_chart_image: false,
   include_reasoning: true,
   budget: { pause_on_budget_exceeded: false },
-};
+  feedback: {
+    enabled: true,
+    max_active_lessons_per_category: 30,
+    injection: { detector: true, reviewer: true, finalizer: true },
+    context_providers_disabled: [],
+  },
+} as unknown as WatchConfig;
 
 const testConfig: { watches: WatchConfig[] } = { watches: [testWatch] };
 
@@ -229,6 +235,10 @@ describe("SetupWorkflow integration (real Postgres + real activities)", () => {
       scheduleController: { pause: async () => {}, unpause: async () => {} },
       db,
       pgPool: pool,
+      lessonStore: new InMemoryLessonStore(),
+      lessonEventStore: null as unknown as ActivityDeps["lessonEventStore"],
+      feedbackContextRegistry: null as unknown as ActivityDeps["feedbackContextRegistry"],
+      notifyLessonPending: async () => {},
     };
 
     const activities = buildSetupActivities(deps);
@@ -259,6 +269,9 @@ describe("SetupWorkflow integration (real Postgres + real activities)", () => {
       scoreThresholdDead: 10,
       scoreMax: 100,
       detectorPromptVersion: "detector_v3",
+      // Disabled here — this integration test focuses on the setup workflow
+      // path, not the feedback loop (covered by setupWorkflow.feedback.test).
+      feedbackEnabled: false,
     };
 
     let finalStatus: string | undefined;

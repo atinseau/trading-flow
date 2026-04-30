@@ -1,5 +1,5 @@
 import { events, setups } from "@adapters/persistence/schema";
-import { ValidationError, safeHandler } from "@client/api/safeHandler";
+import { safeHandler, ValidationError } from "@client/api/safeHandler";
 import { and, eq, gte, lte, sql } from "drizzle-orm";
 import type { drizzle } from "drizzle-orm/node-postgres";
 

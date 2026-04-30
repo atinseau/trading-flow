@@ -1,7 +1,7 @@
-import { events, setups, tickSnapshots } from "@adapters/persistence/schema";
-import { startTestPostgres } from "@test-helpers/postgres";
-import { makeSetupsApi } from "@client/api/setups";
 import { describe, expect, test } from "bun:test";
+import { events, setups, tickSnapshots } from "@adapters/persistence/schema";
+import { makeSetupsApi } from "@client/api/setups";
+import { startTestPostgres } from "@test-helpers/postgres";
 
 const setupRow = (overrides: Partial<typeof setups.$inferInsert> = {}) => ({
   id: crypto.randomUUID(),
@@ -31,7 +31,7 @@ describe("setups API", () => {
       const filtered = await api.list(new Request("http://x/api/setups?watchId=btc-1h"));
       const items = (await filtered.json()) as { watchId: string }[];
       expect(items.length).toBe(1);
-      expect(items[0]!.watchId).toBe("btc-1h");
+      expect(items[0]?.watchId).toBe("btc-1h");
     } finally {
       await tp.cleanup();
     }

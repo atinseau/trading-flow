@@ -1,3 +1,5 @@
+import { useEffect } from "react";
+import { useFormContext, useWatch } from "react-hook-form";
 import { ComboInput, type ComboOption } from "../shared/combo-input";
 import {
   FormControl,
@@ -7,8 +9,6 @@ import {
   FormLabel,
   FormMessage,
 } from "../ui/form";
-import { useEffect } from "react";
-import { useFormContext, useWatch } from "react-hook-form";
 
 const PROVIDERS: ComboOption[] = [
   {

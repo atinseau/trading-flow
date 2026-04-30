@@ -1,6 +1,6 @@
 import type { TickSnapshot } from "@domain/entities/TickSnapshot";
 import type { TickSnapshotStore } from "@domain/ports/TickSnapshotStore";
-import { eq } from "drizzle-orm";
+import { and, asc, between, eq } from "drizzle-orm";
 import type { drizzle } from "drizzle-orm/node-postgres";
 import { tickSnapshots } from "./schema";
 
@@ -23,7 +23,8 @@ export class PostgresTickSnapshotStore implements TickSnapshotStore {
         preFilterPass: s.preFilterPass,
       })
       .returning();
-    return mapTick(row!);
+    if (!row) throw new Error("tick snapshot insert returned no row");
+    return mapTick(row);
   }
 
   async get(id: string): Promise<TickSnapshot | null> {
@@ -33,6 +34,20 @@ export class PostgresTickSnapshotStore implements TickSnapshotStore {
       .where(eq(tickSnapshots.id, id))
       .limit(1);
     return row ? mapTick(row) : null;
+  }
+
+  async listInWindow(args: { watchId: string; from: Date; to: Date }): Promise<TickSnapshot[]> {
+    const rows = await this.db
+      .select()
+      .from(tickSnapshots)
+      .where(
+        and(
+          eq(tickSnapshots.watchId, args.watchId),
+          between(tickSnapshots.tickAt, args.from, args.to),
+        ),
+      )
+      .orderBy(asc(tickSnapshots.tickAt));
+    return rows.map(mapTick);
   }
 }
 

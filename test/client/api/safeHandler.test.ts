@@ -1,10 +1,10 @@
+import { describe, expect, test } from "bun:test";
 import {
   ConflictError,
   NotFoundError,
-  ValidationError,
   safeHandler,
+  ValidationError,
 } from "@client/api/safeHandler";
-import { describe, expect, test } from "bun:test";
 import { z } from "zod";
 
 describe("safeHandler", () => {

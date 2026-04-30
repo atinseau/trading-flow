@@ -5,6 +5,7 @@ import { assetOhlcv } from "@client/api/assets";
 import { makeCostsApi } from "@client/api/costs";
 import { makeEventsApi } from "@client/api/events";
 import { health } from "@client/api/health";
+import { makeLessonsApi } from "@client/api/lessons";
 import { search } from "@client/api/search";
 import { makeSetupsApi } from "@client/api/setups";
 import { makeStreamHandler } from "@client/api/stream";
@@ -54,6 +55,7 @@ const setupsApi = makeSetupsApi({ db });
 const eventsApi = makeEventsApi({ db });
 const ticksApi = makeTicksApi({ db });
 const costsApi = makeCostsApi({ db });
+const lessonsApi = makeLessonsApi({ db });
 
 const adminApi = makeAdminApi({
   ops: {
@@ -121,6 +123,17 @@ const server = Bun.serve({
     "/api/watches/:id/pause": { POST: withParams(adminApi.pause) },
     "/api/watches/:id/resume": { POST: withParams(adminApi.resume) },
     "/api/setups/:id/kill": { POST: withParams(adminApi.killSetup) },
+    "/api/setups/:id/lessons": { GET: withParams(lessonsApi.listEventsForSetup) },
+    "/api/watches/:id/lessons": { GET: withParams(lessonsApi.listForWatch) },
+    "/api/watches/:id/lessons/counts": { GET: withParams(lessonsApi.countsForWatch) },
+    "/api/lessons": { GET: (req) => lessonsApi.listAll(req) },
+    "/api/lessons/counts": { GET: (req) => lessonsApi.countsGlobal(req) },
+    "/api/lessons/:id": { GET: withParams(lessonsApi.get) },
+    "/api/lessons/:id/approve": { POST: withParams(lessonsApi.approve) },
+    "/api/lessons/:id/reject": { POST: withParams(lessonsApi.reject) },
+    "/api/lessons/:id/pin": { POST: withParams(lessonsApi.pin) },
+    "/api/lessons/:id/unpin": { POST: withParams(lessonsApi.unpin) },
+    "/api/lessons/:id/archive": { POST: withParams(lessonsApi.archive) },
     "/api/stream": { GET: makeStreamHandler({ broadcaster }) },
     "/api/search": { GET: (req) => search(req) },
     "/api/assets/:source/:symbol/ohlcv": { GET: (req) => assetOhlcv(req) },

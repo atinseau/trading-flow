@@ -149,8 +149,9 @@ export async function searchAssets(input: {
       binanceSearch(input.query),
     ]);
     let merged = [...yahoo, ...binance];
-    if (input.types && input.types.length > 0) {
-      merged = merged.filter((r) => input.types!.includes(r.type));
+    const types = input.types;
+    if (types && types.length > 0) {
+      merged = merged.filter((r) => types.includes(r.type));
     }
     merged.sort((a, b) => b.score - a.score);
     return merged.slice(0, 50);
@@ -252,13 +253,18 @@ async function yahooOhlcv(symbol: string, interval: string, limit: number): Prom
   const q = r.indicators.quote[0];
   const out: Candle[] = [];
   for (let i = 0; i < r.timestamp.length; i++) {
-    if (q.open[i] == null) continue; // Yahoo nullifies missing bars
+    const open = q.open[i];
+    const high = q.high[i];
+    const low = q.low[i];
+    const close = q.close[i];
+    const time = r.timestamp[i];
+    if (open == null || high == null || low == null || close == null || time == null) continue;
     out.push({
-      time: r.timestamp[i]!,
-      open: q.open[i]!,
-      high: q.high[i]!,
-      low: q.low[i]!,
-      close: q.close[i]!,
+      time,
+      open,
+      high,
+      low,
+      close,
       volume: q.volume[i] ?? 0,
     });
   }

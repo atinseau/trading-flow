@@ -1,5 +1,6 @@
-import { useSSEStream } from "../hooks/useSSEStream";
 import { Link, NavLink, Outlet } from "react-router-dom";
+import { useLessonCounts } from "../hooks/useLessonCounts";
+import { useSSEStream } from "../hooks/useSSEStream";
 
 /**
  * App shell. Single-column layout. The previous live-events sidebar was
@@ -8,6 +9,8 @@ import { Link, NavLink, Outlet } from "react-router-dom";
  */
 export function RootLayout() {
   useSSEStream();
+  const lessonCounts = useLessonCounts();
+  const pending = lessonCounts.data?.PENDING ?? 0;
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -28,6 +31,19 @@ export function RootLayout() {
             </NavLink>
             <NavLink to="/setups" className={({ isActive }) => (isActive ? "text-foreground" : "")}>
               Setups
+            </NavLink>
+            <NavLink
+              to="/lessons"
+              className={({ isActive }) =>
+                `inline-flex items-center gap-1.5 ${isActive ? "text-foreground" : ""}`
+              }
+            >
+              Leçons
+              {pending > 0 && (
+                <span className="rounded-full bg-amber-500/20 text-amber-400 text-[10px] font-mono px-1.5 py-0.5 leading-none">
+                  {pending}
+                </span>
+              )}
             </NavLink>
             <NavLink to="/search" className={({ isActive }) => (isActive ? "text-foreground" : "")}>
               Rechercher

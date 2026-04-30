@@ -1,5 +1,5 @@
 import { watchConfigRevisions, watchConfigs, watchStates } from "@adapters/persistence/schema";
-import { NotFoundError, safeHandler } from "@client/api/safeHandler";
+import { NotFoundError, requireParam, safeHandler } from "@client/api/safeHandler";
 import {
   createWatchConfig,
   softDeleteWatchConfig,
@@ -39,7 +39,7 @@ export function makeWatchesApi(deps: { db: DB; hooks: WatchConfigHooks }) {
     }),
 
     get: safeHandler(async (_req, params) => {
-      const id = params!.id!;
+      const id = requireParam(params, "id");
       const [row] = await db
         .select()
         .from(watchConfigs)
@@ -78,7 +78,7 @@ export function makeWatchesApi(deps: { db: DB; hooks: WatchConfigHooks }) {
     }),
 
     update: safeHandler(async (req, params) => {
-      const id = params!.id!;
+      const id = requireParam(params, "id");
       const body = UpdateBodySchema.parse(await req.json());
       if (body.config.id !== id) {
         return Response.json({ error: "config.id must match URL param" }, { status: 400 });
@@ -94,7 +94,7 @@ export function makeWatchesApi(deps: { db: DB; hooks: WatchConfigHooks }) {
     }),
 
     del: safeHandler(async (_req, params) => {
-      const id = params!.id!;
+      const id = requireParam(params, "id");
       const [row] = await db.select().from(watchConfigs).where(eq(watchConfigs.id, id));
       if (!row || row.deletedAt) throw new NotFoundError(`watch ${id} not found`);
       await softDeleteWatchConfig({ db, hooks, id });
@@ -102,7 +102,7 @@ export function makeWatchesApi(deps: { db: DB; hooks: WatchConfigHooks }) {
     }),
 
     revisions: safeHandler(async (_req, params) => {
-      const id = params!.id!;
+      const id = requireParam(params, "id");
       const rows = await db
         .select()
         .from(watchConfigRevisions)

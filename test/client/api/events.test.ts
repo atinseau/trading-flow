@@ -1,7 +1,7 @@
-import { events, setups } from "@adapters/persistence/schema";
-import { startTestPostgres } from "@test-helpers/postgres";
-import { makeEventsApi } from "@client/api/events";
 import { describe, expect, test } from "bun:test";
+import { events, setups } from "@adapters/persistence/schema";
+import { makeEventsApi } from "@client/api/events";
+import { startTestPostgres } from "@test-helpers/postgres";
 
 describe("events API", () => {
   test("GET /api/events paginates with ?since cursor", async () => {
@@ -41,7 +41,9 @@ describe("events API", () => {
       const items = (await all.json()) as { id: string; occurredAt: string }[];
       expect(items.length).toBe(3);
 
-      const cursor = items[items.length - 1]!.occurredAt;
+      const last = items[items.length - 1];
+      if (!last) throw new Error("expected at least one item");
+      const cursor = last.occurredAt;
       const next = await api.list(
         new Request(`http://x/api/events?limit=3&since=${encodeURIComponent(cursor)}`),
       );

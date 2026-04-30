@@ -1,3 +1,4 @@
+import { useFormContext } from "react-hook-form";
 import {
   FormControl,
   FormDescription,
@@ -7,7 +8,6 @@ import {
   FormMessage,
 } from "../ui/form";
 import { Input } from "../ui/input";
-import { useFormContext } from "react-hook-form";
 
 export function SectionSchedule() {
   const f = useFormContext();

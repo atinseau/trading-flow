@@ -1,5 +1,5 @@
-import { computeClaudeCost, lookupClaudePricing } from "@adapters/llm/claudePricing";
 import { describe, expect, test } from "bun:test";
+import { computeClaudeCost, lookupClaudePricing } from "@adapters/llm/claudePricing";
 
 describe("claudePricing", () => {
   test("exact model match — Sonnet 4.6", () => {

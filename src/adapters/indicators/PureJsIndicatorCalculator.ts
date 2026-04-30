@@ -36,7 +36,10 @@ export class PureJsIndicatorCalculator implements IndicatorCalculator {
     let avgGain = 0;
     let avgLoss = 0;
     for (let i = 1; i <= period; i++) {
-      const diff = closes[i]! - closes[i - 1]!;
+      const cur = closes[i];
+      const prev = closes[i - 1];
+      if (cur === undefined || prev === undefined) continue;
+      const diff = cur - prev;
       if (diff > 0) avgGain += diff;
       else avgLoss -= diff;
     }
@@ -47,7 +50,10 @@ export class PureJsIndicatorCalculator implements IndicatorCalculator {
     // avgGain_new = (avgGain_prev * (period - 1) + currentGain) / period
     // avgLoss_new = (avgLoss_prev * (period - 1) + currentLoss) / period
     for (let i = period + 1; i < closes.length; i++) {
-      const diff = closes[i]! - closes[i - 1]!;
+      const cur = closes[i];
+      const prev = closes[i - 1];
+      if (cur === undefined || prev === undefined) continue;
+      const diff = cur - prev;
       const gain = diff > 0 ? diff : 0;
       const loss = diff < 0 ? -diff : 0;
       avgGain = (avgGain * (period - 1) + gain) / period;
@@ -64,7 +70,9 @@ export class PureJsIndicatorCalculator implements IndicatorCalculator {
     const k = 2 / (period + 1);
     let ema = values.slice(0, period).reduce((a, b) => a + b, 0) / period;
     for (let i = period; i < values.length; i++) {
-      ema = values[i]! * k + ema * (1 - k);
+      const v = values[i];
+      if (v === undefined) continue;
+      ema = v * k + ema * (1 - k);
     }
     return ema;
   }
@@ -72,11 +80,11 @@ export class PureJsIndicatorCalculator implements IndicatorCalculator {
   private atrSeries(highs: number[], lows: number[], closes: number[], period: number): number[] {
     const trs: number[] = [];
     for (let i = 1; i < highs.length; i++) {
-      const tr = Math.max(
-        highs[i]! - lows[i]!,
-        Math.abs(highs[i]! - closes[i - 1]!),
-        Math.abs(lows[i]! - closes[i - 1]!),
-      );
+      const h = highs[i];
+      const l = lows[i];
+      const cPrev = closes[i - 1];
+      if (h === undefined || l === undefined || cPrev === undefined) continue;
+      const tr = Math.max(h - l, Math.abs(h - cPrev), Math.abs(l - cPrev));
       trs.push(tr);
     }
     const out: number[] = [];
@@ -84,7 +92,9 @@ export class PureJsIndicatorCalculator implements IndicatorCalculator {
     let atr = trs.slice(0, period).reduce((a, b) => a + b, 0) / period;
     out.push(atr);
     for (let i = period; i < trs.length; i++) {
-      atr = (atr * (period - 1) + trs[i]!) / period;
+      const tr = trs[i];
+      if (tr === undefined) continue;
+      atr = (atr * (period - 1) + tr) / period;
       out.push(atr);
     }
     return out;

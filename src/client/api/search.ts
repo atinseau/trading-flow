@@ -1,5 +1,5 @@
+import { type AssetType, searchAssets } from "../lib/marketData";
 import { safeHandler, ValidationError } from "./safeHandler";
-import { searchAssets, type AssetType } from "../lib/marketData";
 
 const VALID_TYPES: AssetType[] = ["crypto", "stock", "index", "etf", "currency", "future", "other"];
 

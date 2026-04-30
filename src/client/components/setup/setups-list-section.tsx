@@ -1,9 +1,9 @@
-import { SetupCard, type SetupListItem } from "./setup-card";
-import { SetupsStatsBar, type SetupsStats } from "./setups-stats-bar";
-import { cn } from "../../lib/utils";
-import { api } from "../../lib/api";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
+import { api } from "../../lib/api";
+import { cn } from "../../lib/utils";
+import { SetupCard, type SetupListItem } from "./setup-card";
+import { type SetupsStats, SetupsStatsBar } from "./setups-stats-bar";
 
 type Category = "all" | "live" | "wins" | "losses" | "other";
 

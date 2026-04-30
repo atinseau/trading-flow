@@ -10,7 +10,7 @@ const calc = new PureJsIndicatorCalculator();
 function fromCloses(closes: number[]): Candle[] {
   return closes.map((close, i) => ({
     timestamp: new Date(2026, 0, 1, 0, i),
-    open: i === 0 ? close : closes[i - 1]!,
+    open: i === 0 ? close : (closes[i - 1] ?? close),
     high: close + 0.5,
     low: close - 0.5,
     close,
@@ -37,7 +37,8 @@ describe("PureJsIndicatorCalculator reference values", () => {
     ];
 
     // Pad to 200+ closes (calculator requires it).
-    const padded = [...Array(200 - closes.length).fill(closes[0]!), ...closes];
+    const first = closes[0] ?? 0;
+    const padded = [...Array(200 - closes.length).fill(first), ...closes];
     const candles = fromCloses(padded);
 
     const ind = await calc.compute(candles);
@@ -83,7 +84,7 @@ describe("PureJsIndicatorCalculator reference values", () => {
 
     const ind = await calc.compute(candles);
 
-    const lastClose = closes[closes.length - 1]!;
+    const lastClose = closes[closes.length - 1] ?? 0;
 
     // EMA20 should be below lastClose (lagging) but above lastClose - 20.
     expect(ind.ema20).toBeLessThan(lastClose);

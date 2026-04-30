@@ -1,9 +1,9 @@
-import type { SetupEvent } from "./events-timeline";
-import { Badge } from "../ui/badge";
-import { ScoreChart } from "./score-chart";
+import { useMemo, useState } from "react";
 import { fmtCost } from "../../lib/format";
 import { cn } from "../../lib/utils";
-import { useMemo, useState } from "react";
+import { Badge } from "../ui/badge";
+import type { SetupEvent } from "./events-timeline";
+import { ScoreChart } from "./score-chart";
 
 type Phase =
   | { kind: "birth"; event: SetupEvent }
@@ -29,21 +29,23 @@ function groupIntoPhases(events: SetupEvent[]): Phase[] {
 
   // 2. Refinement — collect contiguous Strengthened/Weakened/Neutral until decision
   const refinement: SetupEvent[] = [];
-  while (i < events.length && REFINEMENT_TYPES.has(events[i]!.type)) {
-    refinement.push(events[i]!);
+  while (i < events.length) {
+    const ev = events[i];
+    if (!ev || !REFINEMENT_TYPES.has(ev.type)) break;
+    refinement.push(ev);
     i++;
   }
-  if (refinement.length > 0) {
-    const firstRefinement = refinement[0]!;
-    const lastRefinement = refinement[refinement.length - 1]!;
+  const firstRefinement = refinement[0];
+  const lastRefinement = refinement[refinement.length - 1];
+  if (firstRefinement && lastRefinement) {
     // scoreStart: prefer the previous event's scoreAfter (typically the
     // SetupCreated initialScore). Fall back to (firstAfter - firstDelta),
     // which only works if the first refinement event has a non-zero delta.
     const idxInEvents = events.indexOf(firstRefinement);
-    const scoreStart =
-      idxInEvents > 0
-        ? Number(events[idxInEvents - 1]!.scoreAfter)
-        : Number(firstRefinement.scoreAfter) - Number(firstRefinement.scoreDelta || 0);
+    const prev = idxInEvents > 0 ? events[idxInEvents - 1] : undefined;
+    const scoreStart = prev
+      ? Number(prev.scoreAfter)
+      : Number(firstRefinement.scoreAfter) - Number(firstRefinement.scoreDelta || 0);
     phases.push({
       kind: "refinement",
       events: refinement,
@@ -53,15 +55,18 @@ function groupIntoPhases(events: SetupEvent[]): Phase[] {
   }
 
   // 3. Decision — Confirmed or Rejected
-  if (i < events.length && (events[i]!.type === "Confirmed" || events[i]!.type === "Rejected")) {
-    phases.push({ kind: "decision", event: events[i]! });
+  const decisionEv = events[i];
+  if (decisionEv && (decisionEv.type === "Confirmed" || decisionEv.type === "Rejected")) {
+    phases.push({ kind: "decision", event: decisionEv });
     i++;
   }
 
   // 4. Trade lifecycle — EntryFilled, TPHit, SLHit, TrailingMoved
   const tradeEvents: SetupEvent[] = [];
-  while (i < events.length && TRADE_TYPES.has(events[i]!.type)) {
-    tradeEvents.push(events[i]!);
+  while (i < events.length) {
+    const ev = events[i];
+    if (!ev || !TRADE_TYPES.has(ev.type)) break;
+    tradeEvents.push(ev);
     i++;
   }
   if (tradeEvents.length > 0) {
@@ -69,8 +74,10 @@ function groupIntoPhases(events: SetupEvent[]): Phase[] {
   }
 
   // 5. Death — terminal pre/post-trade event (Invalidated/Expired/PriceInvalidated)
-  while (i < events.length && DEATH_TYPES.has(events[i]!.type)) {
-    phases.push({ kind: "death", event: events[i]! });
+  while (i < events.length) {
+    const ev = events[i];
+    if (!ev || !DEATH_TYPES.has(ev.type)) break;
+    phases.push({ kind: "death", event: ev });
     i++;
   }
 
@@ -123,8 +130,8 @@ function ReasoningBlock({ event }: { event: SetupEvent }) {
       )}
       {data.observations && data.observations.length > 0 && (
         <ul className="space-y-1 ml-3">
-          {data.observations.map((o, idx) => (
-            <li key={idx} className="text-[11px] text-muted-foreground">
+          {data.observations.map((o) => (
+            <li key={o} className="text-[11px] text-muted-foreground">
               <span className="text-primary mr-1">·</span>
               {o}
             </li>
@@ -181,7 +188,13 @@ export function NarrativeTimeline({ events }: { events: SetupEvent[] }) {
         </button>
       )}
 
-      {phases.map((phase, pidx) => {
+      {phases.map((phase) => {
+        const phaseKey =
+          phase.kind === "refinement" || phase.kind === "trade"
+            ? `${phase.kind}-${phase.events[0]?.id ?? "empty"}`
+            : phase.kind === "lessons"
+              ? "lessons"
+              : `${phase.kind}-${phase.event.id}`;
         if (phase.kind === "birth") {
           const data = phase.event.payload?.data as
             | {
@@ -192,7 +205,7 @@ export function NarrativeTimeline({ events }: { events: SetupEvent[] }) {
               }
             | undefined;
           return (
-            <section key={pidx} className="rounded-lg border bg-card p-4 space-y-2">
+            <section key={phaseKey} className="rounded-lg border bg-card p-4 space-y-2">
               <PhaseHeader
                 icon="📍"
                 title="Naissance"
@@ -228,7 +241,7 @@ export function NarrativeTimeline({ events }: { events: SetupEvent[] }) {
             scoreAfter: Number(e.scoreAfter),
           }));
           return (
-            <section key={pidx} className="rounded-lg border bg-card p-4 space-y-3">
+            <section key={phaseKey} className="rounded-lg border bg-card p-4 space-y-3">
               <PhaseHeader
                 icon="📈"
                 title="Raffinement"
@@ -254,7 +267,7 @@ export function NarrativeTimeline({ events }: { events: SetupEvent[] }) {
             | undefined;
           return (
             <section
-              key={pidx}
+              key={phaseKey}
               className={cn(
                 "rounded-lg border-2 p-4 space-y-2",
                 isGo
@@ -282,7 +295,7 @@ export function NarrativeTimeline({ events }: { events: SetupEvent[] }) {
                     </div>
                   )}
                   {data.takeProfit?.map((tp, i) => (
-                    <div key={i}>
+                    <div key={`tp-${tp}`}>
                       <div className="text-[10px] text-muted-foreground uppercase">TP{i + 1}</div>
                       {tp}
                     </div>
@@ -303,7 +316,7 @@ export function NarrativeTimeline({ events }: { events: SetupEvent[] }) {
 
         if (phase.kind === "trade") {
           return (
-            <section key={pidx} className="rounded-lg border bg-card p-4 space-y-3">
+            <section key={phaseKey} className="rounded-lg border bg-card p-4 space-y-3">
               <PhaseHeader icon="🎯" title="En trade" subtitle={`${phase.events.length} events`} />
               <div className="space-y-1">
                 {phase.events.map((e) => {
@@ -354,7 +367,7 @@ export function NarrativeTimeline({ events }: { events: SetupEvent[] }) {
             | undefined;
           return (
             <section
-              key={pidx}
+              key={phaseKey}
               className="rounded-lg border-2 border-zinc-500/40 bg-zinc-500/5 p-4 space-y-2"
             >
               <PhaseHeader

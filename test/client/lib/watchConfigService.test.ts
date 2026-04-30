@@ -1,3 +1,4 @@
+import { describe, expect, mock, test } from "bun:test";
 import { watchConfigRevisions, watchConfigs } from "@adapters/persistence/schema";
 import { ConflictError } from "@client/api/safeHandler";
 import {
@@ -7,7 +8,6 @@ import {
 } from "@client/lib/watchConfigService";
 import { type WatchConfig, WatchSchema } from "@domain/schemas/WatchesConfig";
 import { startTestPostgres } from "@test-helpers/postgres";
-import { describe, expect, mock, test } from "bun:test";
 import { eq } from "drizzle-orm";
 
 const fullWatch = (id = "btc-1h"): WatchConfig =>
@@ -29,6 +29,7 @@ const fullWatch = (id = "btc-1h"): WatchConfig =>
       detector: { provider: "claude_max", model: "claude-sonnet-4-6" },
       reviewer: { provider: "claude_max", model: "claude-haiku-4-5" },
       finalizer: { provider: "claude_max", model: "claude-opus-4-7" },
+      feedback: { provider: "claude_max", model: "claude-opus-4-7" },
     },
     notify_on: ["confirmed"],
   });

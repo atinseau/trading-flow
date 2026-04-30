@@ -1,5 +1,5 @@
-import { makeAdminApi } from "@client/api/admin";
 import { describe, expect, test } from "bun:test";
+import { makeAdminApi } from "@client/api/admin";
 
 const POST = (body?: unknown) =>
   new Request("http://x", {

@@ -1,6 +1,6 @@
 import { describe, expect, mock, test } from "bun:test";
 import { applyReload } from "@config/applyReload";
-import { WatchSchema, type WatchConfig } from "@domain/schemas/WatchesConfig";
+import { type WatchConfig, WatchSchema } from "@domain/schemas/WatchesConfig";
 
 const baseWatch = (overrides: Partial<WatchConfig> = {}): WatchConfig =>
   WatchSchema.parse({
@@ -21,6 +21,7 @@ const baseWatch = (overrides: Partial<WatchConfig> = {}): WatchConfig =>
       detector: { provider: "claude_max", model: "claude-sonnet-4-6" },
       reviewer: { provider: "claude_max", model: "claude-haiku-4-5" },
       finalizer: { provider: "claude_max", model: "claude-opus-4-7" },
+      feedback: { provider: "claude_max", model: "claude-opus-4-7" },
     },
     notify_on: ["confirmed"],
     ...overrides,

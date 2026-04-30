@@ -1,6 +1,6 @@
-import { Broadcaster } from "@client/lib/broadcaster";
-import { makeStreamHandler } from "@client/api/stream";
 import { describe, expect, test } from "bun:test";
+import { makeStreamHandler } from "@client/api/stream";
+import { Broadcaster } from "@client/lib/broadcaster";
 
 const decode = (chunk: Uint8Array) => new TextDecoder().decode(chunk);
 
@@ -12,7 +12,8 @@ describe("SSE stream", () => {
 
     expect(res.headers.get("content-type")).toBe("text/event-stream");
 
-    const reader = res.body!.getReader();
+    if (!res.body) throw new Error("no body");
+    const reader = res.body.getReader();
     setTimeout(() => b.emit("events", { id: "abc", type: "Strengthened" }), 30);
 
     let buf = "";
@@ -31,7 +32,8 @@ describe("SSE stream", () => {
     const b = new Broadcaster();
     const handler = makeStreamHandler({ broadcaster: b, heartbeatMs: 50 });
     const res = await handler(new Request("http://x/api/stream"));
-    const reader = res.body!.getReader();
+    if (!res.body) throw new Error("no body");
+    const reader = res.body.getReader();
 
     let buf = "";
     const start = Date.now();
@@ -50,7 +52,8 @@ describe("SSE stream", () => {
     const res = await handler(new Request("http://x/api/stream?topics=events,garbage"));
     expect(res.status).toBe(200);
     // Only "events" is a real topic; "garbage" should be silently dropped.
-    const reader = res.body!.getReader();
+    if (!res.body) throw new Error("no body");
+    const reader = res.body.getReader();
     setTimeout(() => {
       b.emit("events", { id: "1" });
       // Emitting on "garbage" wouldn't typecheck; we just confirm the stream stays open.

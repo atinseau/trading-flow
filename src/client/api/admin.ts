@@ -1,4 +1,4 @@
-import { safeHandler } from "@client/api/safeHandler";
+import { requireParam, safeHandler } from "@client/api/safeHandler";
 
 export type AdminOps = {
   forceTick: (input: { watchId: string }) => Promise<void>;
@@ -10,21 +10,21 @@ export type AdminOps = {
 export function makeAdminApi(deps: { ops: AdminOps }) {
   return {
     forceTick: safeHandler(async (_req, params) => {
-      await deps.ops.forceTick({ watchId: params!.id! });
+      await deps.ops.forceTick({ watchId: requireParam(params, "id") });
       return Response.json({ status: "ok", appliedAt: new Date().toISOString() });
     }),
     pause: safeHandler(async (_req, params) => {
-      await deps.ops.pauseWatch({ watchId: params!.id! });
+      await deps.ops.pauseWatch({ watchId: requireParam(params, "id") });
       return Response.json({ status: "ok", appliedAt: new Date().toISOString() });
     }),
     resume: safeHandler(async (_req, params) => {
-      await deps.ops.resumeWatch({ watchId: params!.id! });
+      await deps.ops.resumeWatch({ watchId: requireParam(params, "id") });
       return Response.json({ status: "ok", appliedAt: new Date().toISOString() });
     }),
     killSetup: safeHandler(async (req, params) => {
       const body = (await req.json().catch(() => ({}))) as { reason?: string };
       const reason = body.reason ?? "manual_close";
-      await deps.ops.killSetup({ setupId: params!.id!, reason });
+      await deps.ops.killSetup({ setupId: requireParam(params, "id"), reason });
       return Response.json({ status: "ok", appliedAt: new Date().toISOString() });
     }),
   };

@@ -196,6 +196,9 @@ async function runOneTick(
       scoreThresholdDead: watch.setup_lifecycle.score_threshold_dead,
       scoreMax: watch.setup_lifecycle.score_max,
       detectorPromptVersion,
+      // Captured at creation time so a later watch-config edit cannot retro-
+      // actively flip the feedback fate of in-flight setups.
+      feedbackEnabled: watch.feedback.enabled,
     };
     await startChild(setupWorkflow, {
       args: [initial],

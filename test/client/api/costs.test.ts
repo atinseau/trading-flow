@@ -1,7 +1,7 @@
-import { events, setups } from "@adapters/persistence/schema";
-import { startTestPostgres } from "@test-helpers/postgres";
-import { makeCostsApi } from "@client/api/costs";
 import { describe, expect, test } from "bun:test";
+import { events, setups } from "@adapters/persistence/schema";
+import { makeCostsApi } from "@client/api/costs";
+import { startTestPostgres } from "@test-helpers/postgres";
 
 describe("costs API", () => {
   test("aggregates totals by watch", async () => {

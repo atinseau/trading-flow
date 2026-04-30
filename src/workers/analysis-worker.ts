@@ -3,6 +3,7 @@ import { loadWatchesFromDb } from "@config/loadWatchesFromDb";
 import { HealthServer } from "@observability/healthServer";
 import { getLogger } from "@observability/logger";
 import { NativeConnection, Worker } from "@temporalio/worker";
+import { buildFeedbackActivities } from "@workflows/feedback/activities";
 import { buildSetupActivities } from "@workflows/setup/activities";
 import pg from "pg";
 import { buildContainer } from "./buildContainer";
@@ -30,8 +31,13 @@ const worker = await Worker.create({
   connection,
   namespace: infra.temporal.namespace,
   taskQueue: infra.temporal.task_queues.analysis,
+  // setupWorkflow.ts re-exports feedbackLoopWorkflow so this single bundle
+  // ships both the parent and the child workflow definitions (Phase 9).
   workflowsPath: require.resolve("../workflows/setup/setupWorkflow.ts"),
-  activities: buildSetupActivities(container.deps),
+  activities: {
+    ...buildSetupActivities(container.deps),
+    ...buildFeedbackActivities(container.deps),
+  },
 });
 
 log.info(

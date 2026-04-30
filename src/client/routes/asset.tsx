@@ -2,7 +2,6 @@ import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, Plus, RefreshCw } from "lucide-react";
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
-
 import { type AssetCandle, AssetChart } from "../components/asset/asset-chart";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";

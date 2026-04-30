@@ -22,6 +22,8 @@ export function TVChart(props: {
   const linesRef = useRef<ReturnType<NonNullable<typeof seriesRef.current>["createPriceLine"]>[]>(
     [],
   );
+  const onTimeClickRef = useRef(props.onTimeClick);
+  onTimeClickRef.current = props.onTimeClick;
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -54,11 +56,9 @@ export function TVChart(props: {
     };
     window.addEventListener("resize", onResize);
 
-    if (props.onTimeClick) {
-      chart.subscribeClick((p) => {
-        if (p.time) props.onTimeClick!(p.time);
-      });
-    }
+    chart.subscribeClick((p) => {
+      if (p.time) onTimeClickRef.current?.(p.time);
+    });
 
     return () => {
       window.removeEventListener("resize", onResize);
@@ -66,7 +66,6 @@ export function TVChart(props: {
       chartRef.current = null;
       seriesRef.current = null;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -74,10 +73,11 @@ export function TVChart(props: {
   }, [props.candles]);
 
   useEffect(() => {
-    if (!seriesRef.current) return;
-    for (const line of linesRef.current) seriesRef.current.removePriceLine(line);
+    const series = seriesRef.current;
+    if (!series) return;
+    for (const line of linesRef.current) series.removePriceLine(line);
     linesRef.current = props.levels.map((lvl) =>
-      seriesRef.current!.createPriceLine({
+      series.createPriceLine({
         price: lvl.price,
         color: lvl.color,
         lineWidth: 1,
