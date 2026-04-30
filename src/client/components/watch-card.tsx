@@ -1,3 +1,4 @@
+import { MarketStateBadge } from "@client/components/market-state-badge";
 import { ConfirmAction } from "@client/components/shared/confirm-action";
 import { RelativeTime } from "@client/components/shared/relative-time";
 import { Badge } from "@client/components/ui/badge";
@@ -41,9 +42,12 @@ export function WatchCard({ watch }: { watch: WatchListItem }) {
           </Link>
           <div className="text-xs text-muted-foreground mt-1">{watch.id}</div>
         </div>
-        <Badge variant={watch.enabled ? "default" : "secondary"}>
-          {watch.enabled ? "Active" : "Pause"}
-        </Badge>
+        <div className="flex gap-1">
+          <Badge variant={watch.enabled ? "default" : "secondary"}>
+            {watch.enabled ? "Active" : "Pause"}
+          </Badge>
+          <MarketStateBadge watch={{ asset: watch.config.asset }} />
+        </div>
       </CardHeader>
       <CardContent className="text-xs space-y-1">
         <div>

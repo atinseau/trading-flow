@@ -6,6 +6,7 @@ import type { NewEvent, SetupStateUpdate } from "@domain/ports/EventStore";
 import type { Verdict } from "@domain/schemas/Verdict";
 import { VerdictSchema } from "@domain/schemas/Verdict";
 import { computeInputHash } from "@domain/services/inputHash";
+import { getSession, getSessionState } from "@domain/services/marketSession";
 import { getLogger } from "@observability/logger";
 import type { ActivityDeps } from "@workflows/activityDependencies";
 import { ensurePriceMonitorStarted } from "@workflows/price-monitor/ensureRunning";
@@ -50,7 +51,7 @@ export function buildSetupActivities(deps: ActivityDeps) {
         ttlExpiresAt: new Date(input.ttlExpiresAt),
         workflowId: input.workflowId,
       });
-      const watch = deps.watchById(input.watchId);
+      const watch = await deps.watchById(input.watchId);
       if (watch) {
         await ensurePriceMonitorStarted(deps.temporalClient, deps.infra, {
           symbol: input.asset,
@@ -76,11 +77,41 @@ export function buildSetupActivities(deps: ActivityDeps) {
       promptVersion: string;
       provider: string;
       model: string;
+      skipReason?: "market_closed";
     }> {
       const childLog = log.child({ setupId: input.setupId, watchId: input.watchId });
       childLog.info({ tickSnapshotId: input.tickSnapshotId }, "runReviewer starting");
-      const watch = deps.watchById(input.watchId);
+      const watch = await deps.watchById(input.watchId);
       if (!watch) throw new InvalidConfigError(`Unknown watch: ${input.watchId}`);
+
+      let marketState: ReturnType<typeof getSessionState> | null = null;
+      try {
+        const session = getSession(watch);
+        marketState = getSessionState(session, deps.clock.now());
+      } catch (e) {
+        childLog.warn(
+          { err: (e as Error).message },
+          "runReviewer: skipping market-hours guard (invalid asset metadata)",
+        );
+      }
+
+      if (marketState && !marketState.isOpen) {
+        childLog.info(
+          { nextOpenAt: marketState.nextOpenAt?.toISOString() },
+          "runReviewer skipped: market closed",
+        );
+        return {
+          verdictJson: "",
+          costUsd: 0,
+          eventAlreadyExisted: false,
+          inputHash: "",
+          promptVersion: "",
+          provider: "",
+          model: "",
+          skipReason: "market_closed",
+        };
+      }
+
       const setup = await deps.setupRepo.get(input.setupId);
       if (!setup) throw new Error(`Setup ${input.setupId} not found`);
       const snap = await deps.tickSnapshotStore.get(input.tickSnapshotId);
@@ -181,14 +212,41 @@ export function buildSetupActivities(deps: ActivityDeps) {
       };
     },
 
-    async runFinalizer(input: {
-      setupId: string;
-      watchId: string;
-    }): Promise<{ decisionJson: string; costUsd: number; promptVersion: string }> {
+    async runFinalizer(input: { setupId: string; watchId: string }): Promise<{
+      decisionJson: string;
+      costUsd: number;
+      promptVersion: string;
+      skipReason?: "market_closed";
+    }> {
       const childLog = log.child({ setupId: input.setupId, watchId: input.watchId });
       childLog.info({}, "runFinalizer starting");
-      const watch = deps.watchById(input.watchId);
+      const watch = await deps.watchById(input.watchId);
       if (!watch) throw new InvalidConfigError(`Unknown watch: ${input.watchId}`);
+
+      let marketState: ReturnType<typeof getSessionState> | null = null;
+      try {
+        const session = getSession(watch);
+        marketState = getSessionState(session, deps.clock.now());
+      } catch (e) {
+        childLog.warn(
+          { err: (e as Error).message },
+          "runFinalizer: skipping market-hours guard (invalid asset metadata)",
+        );
+      }
+
+      if (marketState && !marketState.isOpen) {
+        childLog.info(
+          { nextOpenAt: marketState.nextOpenAt?.toISOString() },
+          "runFinalizer skipped: market closed",
+        );
+        return {
+          decisionJson: "",
+          costUsd: 0,
+          promptVersion: "",
+          skipReason: "market_closed",
+        };
+      }
+
       const setup = await deps.setupRepo.get(input.setupId);
       if (!setup) throw new Error(`Setup ${input.setupId} not found`);
       const history = await deps.eventStore.listForSetup(input.setupId);
@@ -277,7 +335,7 @@ export function buildSetupActivities(deps: ActivityDeps) {
       chartUri?: string;
     }): Promise<{ messageId: number } | null> {
       const childLog = log.child({ watchId: input.watchId, asset: input.asset });
-      const watch = deps.watchById(input.watchId);
+      const watch = await deps.watchById(input.watchId);
       if (!watch) return null;
       if (!watch.notify_on.includes("confirmed")) {
         childLog.debug({ event: "confirmed" }, "notification skipped (not in notify_on)");
@@ -308,7 +366,7 @@ export function buildSetupActivities(deps: ActivityDeps) {
       reasoning: string;
     }): Promise<{ messageId: number } | null> {
       const childLog = log.child({ watchId: input.watchId, asset: input.asset });
-      const watch = deps.watchById(input.watchId);
+      const watch = await deps.watchById(input.watchId);
       if (!watch) return null;
       if (!watch.notify_on.includes("rejected")) {
         childLog.debug({ event: "rejected" }, "notification skipped (not in notify_on)");
@@ -329,7 +387,7 @@ export function buildSetupActivities(deps: ActivityDeps) {
       reason: string;
     }): Promise<{ messageId: number } | null> {
       const childLog = log.child({ watchId: input.watchId, asset: input.asset });
-      const watch = deps.watchById(input.watchId);
+      const watch = await deps.watchById(input.watchId);
       if (!watch) return null;
       if (!watch.notify_on.includes("invalidated_after_confirmed")) {
         childLog.debug(
@@ -355,7 +413,7 @@ export function buildSetupActivities(deps: ActivityDeps) {
       isFinal: boolean;
     }): Promise<{ messageId: number } | null> {
       const childLog = log.child({ watchId: input.watchId, asset: input.asset });
-      const watch = deps.watchById(input.watchId);
+      const watch = await deps.watchById(input.watchId);
       if (!watch) return null;
       if (!watch.notify_on.includes("tp_hit")) {
         childLog.debug({ event: "tp_hit" }, "notification skipped (not in notify_on)");
@@ -381,7 +439,7 @@ export function buildSetupActivities(deps: ActivityDeps) {
       level: number;
     }): Promise<{ messageId: number } | null> {
       const childLog = log.child({ watchId: input.watchId, asset: input.asset });
-      const watch = deps.watchById(input.watchId);
+      const watch = await deps.watchById(input.watchId);
       if (!watch) return null;
       if (!watch.notify_on.includes("sl_hit")) {
         childLog.debug({ event: "sl_hit" }, "notification skipped (not in notify_on)");
@@ -401,7 +459,7 @@ export function buildSetupActivities(deps: ActivityDeps) {
       timeframe: string;
     }): Promise<{ messageId: number } | null> {
       const childLog = log.child({ watchId: input.watchId, asset: input.asset });
-      const watch = deps.watchById(input.watchId);
+      const watch = await deps.watchById(input.watchId);
       if (!watch) return null;
       if (!watch.notify_on.includes("expired")) {
         childLog.debug({ event: "expired" }, "notification skipped (not in notify_on)");

@@ -68,7 +68,7 @@ async function main() {
 
     // Apply --providers override by patching the watch's disabled list.
     if (providersOverride) {
-      const watch = wiring.deps.watchById(setup.watchId);
+      const watch = await wiring.deps.watchById(setup.watchId);
       if (!watch) {
         console.error(`Watch ${setup.watchId} not found in config`);
         process.exit(1);

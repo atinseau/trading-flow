@@ -107,7 +107,7 @@ export function buildFeedbackActivities(deps: ActivityDeps) {
       const setup = await deps.setupRepo.get(input.setupId);
       if (!setup) throw new Error(`Setup ${input.setupId} not found`);
 
-      const watch = deps.watchById(input.watchId);
+      const watch = await deps.watchById(input.watchId);
       if (!watch) throw new Error(`Unknown watch: ${input.watchId}`);
 
       const events = await deps.eventStore.listForSetup(input.setupId);
@@ -174,7 +174,7 @@ export function buildFeedbackActivities(deps: ActivityDeps) {
 
     async runFeedbackAnalysis(input: RunFeedbackAnalysisInput): Promise<RunFeedbackAnalysisResult> {
       const childLog = log.child({ setupId: input.setupId, watchId: input.watchId });
-      const watch = deps.watchById(input.watchId);
+      const watch = await deps.watchById(input.watchId);
       if (!watch) throw new Error(`Unknown watch: ${input.watchId}`);
 
       const analyzer = watch.feedback.analyzer ?? watch.analyzers.feedback;
@@ -304,7 +304,7 @@ export function buildFeedbackActivities(deps: ActivityDeps) {
 
     async applyLessonChanges(input: ApplyLessonChangesInput): Promise<ApplyLessonChangesResult> {
       const childLog = log.child({ setupId: input.setupId, watchId: input.watchId });
-      const watch = deps.watchById(input.watchId);
+      const watch = await deps.watchById(input.watchId);
       if (!watch) throw new Error(`Unknown watch: ${input.watchId}`);
 
       // Defense-in-depth: if the workflow forgets to short-circuit on a cache

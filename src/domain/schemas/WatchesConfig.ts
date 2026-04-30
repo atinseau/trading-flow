@@ -61,6 +61,38 @@ export const NotifyEventSchema = z.enum([
 ]);
 export type NotifyEvent = z.infer<typeof NotifyEventSchema>;
 
+const QuoteTypeSchema = z.enum(["EQUITY", "ETF", "INDEX", "CURRENCY", "FUTURE", "CRYPTOCURRENCY"]);
+
+const AssetSchema = z
+  .object({
+    symbol: z.string(),
+    source: z.enum(KNOWN_ASSET_SOURCES),
+    quoteType: QuoteTypeSchema.optional(),
+    exchange: z.string().optional(),
+  })
+  .superRefine((asset, ctx) => {
+    if (asset.source === "binance") return;
+    // source === "yahoo"
+    if (!asset.quoteType) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["quoteType"],
+        message: "yahoo asset requires quoteType (recreate watch)",
+      });
+      return;
+    }
+    if (
+      (asset.quoteType === "EQUITY" || asset.quoteType === "ETF" || asset.quoteType === "INDEX") &&
+      !asset.exchange
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["exchange"],
+        message: `${asset.quoteType} requires exchange`,
+      });
+    }
+  });
+
 export const KNOWN_PROVIDER_IDS = [
   "setup-events",
   "tick-snapshots",
@@ -97,7 +129,7 @@ export const WatchSchema = z
   .object({
     id: z.string().regex(/^[a-z0-9-]+$/),
     enabled: z.boolean().default(true),
-    asset: z.object({ symbol: z.string(), source: z.enum(KNOWN_ASSET_SOURCES) }),
+    asset: AssetSchema,
     timeframes: z.object({
       primary: TimeframeSchema,
       higher: z.array(TimeframeSchema).default([]),

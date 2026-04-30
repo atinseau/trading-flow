@@ -98,7 +98,7 @@ export async function wireFeedbackActivitiesForCli(): Promise<FeedbackCliWiring>
   // Replay must not produce duplicate Telegram notifications.
   const notifier: Notifier = new ConsoleNotifier();
 
-  const watchById = (id: string) => watches.find((w) => w.id === id);
+  const watchById = async (id: string) => watches.find((w) => w.id === id) ?? null;
 
   // FeedbackContextProviderRegistry — the 4 canonical providers. The chart and
   // post-mortem providers each take a single MarketDataFetcher; we resolve it
@@ -145,6 +145,8 @@ export async function wireFeedbackActivitiesForCli(): Promise<FeedbackCliWiring>
     priceFeeds: new Map<string, PriceFeed>(),
     notifier,
     setupRepo,
+    watchRepo: null as unknown as ActivityDeps["watchRepo"],
+    scheduleController: null as unknown as ActivityDeps["scheduleController"],
     eventStore,
     artifactStore,
     tickSnapshotStore,

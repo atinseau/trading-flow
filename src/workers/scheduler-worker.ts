@@ -3,6 +3,8 @@ import { loadWatchesFromDb } from "@config/loadWatchesFromDb";
 import { HealthServer } from "@observability/healthServer";
 import { getLogger } from "@observability/logger";
 import { NativeConnection, Worker } from "@temporalio/worker";
+import { buildMarketClockActivities } from "@workflows/marketClock/activities";
+import { bootstrapMarketClocks } from "@workflows/marketClock/ensureMarketClock";
 import { buildPriceMonitorActivities } from "@workflows/price-monitor/activities";
 import { buildSchedulerActivities } from "@workflows/scheduler/activities";
 import pg from "pg";
@@ -36,8 +38,18 @@ const worker = await Worker.create({
   activities: {
     ...buildSchedulerActivities(container.deps),
     ...buildPriceMonitorActivities(container.deps),
+    ...buildMarketClockActivities(container.deps),
   },
 });
+
+// Start market-clock workflows for every distinct session of enabled watches.
+// Runs once per worker startup; idempotent (skips already-running clocks).
+await bootstrapMarketClocks({
+  client: container.deps.temporalClient,
+  taskQueue: infra.temporal.task_queues.scheduler,
+  watches: container.deps.watchRepo,
+});
+log.info("market clocks bootstrapped");
 
 log.info(
   { taskQueue: infra.temporal.task_queues.scheduler, watchCount: watches.length },

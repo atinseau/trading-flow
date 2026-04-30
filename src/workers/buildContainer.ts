@@ -18,8 +18,10 @@ import { PostgresLessonStore } from "@adapters/persistence/PostgresLessonStore";
 import { PostgresLLMUsageStore } from "@adapters/persistence/PostgresLLMUsageStore";
 import { PostgresSetupRepository } from "@adapters/persistence/PostgresSetupRepository";
 import { PostgresTickSnapshotStore } from "@adapters/persistence/PostgresTickSnapshotStore";
+import { PostgresWatchRepository } from "@adapters/persistence/PostgresWatchRepository";
 import { BinanceWsPriceFeed } from "@adapters/price-feed/BinanceWsPriceFeed";
 import { YahooPollingPriceFeed } from "@adapters/price-feed/YahooPollingPriceFeed";
+import { TemporalScheduleController } from "@adapters/temporal/TemporalScheduleController";
 import { SystemClock } from "@adapters/time/SystemClock";
 import type { InfraConfig } from "@config/InfraConfig";
 import { parseTimeframeToMs } from "@domain/ports/Clock";
@@ -27,6 +29,7 @@ import type { LLMProvider } from "@domain/ports/LLMProvider";
 import type { MarketDataFetcher } from "@domain/ports/MarketDataFetcher";
 import type { Notifier } from "@domain/ports/Notifier";
 import type { PriceFeed } from "@domain/ports/PriceFeed";
+import type { ScheduleController } from "@domain/ports/ScheduleController";
 import type { WatchConfig } from "@domain/schemas/WatchesConfig";
 import { Client, Connection } from "@temporalio/client";
 import type { ActivityDeps } from "@workflows/activityDependencies";
@@ -71,6 +74,8 @@ export async function buildContainer(
   const lessonStore = new PostgresLessonStore(db);
   const lessonEventStore = new PostgresLessonEventStore(db);
   const clock = new SystemClock();
+
+  const watchRepo = new PostgresWatchRepository(db);
 
   // notifyLessonPending default — no-op with one-time warn so a missing wiring
   // is observable without crashing.
@@ -143,9 +148,6 @@ export async function buildContainer(
     priceFeeds.set("yahoo_polling", new YahooPollingPriceFeed());
   }
 
-  const watchesArr = [...watches];
-  const watchById = (id: string) => watchesArr.find((w) => w.id === id);
-
   let temporalConnection: Connection | null = null;
   let temporalClient: Client | null = null;
   if (role === "scheduler") {
@@ -155,6 +157,11 @@ export async function buildContainer(
       namespace: infra.temporal.namespace,
     });
   }
+
+  const scheduleController: ScheduleController =
+    temporalClient !== null
+      ? new TemporalScheduleController(temporalClient)
+      : (null as unknown as ScheduleController);
 
   // Feedback context registry — wired with the 4 canonical providers on the
   // analysis role only (the only worker that runs feedback activities).
@@ -227,14 +234,16 @@ export async function buildContainer(
     priceFeeds,
     notifier,
     setupRepo,
+    watchRepo,
     eventStore,
     artifactStore,
     tickSnapshotStore,
     clock,
-    config: { watches: watchesArr },
+    config: { watches: [...watches] },
     infra,
-    watchById,
+    watchById: (id: string) => watchRepo.findById(id),
     temporalClient: temporalClient ?? (null as unknown as Client),
+    scheduleController,
     db,
     pgPool: pool,
     lessonStore,

@@ -88,11 +88,6 @@ export async function schedulerWorkflow(args: SchedulerArgs): Promise<void> {
     paused = false;
   });
   setHandler(reloadConfigSignal, async () => {
-    // Reload watches from Postgres and mutate the worker-level config in
-    // place, so subsequent activity invocations (which call
-    // `deps.watchById`) see the new data. Note: changes to `temporal.address`
-    // or schedule cron require a worker restart or a Schedule update — they
-    // are not picked up here.
     await dbActivities.reloadConfigFromDb({});
   });
   setHandler(getSchedulerStateQuery, () => ({ paused, lastTickAt }));

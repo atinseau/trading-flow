@@ -1,4 +1,5 @@
+import { marketClockWorkflow } from "../marketClock/marketClockWorkflow";
 import { priceMonitorWorkflow } from "../price-monitor/priceMonitorWorkflow";
 import { schedulerWorkflow, tickStarterWorkflow } from "./schedulerWorkflow";
 
-export { priceMonitorWorkflow, schedulerWorkflow, tickStarterWorkflow };
+export { marketClockWorkflow, priceMonitorWorkflow, schedulerWorkflow, tickStarterWorkflow };

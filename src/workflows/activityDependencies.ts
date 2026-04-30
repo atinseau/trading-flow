@@ -11,8 +11,10 @@ import type { LLMProvider } from "@domain/ports/LLMProvider";
 import type { MarketDataFetcher } from "@domain/ports/MarketDataFetcher";
 import type { Notifier } from "@domain/ports/Notifier";
 import type { PriceFeed } from "@domain/ports/PriceFeed";
+import type { ScheduleController } from "@domain/ports/ScheduleController";
 import type { SetupRepository } from "@domain/ports/SetupRepository";
 import type { TickSnapshotStore } from "@domain/ports/TickSnapshotStore";
+import type { WatchRepository } from "@domain/ports/WatchRepository";
 import type { WatchConfig } from "@domain/schemas/WatchesConfig";
 import type { Client } from "@temporalio/client";
 import type { drizzle } from "drizzle-orm/node-postgres";
@@ -39,14 +41,16 @@ export type ActivityDeps = {
   priceFeeds: Map<string, PriceFeed>;
   notifier: Notifier;
   setupRepo: SetupRepository;
+  watchRepo: WatchRepository;
   eventStore: EventStore;
   artifactStore: ArtifactStore;
   tickSnapshotStore: TickSnapshotStore;
   clock: Clock;
   config: { watches: WatchConfig[] };
   infra: InfraConfig;
-  watchById: (id: string) => WatchConfig | undefined;
+  watchById: (id: string) => Promise<WatchConfig | null>;
   temporalClient: Client;
+  scheduleController: ScheduleController;
   db: ReturnType<typeof drizzle>;
   pgPool: pg.Pool;
   // --- Feedback loop deps ---

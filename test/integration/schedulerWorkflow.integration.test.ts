@@ -42,7 +42,7 @@ function makeWatch(id: string): WatchConfig {
   const cfg: unknown = {
     id,
     enabled: true,
-    asset: { symbol: "BTCUSDT", source: "fake" },
+    asset: { symbol: "BTCUSDT", source: "binance" },
     timeframes: { primary: "1h", higher: [] },
     schedule: { detector_cron: "*/15 * * * *", timezone: "UTC" },
     candles: { detector_lookback: 200, reviewer_lookback: 500, reviewer_chart_window: 150 },
@@ -120,13 +120,19 @@ async function buildDeps(
   llmProviders.set("fake", detectorLLM);
 
   return {
-    marketDataFetchers: new Map([["fake", marketData]]),
+    marketDataFetchers: new Map([["binance", marketData]]),
     chartRenderer: new FakeChartRenderer(),
     indicatorCalculator: indicators,
     llmProviders,
-    priceFeeds: new Map([["fake", new FakePriceFeed()]]),
+    priceFeeds: new Map([["binance", new FakePriceFeed()]]),
     notifier: new FakeNotifier(),
     setupRepo,
+    watchRepo: {
+      findAll: async () => [],
+      findById: async () => null,
+      findEnabled: async () => [],
+      findAllWithValidation: async () => [],
+    },
     eventStore,
     artifactStore,
     tickSnapshotStore,
@@ -144,8 +150,9 @@ async function buildDeps(
       artifacts: { base_dir: "/tmp" },
       claude: { workspace_dir: "/tmp" },
     },
-    watchById: (id) => (id === watchId ? watch : undefined),
+    watchById: async (id) => (id === watchId ? watch : null),
     temporalClient: env.client,
+    scheduleController: { pause: async () => {}, unpause: async () => {} },
     db,
     pgPool: pool,
     lessonStore: new InMemoryLessonStore(),
