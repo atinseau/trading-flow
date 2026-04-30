@@ -5,10 +5,11 @@ import { vwapPlugin } from "./plugins/vwap";
 import { bollingerPlugin } from "./plugins/bollinger";
 import { rsiPlugin } from "./plugins/rsi";
 import { macdPlugin } from "./plugins/macd";
+import { atrPlugin } from "./plugins/atr";
 
 // Plugins are registered here as they get implemented (Tasks 5-16 of the
 // indicators modularization plan).
-export const REGISTRY: ReadonlyArray<IndicatorPlugin> = [emaStackPlugin, vwapPlugin, bollingerPlugin, rsiPlugin, macdPlugin] as const;
+export const REGISTRY: ReadonlyArray<IndicatorPlugin> = [emaStackPlugin, vwapPlugin, bollingerPlugin, rsiPlugin, macdPlugin, atrPlugin] as const;
 
 export class IndicatorRegistry {
   constructor(private plugins: ReadonlyArray<IndicatorPlugin> = REGISTRY) {}
