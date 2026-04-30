@@ -25,6 +25,7 @@
       "@observability/*": ["./src/observability/*"],
       "@cli/*": ["./src/cli/*"],
       "@client/*": ["./src/client/*"],
+      "@shared/*": ["./src/shared/*"],
       "@test-fakes/*": ["./test/fakes/*"],
       "@test-helpers/*": ["./test/helpers/*"]
     }
