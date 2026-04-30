@@ -148,6 +148,8 @@ function makeDeps(
     marketDataFetchers: new Map(),
     chartRenderer: null as never,
     indicatorCalculator: null as never,
+    indicatorRegistry: null as never,
+    promptBuilder: null as never,
     priceFeeds: new Map(),
     notifier: null as never,
     watchRepo: null as never,

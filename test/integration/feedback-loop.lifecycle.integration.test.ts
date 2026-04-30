@@ -154,6 +154,8 @@ function buildDepsForWatch(args: {
     marketDataFetchers: new Map([["binance", new FakeMarketDataFetcher()]]),
     chartRenderer: new FakeChartRenderer(),
     indicatorCalculator: new FakeIndicatorCalculator(),
+    indicatorRegistry: null as unknown as ActivityDeps["indicatorRegistry"],
+    promptBuilder: null as unknown as ActivityDeps["promptBuilder"],
     llmProviders,
     priceFeeds: new Map([["fake", new FakePriceFeed()]]),
     notifier: new FakeNotifier(),

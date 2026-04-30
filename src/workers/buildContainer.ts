@@ -6,6 +6,8 @@ import { SetupEventsContextProvider } from "@adapters/feedback-context/SetupEven
 import { TickSnapshotsContextProvider } from "@adapters/feedback-context/TickSnapshotsContextProvider";
 import { IndicatorRegistry } from "@adapters/indicators/IndicatorRegistry";
 import { PureJsIndicatorCalculator } from "@adapters/indicators/PureJsIndicatorCalculator";
+import { FewShotEngine } from "@domain/services/FewShotEngine";
+import { PromptBuilder } from "@domain/services/PromptBuilder";
 import { buildProviderRegistry } from "@adapters/llm/buildProviderRegistry";
 import { BinanceFetcher } from "@adapters/market-data/BinanceFetcher";
 import { YahooFinanceFetcher } from "@adapters/market-data/YahooFinanceFetcher";
@@ -118,6 +120,10 @@ export async function buildContainer(
   // Chart renderer: scheduler builds setup charts; analysis renders post-mortem
   // charts for the feedback loop.
   const indicatorRegistry = new IndicatorRegistry();
+  const fewShotEngine = new FewShotEngine();
+  const promptBuilder = new PromptBuilder(indicatorRegistry, fewShotEngine);
+  await promptBuilder.warmUp();
+
   let chartRenderer: PlaywrightChartRenderer | null = null;
   if (role === "scheduler") {
     chartRenderer = new PlaywrightChartRenderer(indicatorRegistry, { poolSize: 2 });
@@ -232,6 +238,8 @@ export async function buildContainer(
     marketDataFetchers,
     chartRenderer: chartRenderer ?? (null as unknown as PlaywrightChartRenderer),
     indicatorCalculator: indicatorCalculator ?? (null as unknown as PureJsIndicatorCalculator),
+    indicatorRegistry,
+    promptBuilder,
     llmProviders,
     priceFeeds,
     notifier,

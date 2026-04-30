@@ -1,4 +1,5 @@
 import type { FeedbackContextProviderRegistry } from "@adapters/feedback-context/FeedbackContextProviderRegistry";
+import type { IndicatorRegistry } from "@adapters/indicators/IndicatorRegistry";
 import type { InfraConfig } from "@config/InfraConfig";
 import type { ArtifactStore } from "@domain/ports/ArtifactStore";
 import type { ChartRenderer } from "@domain/ports/ChartRenderer";
@@ -16,6 +17,7 @@ import type { SetupRepository } from "@domain/ports/SetupRepository";
 import type { TickSnapshotStore } from "@domain/ports/TickSnapshotStore";
 import type { WatchRepository } from "@domain/ports/WatchRepository";
 import type { WatchConfig } from "@domain/schemas/WatchesConfig";
+import type { PromptBuilder } from "@domain/services/PromptBuilder";
 import type { Client } from "@temporalio/client";
 import type { drizzle } from "drizzle-orm/node-postgres";
 import type pg from "pg";
@@ -37,6 +39,8 @@ export type ActivityDeps = {
   marketDataFetchers: Map<string, MarketDataFetcher>;
   chartRenderer: ChartRenderer;
   indicatorCalculator: IndicatorCalculator;
+  indicatorRegistry: IndicatorRegistry;
+  promptBuilder: PromptBuilder;
   llmProviders: Map<string, LLMProvider>;
   priceFeeds: Map<string, PriceFeed>;
   notifier: Notifier;

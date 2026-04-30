@@ -23,6 +23,8 @@ import { TickSnapshotsContextProvider } from "@adapters/feedback-context/TickSna
 import { IndicatorRegistry } from "@adapters/indicators/IndicatorRegistry";
 import { PureJsIndicatorCalculator } from "@adapters/indicators/PureJsIndicatorCalculator";
 import { buildProviderRegistry } from "@adapters/llm/buildProviderRegistry";
+import { FewShotEngine } from "@domain/services/FewShotEngine";
+import { PromptBuilder } from "@domain/services/PromptBuilder";
 import { BinanceFetcher } from "@adapters/market-data/BinanceFetcher";
 import { YahooFinanceFetcher } from "@adapters/market-data/YahooFinanceFetcher";
 import { ConsoleNotifier } from "@adapters/notify/ConsoleNotifier";
@@ -91,6 +93,10 @@ export async function wireFeedbackActivitiesForCli(): Promise<FeedbackCliWiring>
 
   // Chart renderer (poolSize=1: CLI runs once, then exits).
   const indicatorRegistry = new IndicatorRegistry();
+  const fewShotEngine = new FewShotEngine();
+  const promptBuilder = new PromptBuilder(indicatorRegistry, fewShotEngine);
+  await promptBuilder.warmUp();
+
   const chartRenderer = new PlaywrightChartRenderer(indicatorRegistry, { poolSize: 1 });
   await chartRenderer.warmUp();
 
@@ -143,6 +149,8 @@ export async function wireFeedbackActivitiesForCli(): Promise<FeedbackCliWiring>
     marketDataFetchers,
     chartRenderer,
     indicatorCalculator,
+    indicatorRegistry,
+    promptBuilder,
     llmProviders,
     priceFeeds: new Map<string, PriceFeed>(),
     notifier,
