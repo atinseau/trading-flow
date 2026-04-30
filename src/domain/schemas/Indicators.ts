@@ -1,16 +1,27 @@
 import { z } from "zod";
+import type { IndicatorPlugin } from "@domain/services/IndicatorPlugin";
 
-export const IndicatorsSchema = z.object({
-  rsi: z.number().min(0).max(100),
-  ema20: z.number(),
-  ema50: z.number(),
-  ema200: z.number(),
-  atr: z.number().nonnegative(),
-  atrMa20: z.number().nonnegative(),
-  volumeMa20: z.number().nonnegative(),
-  lastVolume: z.number().nonnegative(),
-  recentHigh: z.number(),
-  recentLow: z.number(),
-});
+/**
+ * Builds a per-watch indicators schema from the active plugin set.
+ * In naked mode (no active plugins), returns an empty object schema.
+ *
+ * Each plugin contributes its own keys via scalarSchemaFragment().
+ * The returned schema is `.strict()` — extra keys are rejected, which
+ * surfaces stale code paths during refactors.
+ */
+export function buildIndicatorsSchema(
+  plugins: ReadonlyArray<IndicatorPlugin>,
+): z.ZodObject<z.ZodRawShape> {
+  if (plugins.length === 0) return z.object({}).strict();
+  const shape: z.ZodRawShape = {};
+  for (const p of plugins) {
+    Object.assign(shape, p.scalarSchemaFragment());
+  }
+  return z.object(shape).strict();
+}
 
-export type Indicators = z.infer<typeof IndicatorsSchema>;
+/** Loose carrier type for compute-side scalars before per-watch validation. */
+export type IndicatorScalars = Record<string, unknown>;
+
+// Temporary: legacy consumers still import `Indicators`. Removed in Task 40.
+export type Indicators = IndicatorScalars;
