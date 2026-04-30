@@ -21,7 +21,7 @@ describe("swingsBosPlugin", () => {
   test("computeScalars returns bosState and swing prices/ages", () => {
     const s = swingsBosPlugin.computeScalars(sampleCandles);
     expect(s.bosState).toBeDefined();
-    expect(["bullish", "bearish", "none"]).toContain(s.bosState);
+    expect(["bullish", "bearish", "none"]).toContain(s.bosState as string);
   });
 
   test("computeSeries returns markers kind", () => {

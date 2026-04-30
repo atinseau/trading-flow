@@ -30,7 +30,7 @@ describe("IndicatorRegistry (foundation)", () => {
   });
 
   test("byId returns undefined for unknown id", () => {
-    const reg = new IndicatorRegistry();
+    const reg = new IndicatorRegistry([]);
     expect(reg.byId("volume" as Parameters<InstanceType<typeof IndicatorRegistry>["byId"]>[0])).toBeUndefined();
   });
 
@@ -40,9 +40,9 @@ describe("IndicatorRegistry (foundation)", () => {
     expect(reg.allChartScripts()).toContain("RSI(14)");
   });
 
-  test("all() returns array with rsiPlugin", () => {
+  test("all() returns array containing rsiPlugin", () => {
     const reg = new IndicatorRegistry();
-    expect(reg.all()).toHaveLength(1);
-    expect(reg.all()[0]?.id).toBe("rsi");
+    expect(reg.all().length).toBeGreaterThanOrEqual(1);
+    expect(reg.all().some((p) => p.id === "rsi")).toBe(true);
   });
 });
