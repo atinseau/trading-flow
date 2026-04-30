@@ -25,6 +25,28 @@ const PreFilterSchema = z
 export const KNOWN_PROVIDERS = ["claude_max", "openrouter"] as const;
 export const KNOWN_ASSET_SOURCES = ["binance", "yahoo"] as const;
 
+export const KNOWN_INDICATOR_IDS = [
+  "ema_stack", "vwap", "bollinger", "rsi", "macd", "atr", "volume",
+  "swings_bos", "recent_range", "liquidity_pools", "fvg", "poc",
+] as const;
+export type IndicatorId = (typeof KNOWN_INDICATOR_IDS)[number];
+
+const IndicatorConfigSchema = z.object({
+  enabled: z.boolean().default(false),
+});
+
+// z.record(z.enum(...), ...) in Zod v4 requires ALL enum keys to be present.
+// Use a strict partial object so unknown keys are rejected and any subset is valid.
+const IndicatorsConfigSchema = z
+  .object(
+    Object.fromEntries(KNOWN_INDICATOR_IDS.map((id) => [id, IndicatorConfigSchema.optional()])) as {
+      [K in IndicatorId]: z.ZodOptional<typeof IndicatorConfigSchema>;
+    },
+  )
+  .strict()
+  .partial()
+  .default({});
+
 const AnalyzerSchema = z.object({
   provider: z.enum(KNOWN_PROVIDERS),
   model: z.string(),
@@ -190,6 +212,7 @@ export const WatchSchema = z
       })
       .prefault({}),
     feedback: FeedbackConfigSchema.prefault({}),
+    indicators: IndicatorsConfigSchema,
   })
   .superRefine((watch, ctx) => {
     if (watch.feedback.enabled && !watch.feedback.analyzer && !watch.analyzers.feedback) {

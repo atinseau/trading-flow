@@ -58,6 +58,7 @@ const nasdaqWatch: WatchConfig = {
   include_reasoning: true,
   budget: { pause_on_budget_exceeded: true },
   feedback: { enabled: false, max_active_lessons_per_category: 30, injection: { detector: false, reviewer: false, finalizer: false }, context_providers_disabled: [] },
+  indicators: {},
 };
 
 /**
@@ -99,6 +100,7 @@ const binanceWatch: WatchConfig = {
   include_reasoning: true,
   budget: { pause_on_budget_exceeded: true },
   feedback: { enabled: false, max_active_lessons_per_category: 30, injection: { detector: false, reviewer: false, finalizer: false }, context_providers_disabled: [] },
+  indicators: {},
 };
 
 // A Saturday 12:00 UTC — NASDAQ is always closed on Saturday.
@@ -223,6 +225,7 @@ describe("runReviewer — market-hours guard", () => {
       include_reasoning: true,
       budget: { pause_on_budget_exceeded: true },
       feedback: { enabled: false, max_active_lessons_per_category: 30, injection: { detector: false, reviewer: false, finalizer: false }, context_providers_disabled: [] },
+      indicators: {},
     };
 
     const clock = new FakeClock(SATURDAY_UTC);
