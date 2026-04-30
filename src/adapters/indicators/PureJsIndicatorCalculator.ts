@@ -1,134 +1,28 @@
 import type { IndicatorCalculator } from "@domain/ports/IndicatorCalculator";
+import type { IndicatorPlugin } from "@domain/services/IndicatorPlugin";
 import type { Candle } from "@domain/schemas/Candle";
-import { z } from "zod";
-
-/** Typed shape for the scalars this legacy monolithic calculator emits. */
-export interface LegacyIndicatorScalars extends Record<string, unknown> {
-  rsi: number;
-  ema20: number;
-  ema50: number;
-  ema200: number;
-  atr: number;
-  atrMa20: number;
-  volumeMa20: number;
-  lastVolume: number;
-  recentHigh: number;
-  recentLow: number;
-}
-
-export const LegacyIndicatorsSchema = z.object({
-  rsi: z.number().min(0).max(100),
-  ema20: z.number(),
-  ema50: z.number(),
-  ema200: z.number(),
-  atr: z.number().nonnegative(),
-  atrMa20: z.number().nonnegative(),
-  volumeMa20: z.number().nonnegative(),
-  lastVolume: z.number().nonnegative(),
-  recentHigh: z.number(),
-  recentLow: z.number(),
-});
+import type { IndicatorSeriesContribution } from "@adapters/indicators/plugins/base/types";
 
 export class PureJsIndicatorCalculator implements IndicatorCalculator {
-  async compute(candles: Candle[]): Promise<LegacyIndicatorScalars> {
-    if (candles.length < 200) {
-      throw new Error(`Need ≥200 candles for ema200, got ${candles.length}`);
-    }
-    const closes = candles.map((c) => c.close);
-    const highs = candles.map((c) => c.high);
-    const lows = candles.map((c) => c.low);
-    const volumes = candles.map((c) => c.volume);
-
-    const atrSeries = this.atrSeries(highs, lows, closes, 14);
-    return LegacyIndicatorsSchema.parse({
-      rsi: this.rsi(closes, 14),
-      ema20: this.ema(closes, 20),
-      ema50: this.ema(closes, 50),
-      ema200: this.ema(closes, 200),
-      atr: atrSeries[atrSeries.length - 1] ?? 0,
-      atrMa20: this.movingAverage(atrSeries, 20),
-      volumeMa20: this.movingAverage(volumes, 20),
-      lastVolume: volumes[volumes.length - 1] ?? 0,
-      recentHigh: Math.max(...highs.slice(-50)),
-      recentLow: Math.min(...lows.slice(-50)),
-    });
-  }
-
-  private rsi(closes: number[], period: number): number {
-    if (closes.length < period + 1) return 50;
-
-    // Step 1: initial average over the first `period` differences
-    // (closes[1] - closes[0], ..., closes[period] - closes[period-1])
-    let avgGain = 0;
-    let avgLoss = 0;
-    for (let i = 1; i <= period; i++) {
-      const cur = closes[i];
-      const prev = closes[i - 1];
-      if (cur === undefined || prev === undefined) continue;
-      const diff = cur - prev;
-      if (diff > 0) avgGain += diff;
-      else avgLoss -= diff;
-    }
-    avgGain /= period;
-    avgLoss /= period;
-
-    // Step 2: Wilder's smoothing for each subsequent close.
-    // avgGain_new = (avgGain_prev * (period - 1) + currentGain) / period
-    // avgLoss_new = (avgLoss_prev * (period - 1) + currentLoss) / period
-    for (let i = period + 1; i < closes.length; i++) {
-      const cur = closes[i];
-      const prev = closes[i - 1];
-      if (cur === undefined || prev === undefined) continue;
-      const diff = cur - prev;
-      const gain = diff > 0 ? diff : 0;
-      const loss = diff < 0 ? -diff : 0;
-      avgGain = (avgGain * (period - 1) + gain) / period;
-      avgLoss = (avgLoss * (period - 1) + loss) / period;
-    }
-
-    if (avgLoss === 0) return 100;
-    const rs = avgGain / avgLoss;
-    return 100 - 100 / (1 + rs);
-  }
-
-  private ema(values: number[], period: number): number {
-    if (values.length === 0) return 0;
-    const k = 2 / (period + 1);
-    let ema = values.slice(0, period).reduce((a, b) => a + b, 0) / period;
-    for (let i = period; i < values.length; i++) {
-      const v = values[i];
-      if (v === undefined) continue;
-      ema = v * k + ema * (1 - k);
-    }
-    return ema;
-  }
-
-  private atrSeries(highs: number[], lows: number[], closes: number[], period: number): number[] {
-    const trs: number[] = [];
-    for (let i = 1; i < highs.length; i++) {
-      const h = highs[i];
-      const l = lows[i];
-      const cPrev = closes[i - 1];
-      if (h === undefined || l === undefined || cPrev === undefined) continue;
-      const tr = Math.max(h - l, Math.abs(h - cPrev), Math.abs(l - cPrev));
-      trs.push(tr);
-    }
-    const out: number[] = [];
-    if (trs.length < period) return out;
-    let atr = trs.slice(0, period).reduce((a, b) => a + b, 0) / period;
-    out.push(atr);
-    for (let i = period; i < trs.length; i++) {
-      const tr = trs[i];
-      if (tr === undefined) continue;
-      atr = (atr * (period - 1) + tr) / period;
-      out.push(atr);
+  async compute(
+    candles: Candle[],
+    plugins: ReadonlyArray<IndicatorPlugin>,
+  ): Promise<Record<string, unknown>> {
+    const out: Record<string, unknown> = {};
+    for (const p of plugins) {
+      Object.assign(out, p.computeScalars(candles));
     }
     return out;
   }
 
-  private movingAverage(values: number[], period: number): number {
-    if (values.length === 0) return 0;
-    const slice = values.slice(-period);
-    return slice.reduce((a, b) => a + b, 0) / slice.length;
+  async computeSeries(
+    candles: Candle[],
+    plugins: ReadonlyArray<IndicatorPlugin>,
+  ): Promise<Record<string, IndicatorSeriesContribution>> {
+    const out: Record<string, IndicatorSeriesContribution> = {};
+    for (const p of plugins) {
+      out[p.id] = p.computeSeries(candles);
+    }
+    return out;
   }
 }

@@ -1,4 +1,5 @@
 import { resolveAndCall } from "@adapters/llm/resolveAndCall";
+import { REGISTRY } from "@adapters/indicators/IndicatorRegistry";
 import { watchStates } from "@adapters/persistence/schema";
 import { loadPrompt } from "@adapters/prompts/loadPrompt";
 import { loadWatchesFromDb } from "@config/loadWatchesFromDb";
@@ -85,7 +86,8 @@ export function buildSchedulerActivities(deps: ActivityDeps) {
 
     async computeIndicators(input: { ohlcvJson: string }): Promise<{ indicatorsJson: string }> {
       const candles = z.array(CandleSchema).parse(JSON.parse(input.ohlcvJson, dateReviver));
-      const ind = await deps.indicatorCalculator.compute(candles);
+      // TODO(Task 30): resolve active plugins from watch config instead of using full REGISTRY.
+      const ind = await deps.indicatorCalculator.compute(candles, REGISTRY);
       return { indicatorsJson: JSON.stringify(ind) };
     },
 

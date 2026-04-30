@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { PureJsIndicatorCalculator } from "@adapters/indicators/PureJsIndicatorCalculator";
+import { IndicatorRegistry } from "@adapters/indicators/IndicatorRegistry";
 import type { Candle } from "@domain/schemas/Candle";
 
 const calc = new PureJsIndicatorCalculator();
+const allPlugins = new IndicatorRegistry().all();
 
 /**
  * Helper: build a candle list with closes from an array, deterministic OHLV.
@@ -41,10 +43,10 @@ describe("PureJsIndicatorCalculator reference values", () => {
     const padded = [...Array(200 - closes.length).fill(first), ...closes];
     const candles = fromCloses(padded);
 
-    const ind = await calc.compute(candles);
+    const ind = await calc.compute(candles, allPlugins);
 
     // Empirical reference value: Wilder's smoothed RSI on this exact padded dataset.
-    expect(ind.rsi).toBeCloseTo(35.51, 1);
+    expect(ind.rsi as number).toBeCloseTo(35.51, 1);
   });
 
   test("RSI(14) on strictly ascending series equals 100 (Wilder's no-loss case)", async () => {
@@ -52,17 +54,17 @@ describe("PureJsIndicatorCalculator reference values", () => {
     // Wilder's smoothed: avgLoss = 0 throughout → RSI = 100.
     const closes = Array.from({ length: 220 }, (_, i) => 100 + i);
     const candles = fromCloses(closes);
-    const ind = await calc.compute(candles);
-    expect(ind.rsi).toBeCloseTo(100, 5);
+    const ind = await calc.compute(candles, allPlugins);
+    expect(ind.rsi as number).toBeCloseTo(100, 5);
   });
 
   test("RSI(14) on alternating +1/-1 series approaches 50 (Wilder's balanced case)", async () => {
     // Alternating +1 / -1 increments → equal smoothed gains and losses → RSI ≈ 50.
     const closes = Array.from({ length: 220 }, (_, i) => 100 + (i % 2));
     const candles = fromCloses(closes);
-    const ind = await calc.compute(candles);
+    const ind = await calc.compute(candles, allPlugins);
     // Empirical value is ~51.85 (slight asymmetry from initial period boundary).
-    expect(ind.rsi).toBeCloseTo(51.85, 1);
+    expect(ind.rsi as number).toBeCloseTo(51.85, 1);
   });
 
   test("EMA(20) on a constant series equals the constant", async () => {
@@ -70,11 +72,11 @@ describe("PureJsIndicatorCalculator reference values", () => {
     const closes = Array(220).fill(50);
     const candles = fromCloses(closes);
 
-    const ind = await calc.compute(candles);
+    const ind = await calc.compute(candles, allPlugins);
 
-    expect(ind.ema20).toBeCloseTo(50, 5);
-    expect(ind.ema50).toBeCloseTo(50, 5);
-    expect(ind.ema200).toBeCloseTo(50, 5);
+    expect(ind.ema20 as number).toBeCloseTo(50, 5);
+    expect(ind.ema50 as number).toBeCloseTo(50, 5);
+    expect(ind.ema200 as number).toBeCloseTo(50, 5);
   });
 
   test("EMA(20) lags moving averages on rising series", async () => {
@@ -82,16 +84,16 @@ describe("PureJsIndicatorCalculator reference values", () => {
     const closes = Array.from({ length: 220 }, (_, i) => 100 + i);
     const candles = fromCloses(closes);
 
-    const ind = await calc.compute(candles);
+    const ind = await calc.compute(candles, allPlugins);
 
     const lastClose = closes[closes.length - 1] ?? 0;
 
     // EMA20 should be below lastClose (lagging) but above lastClose - 20.
-    expect(ind.ema20).toBeLessThan(lastClose);
-    expect(ind.ema20).toBeGreaterThan(lastClose - 20);
+    expect(ind.ema20 as number).toBeLessThan(lastClose);
+    expect(ind.ema20 as number).toBeGreaterThan(lastClose - 20);
     // Longer-period EMAs lag more than shorter-period EMAs on a rising series.
-    expect(ind.ema200).toBeLessThan(ind.ema50);
-    expect(ind.ema50).toBeLessThan(ind.ema20);
+    expect(ind.ema200 as number).toBeLessThan(ind.ema50 as number);
+    expect(ind.ema50 as number).toBeLessThan(ind.ema20 as number);
   });
 
   test("ATR(14) on constant range equals that range", async () => {
@@ -105,10 +107,10 @@ describe("PureJsIndicatorCalculator reference values", () => {
       volume: 100,
     }));
 
-    const ind = await calc.compute(candles);
+    const ind = await calc.compute(candles, allPlugins);
 
     // High-Low = 2, no gaps so TR = 2.
-    expect(ind.atr).toBeCloseTo(2, 1);
+    expect(ind.atr as number).toBeCloseTo(2, 1);
   });
 
   test("recentHigh and recentLow capture last 50 candles range", async () => {
@@ -119,12 +121,12 @@ describe("PureJsIndicatorCalculator reference values", () => {
     for (let i = 0; i < 50; i++) closes.push(200 + (i % 20));
 
     const candles = fromCloses(closes);
-    const ind = await calc.compute(candles);
+    const ind = await calc.compute(candles, allPlugins);
 
     // recentHigh from highs of last 50 candles. Closes 200-219 mean
     // highs = close + 0.5 = 200.5-219.5. Max = 219.5.
-    expect(ind.recentHigh).toBeCloseTo(219.5, 1);
+    expect(ind.recentHigh as number).toBeCloseTo(219.5, 1);
     // recentLow from lows of last 50. Lows = close - 0.5 = 199.5-218.5. Min = 199.5.
-    expect(ind.recentLow).toBeCloseTo(199.5, 1);
+    expect(ind.recentLow as number).toBeCloseTo(199.5, 1);
   });
 });

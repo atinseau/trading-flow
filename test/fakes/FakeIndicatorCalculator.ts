@@ -1,9 +1,10 @@
 import type { IndicatorCalculator } from "@domain/ports/IndicatorCalculator";
+import type { IndicatorPlugin } from "@domain/services/IndicatorPlugin";
 import type { Candle } from "@domain/schemas/Candle";
-import type { Indicators } from "@domain/schemas/Indicators";
+import type { IndicatorSeriesContribution } from "@adapters/indicators/plugins/base/types";
 
 export class FakeIndicatorCalculator implements IndicatorCalculator {
-  fixed: Indicators = {
+  fixed: Record<string, unknown> = {
     rsi: 50,
     ema20: 100,
     ema50: 100,
@@ -16,11 +17,21 @@ export class FakeIndicatorCalculator implements IndicatorCalculator {
     recentLow: 90,
   };
 
-  async compute(_candles: Candle[]): Promise<Indicators> {
+  async compute(
+    _candles: Candle[],
+    _plugins: ReadonlyArray<IndicatorPlugin>,
+  ): Promise<Record<string, unknown>> {
     return { ...this.fixed };
   }
 
-  set(ind: Partial<Indicators>): void {
+  async computeSeries(
+    _candles: Candle[],
+    _plugins: ReadonlyArray<IndicatorPlugin>,
+  ): Promise<Record<string, IndicatorSeriesContribution>> {
+    return {};
+  }
+
+  set(ind: Partial<Record<string, unknown>>): void {
     this.fixed = { ...this.fixed, ...ind };
   }
 }
