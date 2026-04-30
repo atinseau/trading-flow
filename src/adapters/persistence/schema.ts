@@ -1,5 +1,5 @@
 import type { EventPayload } from "@domain/events/schemas";
-import type { Indicators } from "@domain/schemas/Indicators";
+import type { IndicatorScalars } from "@domain/schemas/Indicators";
 import { sql } from "drizzle-orm";
 import {
   boolean,
@@ -122,7 +122,7 @@ export const tickSnapshots = pgTable(
     timeframe: text("timeframe").notNull(),
     ohlcvUri: text("ohlcv_uri").notNull(),
     chartUri: text("chart_uri").notNull(),
-    indicators: jsonb("indicators").$type<Indicators>().notNull(),
+    indicators: jsonb("indicators").$type<IndicatorScalars>().notNull(),
     preFilterPass: boolean("pre_filter_pass").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },

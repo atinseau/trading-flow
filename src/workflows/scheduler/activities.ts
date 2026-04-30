@@ -1,7 +1,5 @@
 import { resolveAndCall } from "@adapters/llm/resolveAndCall";
-import { REGISTRY } from "@adapters/indicators/IndicatorRegistry";
 import { watchStates } from "@adapters/persistence/schema";
-import { loadPrompt } from "@adapters/prompts/loadPrompt";
 import { loadWatchesFromDb } from "@config/loadWatchesFromDb";
 import { InvalidConfigError } from "@domain/errors";
 import { CandleSchema } from "@domain/schemas/Candle";
@@ -69,13 +67,17 @@ export function buildSchedulerActivities(deps: ActivityDeps) {
       if (!watch) throw new InvalidConfigError(`Unknown watch: ${input.watchId}`);
       const candles = z.array(CandleSchema).parse(JSON.parse(input.ohlcvJson, dateReviver));
       const slice = candles.slice(-watch.candles.reviewer_chart_window);
+      const plugins = deps.indicatorRegistry.resolveActive(watch.indicators);
+      const series = await deps.indicatorCalculator.computeSeries(slice, plugins);
+      const enabledIds = plugins.map((p) => p.id);
+      const naked = enabledIds.length === 0;
       const tempUri = `file:///tmp/temp-chart-${crypto.randomUUID()}.png`;
       const result = await deps.chartRenderer.render({
         candles: slice,
-        series: {}, // TODO(Task 29): pass computed indicator series
-        enabledIndicatorIds: [], // TODO(Task 29): resolve from watch config
+        series,
+        enabledIndicatorIds: enabledIds,
         width: 1280,
-        height: 720,
+        height: naked ? 900 : 720,
         outputUri: tempUri,
       });
       const stored = await deps.artifactStore.put({
@@ -86,11 +88,16 @@ export function buildSchedulerActivities(deps: ActivityDeps) {
       return { artifactUri: stored.uri, sha256: stored.sha256 };
     },
 
-    async computeIndicators(input: { ohlcvJson: string }): Promise<{ indicatorsJson: string }> {
+    async computeIndicators(input: {
+      ohlcvJson: string;
+      watchId: string;
+    }): Promise<{ indicatorsJson: string }> {
+      const watch = await deps.watchById(input.watchId);
+      if (!watch) throw new InvalidConfigError(`Unknown watch: ${input.watchId}`);
       const candles = z.array(CandleSchema).parse(JSON.parse(input.ohlcvJson, dateReviver));
-      // TODO(Task 30): resolve active plugins from watch config instead of using full REGISTRY.
-      const ind = await deps.indicatorCalculator.compute(candles, REGISTRY);
-      return { indicatorsJson: JSON.stringify(ind) };
+      const plugins = deps.indicatorRegistry.resolveActive(watch.indicators);
+      const scalars = await deps.indicatorCalculator.compute(candles, plugins);
+      return { indicatorsJson: JSON.stringify(scalars) };
     },
 
     async evaluatePreFilter(input: {
@@ -102,7 +109,8 @@ export function buildSchedulerActivities(deps: ActivityDeps) {
       if (!watch) throw new InvalidConfigError(`Unknown watch: ${input.watchId}`);
       const candles = z.array(CandleSchema).parse(JSON.parse(input.ohlcvJson, dateReviver));
       const ind = JSON.parse(input.indicatorsJson);
-      return evaluatePreFilter(candles, ind, watch.pre_filter);
+      const plugins = deps.indicatorRegistry.resolveActive(watch.indicators);
+      return evaluatePreFilter(candles, ind, watch.pre_filter, plugins);
     },
 
     async createTickSnapshot(input: {
@@ -162,19 +170,21 @@ export function buildSchedulerActivities(deps: ActivityDeps) {
         await deps.lessonStore.incrementUsage(activeLessons.map((l) => l.id));
       }
 
-      const detectorPrompt = await loadPrompt("detector");
-      const userPrompt = detectorPrompt.render({
+      await deps.promptBuilder.warmUp();
+      const scalars = (snap.indicators ?? {}) as Record<string, unknown>;
+      const userPrompt = await deps.promptBuilder.buildDetectorPrompt({
         asset: snap.asset,
         timeframe: snap.timeframe,
-        tickAt: snap.tickAt.toISOString(),
-        indicators: snap.indicators,
-        aliveSetups: input.aliveSetups,
+        tickAt: snap.tickAt,
+        scalars,
+        aliveSetups: Array.isArray(input.aliveSetups) ? input.aliveSetups : [],
         activeLessons: activeLessons.map((l) => ({ title: l.title, body: l.body })),
+        indicatorsMatrix: watch.indicators,
       });
       const result = await resolveAndCall(
         watch.analyzers.detector.provider,
         {
-          systemPrompt: detectorPrompt.systemPrompt,
+          systemPrompt: deps.promptBuilder.detectorSystemPrompt,
           userPrompt,
           images: [{ sourceUri: snap.chartUri, mimeType: "image/png" }],
           model: watch.analyzers.detector.model,
@@ -194,7 +204,7 @@ export function buildSchedulerActivities(deps: ActivityDeps) {
       return {
         verdictJson: JSON.stringify(result.output.parsed),
         costUsd: result.output.costUsd,
-        promptVersion: detectorPrompt.version,
+        promptVersion: deps.promptBuilder.detectorVersion,
       };
     },
 

@@ -122,7 +122,7 @@ async function runOneTick(
   analysisTaskQueue: string,
 ): Promise<{ costUsd: number }> {
   const { ohlcvJson } = await fetchActivities.fetchOHLCV({ watchId });
-  const { indicatorsJson } = await dbActivities.computeIndicators({ ohlcvJson });
+  const { indicatorsJson } = await dbActivities.computeIndicators({ ohlcvJson, watchId });
   const preFilter = await dbActivities.evaluatePreFilter({ ohlcvJson, indicatorsJson, watchId });
   if (!preFilter.passed) return { costUsd: 0 };
 

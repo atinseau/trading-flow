@@ -1,8 +1,11 @@
 import { beforeEach, describe, expect, test } from "bun:test";
+import { IndicatorRegistry } from "@adapters/indicators/IndicatorRegistry";
 import { clearPromptCache } from "@adapters/prompts/loadPrompt";
 import type { TickSnapshot } from "@domain/entities/TickSnapshot";
 import type { LLMProvider } from "@domain/ports/LLMProvider";
 import type { WatchConfig, WatchesConfig } from "@domain/schemas/WatchesConfig";
+import { FewShotEngine } from "@domain/services/FewShotEngine";
+import { PromptBuilder } from "@domain/services/PromptBuilder";
 import { FakeLLMProvider } from "@test-fakes/FakeLLMProvider";
 import { InMemoryArtifactStore } from "@test-fakes/InMemoryArtifactStore";
 import { InMemoryLessonStore } from "@test-fakes/InMemoryLessonStore";
@@ -53,6 +56,7 @@ function makeWatch(injectionDetector: boolean): WatchConfig {
       injection: { detector: injectionDetector, reviewer: true, finalizer: true },
       context_providers_disabled: [],
     },
+    indicators: {},
   };
   return cfg as WatchConfig;
 }
@@ -111,10 +115,16 @@ async function buildHarness(injectionDetector: boolean): Promise<Harness> {
   });
   const llmProviders = new Map<string, LLMProvider>([["fake", llm]]);
 
+  const indicatorRegistry = new IndicatorRegistry();
+  const promptBuilder = new PromptBuilder(indicatorRegistry, new FewShotEngine());
+  await promptBuilder.warmUp();
+
   const deps = {
     marketDataFetchers: new Map(),
     chartRenderer: null,
     indicatorCalculator: null,
+    indicatorRegistry,
+    promptBuilder,
     llmProviders,
     priceFeeds: new Map(),
     notifier: null,
