@@ -57,6 +57,7 @@ const nasdaqWatch: WatchConfig = {
   include_chart_image: true,
   include_reasoning: true,
   budget: { pause_on_budget_exceeded: true },
+  feedback: { enabled: false, max_active_lessons_per_category: 30, injection: { detector: false, reviewer: false, finalizer: false }, context_providers_disabled: [] },
 };
 
 /**
@@ -97,6 +98,7 @@ const binanceWatch: WatchConfig = {
   include_chart_image: true,
   include_reasoning: true,
   budget: { pause_on_budget_exceeded: true },
+  feedback: { enabled: false, max_active_lessons_per_category: 30, injection: { detector: false, reviewer: false, finalizer: false }, context_providers_disabled: [] },
 };
 
 // A Saturday 12:00 UTC — NASDAQ is always closed on Saturday.
@@ -153,6 +155,10 @@ function makeDeps(
     scheduleController: null as never,
     db: null as never,
     pgPool: null as never,
+    lessonStore: null as never,
+    lessonEventStore: null as never,
+    feedbackContextRegistry: null as never,
+    notifyLessonPending: null as never,
   };
 }
 
@@ -216,6 +222,7 @@ describe("runReviewer — market-hours guard", () => {
       include_chart_image: true,
       include_reasoning: true,
       budget: { pause_on_budget_exceeded: true },
+      feedback: { enabled: false, max_active_lessons_per_category: 30, injection: { detector: false, reviewer: false, finalizer: false }, context_providers_disabled: [] },
     };
 
     const clock = new FakeClock(SATURDAY_UTC);
