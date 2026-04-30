@@ -1,6 +1,7 @@
 import { resolveAndCall } from "@adapters/llm/resolveAndCall";
 import { loadPrompt } from "@adapters/prompts/loadPrompt";
 import { InvalidConfigError } from "@domain/errors";
+// loadPrompt is still used for finalizer (not managed by PromptBuilder)
 import type { EventPayload } from "@domain/events/schemas";
 import type { NewEvent, SetupStateUpdate } from "@domain/ports/EventStore";
 import type { Verdict } from "@domain/schemas/Verdict";
@@ -118,8 +119,8 @@ export function buildSetupActivities(deps: ActivityDeps) {
       if (!snap) throw new Error(`TickSnapshot ${input.tickSnapshotId} not found`);
 
       const ohlcvBuf = await deps.artifactStore.get(snap.ohlcvUri);
-      const reviewerPrompt = await loadPrompt("reviewer");
-      const promptVersion = reviewerPrompt.version;
+      await deps.promptBuilder.warmUp();
+      const promptVersion = deps.promptBuilder.reviewerVersion;
 
       const activeLessons = watch.feedback.injection.reviewer
         ? await deps.lessonStore.listActive({
@@ -157,7 +158,8 @@ export function buildSetupActivities(deps: ActivityDeps) {
       }
 
       const history = await deps.eventStore.listForSetup(input.setupId);
-      const userPrompt = reviewerPrompt.render({
+      const scalars = (snap.indicators ?? {}) as Record<string, unknown>;
+      const userPrompt = await deps.promptBuilder.buildReviewerPrompt({
         setup: {
           id: setup.id,
           patternHint: setup.patternHint,
@@ -174,15 +176,15 @@ export function buildSetupActivities(deps: ActivityDeps) {
           observations: extractObservations(e.payload),
           reasoning: extractReasoning(e.payload),
         })),
-        tick: { tickAt: snap.tickAt.toISOString() },
-        fresh: { lastClose: 0, indicators: snap.indicators },
+        fresh: { lastClose: 0, scalars, tickAt: snap.tickAt },
         activeLessons: activeLessons.map((l) => ({ title: l.title, body: l.body })),
+        indicatorsMatrix: watch.indicators,
       });
 
       const result = await resolveAndCall(
         watch.analyzers.reviewer.provider,
         {
-          systemPrompt: reviewerPrompt.systemPrompt,
+          systemPrompt: deps.promptBuilder.reviewerSystemPrompt,
           userPrompt,
           images: [{ sourceUri: snap.chartUri, mimeType: "image/png" }],
           model: watch.analyzers.reviewer.model,

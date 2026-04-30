@@ -19,6 +19,22 @@ export class PromptBuilder {
     if (!this.reviewer) this.reviewer = await loadPrompt("reviewer");
   }
 
+  get detectorVersion(): string {
+    return this.detector?.version ?? "unknown";
+  }
+
+  get reviewerVersion(): string {
+    return this.reviewer?.version ?? "unknown";
+  }
+
+  get reviewerSystemPrompt(): string {
+    return this.reviewer?.systemPrompt ?? "";
+  }
+
+  get detectorSystemPrompt(): string {
+    return this.detector?.systemPrompt ?? "";
+  }
+
   async buildDetectorPrompt(args: {
     asset: string;
     timeframe: string;
