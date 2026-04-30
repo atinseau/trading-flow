@@ -25,6 +25,11 @@ const PreFilterSchema = z
 export const KNOWN_PROVIDERS = ["claude_max", "openrouter"] as const;
 export const KNOWN_ASSET_SOURCES = ["binance", "yahoo"] as const;
 
+// Indicator IDs that can appear in a watch must match what the runtime exposes:
+// - plugins: IndicatorRegistry in src/adapters/indicators/IndicatorRegistry.ts
+// Adding a new indicator requires touching this schema, registering a plugin
+// in src/adapters/indicators/IndicatorRegistry.ts (with metadata, compute,
+// chartScript, promptFragments), and the tf-web wizard pickers — by design.
 export const KNOWN_INDICATOR_IDS = [
   "ema_stack", "vwap", "bollinger", "rsi", "macd", "atr", "volume",
   "swings_bos", "recent_range", "liquidity_pools", "fvg", "poc",
