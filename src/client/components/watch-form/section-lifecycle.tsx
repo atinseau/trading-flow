@@ -1,3 +1,4 @@
+import { useFormContext } from "react-hook-form";
 import {
   FormControl,
   FormDescription,
@@ -9,7 +10,6 @@ import {
 import { Input } from "../ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { Slider } from "../ui/slider";
-import { useFormContext } from "react-hook-form";
 
 export function SectionLifecycle() {
   const f = useFormContext();
@@ -29,10 +29,9 @@ export function SectionLifecycle() {
               />
             </FormControl>
             <FormDescription>
-              Au-delà de N bougies sans confirmation, le setup expire automatiquement (status
-              {" "}
-              <span className="font-mono">EXPIRED</span>). Exemple : 50 bougies sur un timeframe
-              1h ≈ 50 heures.
+              Au-delà de N bougies sans confirmation, le setup expire automatiquement (status{" "}
+              <span className="font-mono">EXPIRED</span>). Exemple : 50 bougies sur un timeframe 1h
+              ≈ 50 heures.
             </FormDescription>
             <FormMessage />
           </FormItem>

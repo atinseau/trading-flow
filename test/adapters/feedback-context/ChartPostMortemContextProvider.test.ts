@@ -75,9 +75,9 @@ describe("ChartPostMortemContextProvider", () => {
     });
     await provider.gather(scope);
     expect(fetcher.rangeCallsLog).toHaveLength(1);
-    const call = fetcher.rangeCallsLog[0]!;
-    expect(call.from.toISOString()).toBe("2026-04-29T10:00:00.000Z");
-    expect(call.to.toISOString()).toBe("2026-04-29T18:00:00.000Z");
+    const call = fetcher.rangeCallsLog[0];
+    expect(call?.from.toISOString()).toBe("2026-04-29T10:00:00.000Z");
+    expect(call?.to.toISOString()).toBe("2026-04-29T18:00:00.000Z");
   });
 
   test("persists chart bytes with kind 'chart_image' and mimeType 'image/png'", async () => {
@@ -103,8 +103,8 @@ describe("ChartPostMortemContextProvider", () => {
     });
     await provider.gather(scope);
     expect(putCalls).toHaveLength(1);
-    expect(putCalls[0]!.kind).toBe("chart_image");
-    expect(putCalls[0]!.mimeType).toBe("image/png");
-    expect(putCalls[0]!.bytes).toBeGreaterThan(0);
+    expect(putCalls[0]?.kind).toBe("chart_image");
+    expect(putCalls[0]?.mimeType).toBe("image/png");
+    expect(putCalls[0]?.bytes).toBeGreaterThan(0);
   });
 });

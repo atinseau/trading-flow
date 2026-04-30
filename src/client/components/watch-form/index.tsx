@@ -60,12 +60,7 @@ const WIZARD_STEPS: WizardStep[] = [
     title: "Actif",
     description:
       "Quel marché tu veux surveiller, et avec quelle granularité de temps. Le timeframe principal détermine la fréquence par défaut des analyses.",
-    fields: [
-      "id",
-      "asset.symbol",
-      "asset.source",
-      "timeframes.primary",
-    ],
+    fields: ["id", "asset.symbol", "asset.source", "timeframes.primary"],
     render: () => <SectionAsset />,
   },
   {

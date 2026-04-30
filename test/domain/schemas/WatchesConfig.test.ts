@@ -60,7 +60,5 @@ test("WatchSchema rejects unknown analyzer provider", () => {
   const r = WatchSchema.safeParse(w);
   expect(r.success).toBe(false);
   if (r.success) return;
-  expect(r.error.issues.some((i) => i.path.join(".") === "analyzers.detector.provider")).toBe(
-    true,
-  );
+  expect(r.error.issues.some((i) => i.path.join(".") === "analyzers.detector.provider")).toBe(true);
 });

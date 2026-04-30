@@ -15,8 +15,12 @@ class FakeES {
     FakeES.instance = this;
   }
   addEventListener(t: string, fn: (e: MessageEvent) => void): void {
-    if (!this.listeners.has(t)) this.listeners.set(t, []);
-    this.listeners.get(t)!.push(fn);
+    let arr = this.listeners.get(t);
+    if (!arr) {
+      arr = [];
+      this.listeners.set(t, arr);
+    }
+    arr.push(fn);
   }
   fire(topic: string, data: unknown): void {
     const ev = new MessageEvent("message", { data: JSON.stringify(data) });

@@ -6,7 +6,7 @@ export type LessonApprovalUseCase = {
   handle(input: {
     action: "approve" | "reject";
     lessonId: string;
-    via?: "telegram" | "cli";
+    via?: "telegram" | "cli" | "web";
     reason?: string;
   }): Promise<{ updated: boolean; finalStatus: "ACTIVE" | "REJECTED" | "noop" }>;
 };

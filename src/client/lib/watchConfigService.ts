@@ -86,7 +86,8 @@ export async function updateWatchConfig(input: {
       .where(and(eq(watchConfigs.id, id), eq(watchConfigs.version, expectedVersion)))
       .returning();
 
-    if (updated.length === 0) {
+    const current = updated[0];
+    if (!current) {
       throw new ConflictError(
         `version mismatch — current=${previous.version}, expected=${expectedVersion}. Reload and retry.`,
       );
@@ -95,11 +96,11 @@ export async function updateWatchConfig(input: {
     await tx.insert(watchConfigRevisions).values({
       watchId: id,
       config: next as unknown,
-      version: updated[0]!.version,
+      version: current.version,
       appliedBy: "ui",
     });
 
-    return { previous: previous.config as WatchConfig, current: updated[0]! };
+    return { previous: previous.config as WatchConfig, current };
   });
 
   await hooks.applyReload(next, result.previous);

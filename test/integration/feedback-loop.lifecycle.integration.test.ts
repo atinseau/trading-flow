@@ -32,8 +32,11 @@ import { and, eq } from "drizzle-orm";
 let tp: TestPostgres;
 let baseDir: string;
 
+// "fake" provider/source values are intentional — they key into the test-only
+// llmProviders / marketDataFetchers maps. Cast away the strict schema enums
+// for those fields so we don't pollute production types with a "fake" branch.
 function makeWatch(id: string): WatchConfig {
-  return {
+  const cfg: unknown = {
     id,
     enabled: true,
     asset: { symbol: "BTCUSDT", source: "binance" },
@@ -73,6 +76,7 @@ function makeWatch(id: string): WatchConfig {
       context_providers_disabled: [],
     },
   };
+  return cfg as WatchConfig;
 }
 
 const infra = {
@@ -368,7 +372,7 @@ describe("feedback loop lifecycle scenarios", () => {
       .from(lessons)
       .where(and(eq(lessons.watchId, watchId), eq(lessons.status, "PENDING")));
     expect(newRows.length).toBe(1);
-    const newLessonId = newRows[0]!.id;
+    const newLessonId = newRows[0]?.id;
     expect(newRows[0]?.supersedesLessonId).toBe(oldLessonId);
 
     const [oldStill] = await tp.db.select().from(lessons).where(eq(lessons.id, oldLessonId));

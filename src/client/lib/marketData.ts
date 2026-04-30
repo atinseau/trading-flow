@@ -6,14 +6,7 @@ const log = childLogger({ module: "market-data" });
 const USER_AGENT =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36";
 
-export type AssetType =
-  | "crypto"
-  | "stock"
-  | "index"
-  | "etf"
-  | "currency"
-  | "future"
-  | "other";
+export type AssetType = "crypto" | "stock" | "index" | "etf" | "currency" | "future" | "other";
 
 export type SearchResult = {
   symbol: string;
@@ -25,7 +18,14 @@ export type SearchResult = {
   score: number;
 };
 
-export type Candle = { time: number; open: number; high: number; low: number; close: number; volume: number };
+export type Candle = {
+  time: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+};
 
 /* ============================================================
  *  Caches
@@ -138,7 +138,10 @@ async function binanceSearch(query: string): Promise<SearchResult[]> {
  *  Combined search
  * ============================================================ */
 
-export async function searchAssets(input: { query: string; types?: AssetType[] }): Promise<SearchResult[]> {
+export async function searchAssets(input: {
+  query: string;
+  types?: AssetType[];
+}): Promise<SearchResult[]> {
   const cacheKey = `${input.query.toLowerCase()}|${(input.types ?? []).sort().join(",")}`;
   return searchCache.getOrFetch(cacheKey, async () => {
     const [yahoo, binance] = await Promise.all([
@@ -146,8 +149,9 @@ export async function searchAssets(input: { query: string; types?: AssetType[] }
       binanceSearch(input.query),
     ]);
     let merged = [...yahoo, ...binance];
-    if (input.types && input.types.length > 0) {
-      merged = merged.filter((r) => input.types!.includes(r.type));
+    const types = input.types;
+    if (types && types.length > 0) {
+      merged = merged.filter((r) => types.includes(r.type));
     }
     merged.sort((a, b) => b.score - a.score);
     return merged.slice(0, 50);
@@ -190,7 +194,15 @@ async function binanceOhlcv(symbol: string, interval: string, limit: number): Pr
   const res = await fetch(url, { headers: { "User-Agent": USER_AGENT } });
   if (!res.ok) throw new Error(`Binance klines ${symbol} ${interval}: ${res.status}`);
   // Binance returns [openTime, open, high, low, close, volume, ...]
-  const rows = (await res.json()) as [number, string, string, string, string, string, ...unknown[]][];
+  const rows = (await res.json()) as [
+    number,
+    string,
+    string,
+    string,
+    string,
+    string,
+    ...unknown[],
+  ][];
   return rows.map((r) => ({
     time: Math.floor(r[0] / 1000),
     open: Number(r[1]),
@@ -213,7 +225,9 @@ async function yahooOhlcv(symbol: string, interval: string, limit: number): Prom
     return "1y";
   })();
 
-  const url = new URL(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}`);
+  const url = new URL(
+    `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}`,
+  );
   url.searchParams.set("interval", yInterval);
   url.searchParams.set("range", range);
 
@@ -225,7 +239,9 @@ async function yahooOhlcv(symbol: string, interval: string, limit: number): Prom
         {
           timestamp: number[];
           indicators: {
-            quote: [{ open: number[]; high: number[]; low: number[]; close: number[]; volume: number[] }];
+            quote: [
+              { open: number[]; high: number[]; low: number[]; close: number[]; volume: number[] },
+            ];
           };
         },
       ];
@@ -237,13 +253,18 @@ async function yahooOhlcv(symbol: string, interval: string, limit: number): Prom
   const q = r.indicators.quote[0];
   const out: Candle[] = [];
   for (let i = 0; i < r.timestamp.length; i++) {
-    if (q.open[i] == null) continue; // Yahoo nullifies missing bars
+    const open = q.open[i];
+    const high = q.high[i];
+    const low = q.low[i];
+    const close = q.close[i];
+    const time = r.timestamp[i];
+    if (open == null || high == null || low == null || close == null || time == null) continue;
     out.push({
-      time: r.timestamp[i]!,
-      open: q.open[i]!,
-      high: q.high[i]!,
-      low: q.low[i]!,
-      close: q.close[i]!,
+      time,
+      open,
+      high,
+      low,
+      close,
       volume: q.volume[i] ?? 0,
     });
   }
@@ -264,9 +285,10 @@ export async function fetchOhlcv(input: {
   const ttl = Math.max(5_000, Math.min(5 * 60_000, intervalMs / 4));
   return ohlcvCache.getOrFetch(
     key,
-    () => (input.source === "binance"
-      ? binanceOhlcv(input.symbol, input.interval, limit)
-      : yahooOhlcv(input.symbol, input.interval, limit)),
+    () =>
+      input.source === "binance"
+        ? binanceOhlcv(input.symbol, input.interval, limit)
+        : yahooOhlcv(input.symbol, input.interval, limit),
     ttl,
   );
 }

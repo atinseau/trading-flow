@@ -118,7 +118,9 @@ export class BinanceFetcher implements MarketDataFetcher {
       if (batch.length === 0) break;
       all.push(...batch);
       if (batch.length < BINANCE_KLINE_PAGE_SIZE) break;
-      const lastTs = batch[batch.length - 1]!.timestamp.getTime();
+      const last = batch[batch.length - 1];
+      if (!last) break;
+      const lastTs = last.timestamp.getTime();
       // Safety: if the cursor wouldn't advance, stop to avoid infinite loop.
       if (lastTs <= cursor) break;
       cursor = lastTs + 1;

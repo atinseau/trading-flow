@@ -1,11 +1,14 @@
-import {
-  ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig,
-} from "../components/ui/chart";
-import { Tabs, TabsList, TabsTrigger } from "../components/ui/tabs";
-import { api } from "../lib/api";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
+import {
+  type ChartConfig,
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+} from "../components/ui/chart";
+import { Tabs, TabsList, TabsTrigger } from "../components/ui/tabs";
+import { api } from "../lib/api";
 
 type Aggregation = { key: string; totalUsd: number; count: number };
 

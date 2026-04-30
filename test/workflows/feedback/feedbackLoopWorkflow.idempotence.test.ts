@@ -9,8 +9,9 @@ import { InMemoryLessonStore } from "../../fakes/InMemoryLessonStore";
 
 const watchId = "btc-1h";
 
+// "fake" provider values key into test-only llmProviders maps.
 function makeWatch(): WatchConfig {
-  return {
+  const cfg: unknown = {
     id: watchId,
     enabled: true,
     asset: { symbol: "BTCUSDT", source: "binance" },
@@ -50,6 +51,7 @@ function makeWatch(): WatchConfig {
       context_providers_disabled: [],
     },
   };
+  return cfg as WatchConfig;
 }
 
 /**

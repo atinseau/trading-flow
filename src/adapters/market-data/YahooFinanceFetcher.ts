@@ -96,7 +96,8 @@ export class YahooFinanceFetcher implements MarketDataFetcher {
     if (!result) throw new AssetNotFoundError(args.asset);
 
     const ts = result.timestamp;
-    const q = result.indicators.quote[0]!;
+    const q = result.indicators.quote[0];
+    if (!q) throw new AssetNotFoundError(args.asset);
     const candles: Candle[] = [];
     for (let i = 0; i < ts.length; i++) {
       const o = q.open[i];
@@ -104,10 +105,11 @@ export class YahooFinanceFetcher implements MarketDataFetcher {
       const l = q.low[i];
       const c = q.close[i];
       const v = q.volume[i];
-      if (o == null || h == null || l == null || c == null || v == null) continue;
+      const t = ts[i];
+      if (o == null || h == null || l == null || c == null || v == null || t == null) continue;
       candles.push(
         CandleSchema.parse({
-          timestamp: new Date(ts[i]! * 1000),
+          timestamp: new Date(t * 1000),
           open: o,
           high: h,
           low: l,
@@ -137,8 +139,8 @@ export class YahooFinanceFetcher implements MarketDataFetcher {
     // returned candle, the range preset capped data and the result is
     // silently truncated at the head. Log a warning so callers (e.g. the
     // post-mortem chart) can spot incomplete windows in production.
-    if (all.length > 0) {
-      const earliest = all[0]!;
+    const earliest = all[0];
+    if (earliest) {
       if (args.from.getTime() < earliest.timestamp.getTime()) {
         log.warn(
           {

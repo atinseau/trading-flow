@@ -41,7 +41,9 @@ describe("events API", () => {
       const items = (await all.json()) as { id: string; occurredAt: string }[];
       expect(items.length).toBe(3);
 
-      const cursor = items[items.length - 1]!.occurredAt;
+      const last = items[items.length - 1];
+      if (!last) throw new Error("expected at least one item");
+      const cursor = last.occurredAt;
       const next = await api.list(
         new Request(`http://x/api/events?limit=3&since=${encodeURIComponent(cursor)}`),
       );

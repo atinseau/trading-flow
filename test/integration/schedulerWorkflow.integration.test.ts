@@ -36,8 +36,10 @@ let db: ReturnType<typeof drizzle>;
 let env: TestWorkflowEnvironment;
 let baseDir: string;
 
+// "fake" provider/source values key into test-only maps; cast away the strict
+// schema enums for those fields without polluting production types.
 function makeWatch(id: string): WatchConfig {
-  return {
+  const cfg: unknown = {
     id,
     enabled: true,
     asset: { symbol: "BTCUSDT", source: "fake" },
@@ -77,6 +79,7 @@ function makeWatch(id: string): WatchConfig {
       context_providers_disabled: [],
     },
   };
+  return cfg as WatchConfig;
 }
 
 function makeConfig(watch: WatchConfig): { watches: WatchConfig[] } {

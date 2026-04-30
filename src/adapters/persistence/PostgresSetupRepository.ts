@@ -32,7 +32,8 @@ export class PostgresSetupRepository implements SetupRepository {
         workflowId: setup.workflowId,
       })
       .returning();
-    return mapSetup(row!);
+    if (!row) throw new Error("setup insert returned no row");
+    return mapSetup(row);
   }
 
   async get(id: string): Promise<Setup | null> {

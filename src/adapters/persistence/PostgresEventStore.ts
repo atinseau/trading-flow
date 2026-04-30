@@ -43,6 +43,7 @@ export class PostgresEventStore implements EventStore {
           latencyMs: event.latencyMs ?? null,
         })
         .returning();
+      if (!stored) throw new Error("event insert returned no row");
 
       const updateValues: Record<string, unknown> = {
         currentScore: String(setupUpdate.score),
@@ -54,7 +55,7 @@ export class PostgresEventStore implements EventStore {
       }
       await tx.update(setups).set(updateValues).where(eq(setups.id, event.setupId));
 
-      return mapStored(stored!);
+      return mapStored(stored);
     });
   }
 

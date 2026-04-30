@@ -36,7 +36,7 @@ describe("ticks API", () => {
       const res = await api.list(new Request("http://x/api/ticks?watchId=btc-1h"));
       const items = (await res.json()) as { preFilterPass: boolean }[];
       expect(items.length).toBe(2);
-      expect(items[0]!.preFilterPass).toBe(false); // most recent first
+      expect(items[0]?.preFilterPass).toBe(false); // most recent first
     } finally {
       await tp.cleanup();
     }
@@ -76,7 +76,8 @@ describe("ticks API", () => {
         .returning();
 
       const api = makeTicksApi({ db: tp.db });
-      const res = await api.chartPng(new Request("http://x"), { id: tick!.id });
+      if (!tick) throw new Error("no tick inserted");
+      const res = await api.chartPng(new Request("http://x"), { id: tick.id });
       expect(res.status).toBe(200);
       expect(res.headers.get("content-type")).toBe("image/png");
     } finally {

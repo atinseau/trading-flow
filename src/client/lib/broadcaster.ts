@@ -9,10 +9,16 @@ export class Broadcaster {
 
   subscribe(topics: Topic[], sub: Subscriber): () => void {
     for (const t of topics) {
-      if (!this.subscribers.has(t)) this.subscribers.set(t, new Set());
-      this.subscribers.get(t)!.add(sub);
+      let set = this.subscribers.get(t);
+      if (!set) {
+        set = new Set();
+        this.subscribers.set(t, set);
+      }
+      set.add(sub);
     }
-    return () => topics.forEach((t) => this.subscribers.get(t)?.delete(sub));
+    return () => {
+      for (const t of topics) this.subscribers.get(t)?.delete(sub);
+    };
   }
 
   emit(topic: Topic, payload: unknown): void {

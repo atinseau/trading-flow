@@ -64,4 +64,3 @@ test("setActivity updates lastActivityAt timestamp", async () => {
   )) as { lastActivityAt: string | null };
   expect(after.lastActivityAt).not.toBeNull();
 });
-

@@ -8,8 +8,10 @@ import { InMemoryLessonStore } from "../../fakes/InMemoryLessonStore";
 const watchId = "btc-1h";
 const setupId = "00000000-0000-0000-0000-000000000001";
 
+// "fake" provider values key into test-only llmProviders maps; cast away the
+// strict schema enums without polluting production types.
 function makeWatch(): WatchConfig {
-  return {
+  const cfg: unknown = {
     id: watchId,
     enabled: true,
     asset: { symbol: "BTCUSDT", source: "binance" },
@@ -49,6 +51,7 @@ function makeWatch(): WatchConfig {
       context_providers_disabled: [],
     },
   };
+  return cfg as WatchConfig;
 }
 
 type TestDeps = {

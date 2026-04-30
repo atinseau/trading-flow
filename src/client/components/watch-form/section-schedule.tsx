@@ -1,3 +1,4 @@
+import { useFormContext } from "react-hook-form";
 import {
   FormControl,
   FormDescription,
@@ -7,7 +8,6 @@ import {
   FormMessage,
 } from "../ui/form";
 import { Input } from "../ui/input";
-import { useFormContext } from "react-hook-form";
 
 export function SectionSchedule() {
   const f = useFormContext();
@@ -27,8 +27,8 @@ export function SectionSchedule() {
               (ex : 1h → toutes les heures pile <span className="font-mono">0 * * * *</span>).
               Override possible avec une expression cron 5-fields. Exemple :{" "}
               <span className="font-mono">*/30 * * * *</span> = toutes les 30 minutes,{" "}
-              <span className="font-mono">0 8-20 * * *</span> = en haut de chaque heure entre 8h
-              et 20h.
+              <span className="font-mono">0 8-20 * * *</span> = en haut de chaque heure entre 8h et
+              20h.
             </FormDescription>
             <FormMessage />
           </FormItem>
@@ -46,7 +46,8 @@ export function SectionSchedule() {
             </FormControl>
             <FormDescription>
               Le cron est interprété dans ce fuseau (IANA tz, ex:{" "}
-              <span className="font-mono">UTC</span>, <span className="font-mono">Europe/Paris</span>,
+              <span className="font-mono">UTC</span>,{" "}
+              <span className="font-mono">Europe/Paris</span>,
               <span className="font-mono"> America/New_York</span>). Utile si tu veux des analyses
               alignées sur les heures de marché.
             </FormDescription>

@@ -60,9 +60,10 @@ describe("PostgresLessonStore", () => {
   });
 
   test("incrementUsage is atomic across batch", async () => {
-    const ids = ["33333333-3333-3333-3333-333333333333"];
+    const id0 = "33333333-3333-3333-3333-333333333333";
+    const ids = [id0];
     await store.create({
-      id: ids[0]!,
+      id: id0,
       watchId: "btc-1h",
       category: "reviewing",
       title: "Usage tracking sample lesson",
@@ -73,7 +74,7 @@ describe("PostgresLessonStore", () => {
     });
     await store.incrementUsage(ids);
     await store.incrementUsage(ids);
-    const got = await store.getById(ids[0]!);
+    const got = await store.getById(id0);
     expect(got?.timesUsedInPrompts).toBe(2);
   });
 

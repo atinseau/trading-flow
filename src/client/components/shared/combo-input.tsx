@@ -1,3 +1,6 @@
+import { Check, ChevronsUpDown } from "lucide-react";
+import { useState } from "react";
+import { cn } from "../../lib/utils";
 import {
   Command,
   CommandEmpty,
@@ -7,9 +10,6 @@ import {
   CommandList,
 } from "../ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
-import { cn } from "../../lib/utils";
-import { Check, ChevronsUpDown } from "lucide-react";
-import { useState } from "react";
 
 export type ComboOption = {
   value: string;
@@ -70,7 +70,11 @@ export function ComboInput(props: {
             value={search}
             onValueChange={setSearch}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && search.trim() && !props.options.some((o) => o.value === search)) {
+              if (
+                e.key === "Enter" &&
+                search.trim() &&
+                !props.options.some((o) => o.value === search)
+              ) {
                 e.preventDefault();
                 commit(search.trim());
               }
@@ -84,10 +88,11 @@ export function ComboInput(props: {
                   onClick={() => commit(search.trim())}
                   className="text-xs text-foreground hover:underline"
                 >
-                  Utiliser <span className="font-mono font-semibold">"{search.trim()}"</span> tel quel
+                  Utiliser <span className="font-mono font-semibold">"{search.trim()}"</span> tel
+                  quel
                 </button>
               ) : (
-                props.emptyHint ?? "Aucune correspondance"
+                (props.emptyHint ?? "Aucune correspondance")
               )}
             </CommandEmpty>
             <CommandGroup>
@@ -106,9 +111,7 @@ export function ComboInput(props: {
                   />
                   <div className="flex flex-col gap-0.5 min-w-0">
                     <span className="font-mono text-sm">{opt.label}</span>
-                    {opt.hint && (
-                      <span className="text-xs text-muted-foreground">{opt.hint}</span>
-                    )}
+                    {opt.hint && <span className="text-xs text-muted-foreground">{opt.hint}</span>}
                   </div>
                 </CommandItem>
               ))}

@@ -45,8 +45,8 @@ export function EventDetailModal(props: {
                     Observations
                   </p>
                   <ul className="space-y-1">
-                    {props.event.payload.data.observations.map((o, i) => (
-                      <li key={i} className="border-l-2 border-primary pl-2">
+                    {props.event.payload.data.observations.map((o) => (
+                      <li key={o} className="border-l-2 border-primary pl-2">
                         {o}
                       </li>
                     ))}

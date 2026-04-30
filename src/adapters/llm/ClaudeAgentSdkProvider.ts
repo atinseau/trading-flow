@@ -1,5 +1,5 @@
-import { query } from "@anthropic-ai/claude-agent-sdk";
 import { computeClaudeCost } from "@adapters/llm/claudePricing";
+import { query } from "@anthropic-ai/claude-agent-sdk";
 import { LLMRateLimitError, LLMSchemaValidationError } from "@domain/errors";
 import type { LLMInput, LLMOutput, LLMProvider } from "@domain/ports/LLMProvider";
 import type { LLMUsageStore } from "@domain/ports/LLMUsageStore";
@@ -24,9 +24,9 @@ function extractJsonFromResponse(content: string): unknown {
     /* fall through */
   }
   const fenced = content.match(/```(?:json)?\s*\n([\s\S]+?)\n```/);
-  if (fenced) {
+  if (fenced?.[1]) {
     try {
-      return JSON.parse(fenced[1]!);
+      return JSON.parse(fenced[1]);
     } catch {
       /* fall through */
     }
@@ -160,7 +160,14 @@ export class ClaudeAgentSdkProvider implements LLMProvider {
     });
 
     this.log.info(
-      { promptTokens, completionTokens, cacheReadTokens, cacheCreateTokens, costUsd, model: input.model },
+      {
+        promptTokens,
+        completionTokens,
+        cacheReadTokens,
+        cacheCreateTokens,
+        costUsd,
+        model: input.model,
+      },
       "claude-agent-sdk call complete",
     );
     return {

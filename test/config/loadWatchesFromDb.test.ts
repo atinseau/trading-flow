@@ -43,9 +43,9 @@ describe("loadWatchesFromDb", () => {
       ]);
       const watches: WatchConfig[] = await loadWatchesFromDb(tp.pool);
       expect(watches.length).toBe(1);
-      expect(watches[0]!.id).toBe("btc-1h");
+      expect(watches[0]?.id).toBe("btc-1h");
       // Schema-applied defaults should be present (verifies parsing happened)
-      expect(watches[0]!.include_chart_image).toBe(true);
+      expect(watches[0]?.include_chart_image).toBe(true);
     } finally {
       await tp.cleanup();
     }

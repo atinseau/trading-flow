@@ -38,8 +38,13 @@ export function SectionNotifications() {
               {EVENTS.map((evt) => {
                 const checked = (field.value as string[] | undefined)?.includes(evt) ?? false;
                 return (
-                  <label key={evt} className="flex items-center gap-2 text-sm">
+                  <label
+                    key={evt}
+                    htmlFor={`notify-${evt}`}
+                    className="flex items-center gap-2 text-sm"
+                  >
                     <Checkbox
+                      id={`notify-${evt}`}
                       checked={checked}
                       onCheckedChange={(v) => {
                         const cur = (field.value as string[] | undefined) ?? [];

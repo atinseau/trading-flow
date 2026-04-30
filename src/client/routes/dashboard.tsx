@@ -1,20 +1,25 @@
+import { useQuery } from "@tanstack/react-query";
+import { Activity, ArrowRight, DollarSign, Eye, Lightbulb, TrendingUp } from "lucide-react";
+import { Link } from "react-router-dom";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
 import { Skeleton } from "../components/ui/skeleton";
 import { WatchCard } from "../components/watch-card";
+import { useLessonCounts } from "../hooks/useLessonCounts";
 import { useWatches } from "../hooks/useWatches";
 import { api } from "../lib/api";
 import { fmtCost } from "../lib/format";
-import { useQuery } from "@tanstack/react-query";
-import { Activity, ArrowRight, DollarSign, Eye, TrendingUp, Zap } from "lucide-react";
-import { Link } from "react-router-dom";
 
 type Setup = { id: string; status: string; watchId: string; currentScore: string; asset: string };
-type EventRow = { id: string; type: string };
 type CostAgg = { key: string; totalUsd: number; count: number };
 
-const FEATURED_ASSETS: { source: "binance" | "yahoo"; symbol: string; name: string; type: string }[] = [
+const FEATURED_ASSETS: {
+  source: "binance" | "yahoo";
+  symbol: string;
+  name: string;
+  type: string;
+}[] = [
   { source: "binance", symbol: "BTCUSDT", name: "Bitcoin", type: "Crypto" },
   { source: "binance", symbol: "ETHUSDT", name: "Ethereum", type: "Crypto" },
   { source: "binance", symbol: "SOLUSDT", name: "Solana", type: "Crypto" },
@@ -36,7 +41,9 @@ function StatCard(props: {
     <Card>
       <CardContent className="p-4 space-y-2">
         <div className="flex items-center justify-between">
-          <span className="text-xs uppercase tracking-wide text-muted-foreground">{props.label}</span>
+          <span className="text-xs uppercase tracking-wide text-muted-foreground">
+            {props.label}
+          </span>
           <span className="text-muted-foreground">{props.icon}</span>
         </div>
         {props.loading ? (
@@ -57,11 +64,7 @@ export function Component() {
     queryFn: () => api<Setup[]>("/api/setups?limit=200"),
     staleTime: 5_000,
   });
-  const recentEvents = useQuery({
-    queryKey: ["events"],
-    queryFn: () => api<EventRow[]>("/api/events?limit=200"),
-    staleTime: 10_000,
-  });
+  const lessonCounts = useLessonCounts();
   const costs = useQuery({
     queryKey: ["costs", { groupBy: "watch" }],
     queryFn: () => api<CostAgg[]>("/api/costs?groupBy=watch"),
@@ -71,13 +74,11 @@ export function Component() {
   const enabledWatches = watches.data?.filter((w) => w.enabled) ?? [];
   const aliveSetups =
     setups.data?.filter(
-      (s) => !["EXPIRED", "REJECTED", "INVALIDATED", "TP_HIT", "SL_HIT", "KILLED"].includes(s.status),
+      (s) =>
+        !["EXPIRED", "REJECTED", "INVALIDATED", "TP_HIT", "SL_HIT", "KILLED"].includes(s.status),
     ) ?? [];
   const totalCost = costs.data?.reduce((sum, c) => sum + c.totalUsd, 0) ?? 0;
-  const topScore = aliveSetups.reduce(
-    (max, s) => Math.max(max, Number(s.currentScore)),
-    0,
-  );
+  const topScore = aliveSetups.reduce((max, s) => Math.max(max, Number(s.currentScore)), 0);
   const topSetup = aliveSetups.find((s) => Number(s.currentScore) === topScore && topScore > 0);
 
   // Watches preview: 3 most recently active (proxied by updatedAt order from API)
@@ -113,11 +114,15 @@ export function Component() {
           loading={setups.isLoading}
         />
         <StatCard
-          icon={<Zap className="size-4" />}
-          label="Events (récents)"
-          value={recentEvents.data?.length ?? 0}
-          hint="200 derniers"
-          loading={recentEvents.isLoading}
+          icon={<Lightbulb className="size-4" />}
+          label="Leçons actives"
+          value={lessonCounts.data?.ACTIVE ?? 0}
+          hint={
+            lessonCounts.data && lessonCounts.data.PENDING > 0
+              ? `${lessonCounts.data.PENDING} en attente`
+              : "feedback loop"
+          }
+          loading={lessonCounts.isLoading}
         />
         <StatCard
           icon={<DollarSign className="size-4" />}

@@ -23,6 +23,7 @@ const router = createBrowserRouter([
       { path: "watches/:id", lazy: () => import("@client/routes/watch") },
       { path: "setups", lazy: () => import("@client/routes/setups") },
       { path: "setups/:id", lazy: () => import("@client/routes/setup") },
+      { path: "lessons", lazy: () => import("@client/routes/lessons") },
       { path: "live-events", lazy: () => import("@client/routes/live-events") },
       { path: "costs", lazy: () => import("@client/routes/costs") },
     ],

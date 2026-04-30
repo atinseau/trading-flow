@@ -1,9 +1,9 @@
-import { SetupCard, type SetupListItem } from "./setup-card";
-import { SetupsStatsBar, type SetupsStats } from "./setups-stats-bar";
-import { cn } from "../../lib/utils";
-import { api } from "../../lib/api";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
+import { api } from "../../lib/api";
+import { cn } from "../../lib/utils";
+import { SetupCard, type SetupListItem } from "./setup-card";
+import { type SetupsStats, SetupsStatsBar } from "./setups-stats-bar";
 
 type Category = "all" | "live" | "wins" | "losses" | "other";
 
@@ -63,9 +63,7 @@ export function SetupsListSection({ watchId }: { watchId?: string }) {
         })}
       </div>
 
-      {setups.isLoading && (
-        <div className="text-sm text-muted-foreground">Chargement…</div>
-      )}
+      {setups.isLoading && <div className="text-sm text-muted-foreground">Chargement…</div>}
       {setups.error && (
         <div className="text-sm text-destructive">Erreur : {(setups.error as Error).message}</div>
       )}

@@ -1,7 +1,7 @@
+import { Link } from "react-router-dom";
 import { Button } from "../components/ui/button";
 import { WatchCard } from "../components/watch-card";
 import { useWatches } from "../hooks/useWatches";
-import { Link } from "react-router-dom";
 
 /**
  * /watches — list of all configured watches with admin actions.
@@ -28,7 +28,9 @@ export function Component() {
       </div>
       {data && data.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {data.map((w) => <WatchCard key={w.id} watch={w} />)}
+          {data.map((w) => (
+            <WatchCard key={w.id} watch={w} />
+          ))}
         </div>
       ) : (
         <div className="border border-dashed border-border rounded-lg p-12 text-center">

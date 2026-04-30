@@ -12,8 +12,9 @@ import { buildSchedulerActivities } from "@workflows/scheduler/activities";
 
 const watchId = "btc-1h";
 
+// "fake" provider/source values key into test-only maps.
 function makeWatch(injectionDetector: boolean): WatchConfig {
-  return {
+  const cfg: unknown = {
     id: watchId,
     enabled: true,
     asset: { symbol: "BTCUSDT", source: "fake" },
@@ -53,6 +54,7 @@ function makeWatch(injectionDetector: boolean): WatchConfig {
       context_providers_disabled: [],
     },
   };
+  return cfg as WatchConfig;
 }
 
 type Harness = {

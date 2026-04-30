@@ -37,6 +37,6 @@ describe("watchOps", () => {
     await killSetup({ client, setupId: "abc-123", reason: "manual" });
     expect(signal).toHaveBeenCalledTimes(1);
     const calls = signal.mock.calls as unknown as [string, { reason: string }][];
-    expect(calls[0]![0]).toBe("close");
+    expect(calls[0]?.[0]).toBe("close");
   });
 });

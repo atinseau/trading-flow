@@ -33,7 +33,11 @@ let tp: TestPostgres;
 let baseDir: string;
 
 const watchId = "btc-1h";
-const testWatch: WatchConfig = {
+// "fake" provider/source values are intentional — they key into the test-only
+// llmProviders / marketDataFetchers maps below. Cast away the strict schema
+// enums for those fields so we don't pollute production types with a "fake"
+// branch.
+const testWatch = {
   id: watchId,
   enabled: true,
   asset: { symbol: "BTCUSDT", source: "binance" },
@@ -72,7 +76,7 @@ const testWatch: WatchConfig = {
     injection: { detector: true, reviewer: true, finalizer: true },
     context_providers_disabled: [],
   },
-};
+} as unknown as WatchConfig;
 
 const testConfig: WatchesConfig = {
   version: 1,
@@ -334,9 +338,9 @@ describe("feedback loop integration (full pipeline, real Postgres, fake LLM)", (
     // Lesson PENDING.
     const lessonRows = await tp.db.select().from(lessons).where(eq(lessons.watchId, watchId));
     expect(lessonRows.length).toBe(1);
-    const created = lessonRows[0]!;
-    expect(created.status).toBe("PENDING");
-    expect(created.category).toBe("reviewing");
+    const created = lessonRows[0];
+    expect(created?.status).toBe("PENDING");
+    expect(created?.category).toBe("reviewing");
 
     // CREATE lesson_event with sequence=1 + NotificationSent event captured.
     const evts = await tp.db

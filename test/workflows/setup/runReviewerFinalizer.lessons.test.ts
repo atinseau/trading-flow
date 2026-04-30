@@ -14,8 +14,9 @@ import { buildSetupActivities } from "@workflows/setup/activities";
 const watchId = "btc-1h";
 const setupId = "00000000-0000-0000-0000-000000000111";
 
+// "fake" provider/source values key into test-only maps.
 function makeWatch(injection: { reviewer: boolean; finalizer: boolean }): WatchConfig {
-  return {
+  const cfg: unknown = {
     id: watchId,
     enabled: true,
     asset: { symbol: "BTCUSDT", source: "fake" },
@@ -55,6 +56,7 @@ function makeWatch(injection: { reviewer: boolean; finalizer: boolean }): WatchC
       context_providers_disabled: [],
     },
   };
+  return cfg as WatchConfig;
 }
 
 type Harness = {

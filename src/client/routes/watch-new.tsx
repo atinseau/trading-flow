@@ -1,9 +1,9 @@
-import { WatchForm } from "../components/watch-form";
-import { api } from "../lib/api";
 import type { WatchConfig } from "@domain/schemas/WatchesConfig";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
+import { WatchForm } from "../components/watch-form";
+import { api } from "../lib/api";
 
 const VALID_TIMEFRAMES = ["1m", "5m", "15m", "30m", "1h", "2h", "4h", "1d", "1w"] as const;
 const VALID_SOURCES = ["binance", "yahoo"] as const;
@@ -51,11 +51,7 @@ export function Component() {
   return (
     <div>
       <h1 className="text-xl font-bold mb-6">Nouvelle watch</h1>
-      <WatchForm
-        mode="create"
-        preset={preset}
-        onSubmit={(c) => create.mutate(c)}
-      />
+      <WatchForm mode="create" preset={preset} onSubmit={(c) => create.mutate(c)} />
     </div>
   );
 }

@@ -86,22 +86,25 @@ const NotificationSentPayloadSchema = z.object({
 });
 
 const HumanApprovedPayloadSchema = z.object({
-  via: z.enum(["telegram", "cli"]),
+  via: z.enum(["telegram", "cli", "web"]),
   byUser: z.string().optional(),
 });
 
 const HumanRejectedPayloadSchema = z.object({
-  via: z.enum(["telegram", "cli"]),
+  via: z.enum(["telegram", "cli", "web"]),
   reason: z.string().optional(),
 });
 
-const HumanPinnedPayloadSchema = z.object({ via: z.literal("cli"), reason: z.string().optional() });
+const HumanPinnedPayloadSchema = z.object({
+  via: z.enum(["cli", "web"]),
+  reason: z.string().optional(),
+});
 const HumanUnpinnedPayloadSchema = z.object({
-  via: z.literal("cli"),
+  via: z.enum(["cli", "web"]),
   reason: z.string().optional(),
 });
 const HumanArchivedPayloadSchema = z.object({
-  via: z.literal("cli"),
+  via: z.enum(["cli", "web"]),
   reason: z.string().optional(),
 });
 

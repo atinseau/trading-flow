@@ -1,10 +1,10 @@
-import { Badge } from "../components/ui/badge";
-import { Input } from "../components/ui/input";
-import { api } from "../lib/api";
 import { useQuery } from "@tanstack/react-query";
 import { Search } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { Badge } from "../components/ui/badge";
+import { Input } from "../components/ui/input";
+import { api } from "../lib/api";
 
 type SearchResult = {
   symbol: string;
@@ -128,9 +128,7 @@ export function Component() {
         <div className="text-sm text-muted-foreground">Recherche en cours…</div>
       )}
 
-      {error && (
-        <div className="text-sm text-destructive">Erreur : {(error as Error).message}</div>
-      )}
+      {error && <div className="text-sm text-destructive">Erreur : {(error as Error).message}</div>}
 
       {data && data.length === 0 && q.length > 0 && !isLoading && (
         <div className="text-sm text-muted-foreground">Aucun résultat pour "{q}".</div>

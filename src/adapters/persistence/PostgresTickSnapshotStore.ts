@@ -23,7 +23,8 @@ export class PostgresTickSnapshotStore implements TickSnapshotStore {
         preFilterPass: s.preFilterPass,
       })
       .returning();
-    return mapTick(row!);
+    if (!row) throw new Error("tick snapshot insert returned no row");
+    return mapTick(row);
   }
 
   async get(id: string): Promise<TickSnapshot | null> {

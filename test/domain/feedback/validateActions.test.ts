@@ -152,7 +152,7 @@ describe("validateActions", () => {
       activeByCategory: { detecting: [], reviewing: actives, finalizing: [] },
       pinnedById: new Map(actives.map((l) => [l.id, false])),
     };
-    const targetId = actives[0]!.id;
+    const targetId = actives[0]?.id ?? "";
     const actions: LessonAction[] = [
       { type: "DEPRECATE", lessonId: targetId, reason: "z".repeat(20) },
       {
@@ -178,7 +178,7 @@ describe("validateActions", () => {
       activeByCategory: { detecting: [], reviewing: actives, finalizing: [] },
       pinnedById: new Map(actives.map((l) => [l.id, false])),
     };
-    const targetId = actives[0]!.id;
+    const targetId = actives[0]?.id ?? "";
     const actions: LessonAction[] = [
       {
         type: "CREATE",
@@ -208,7 +208,7 @@ describe("validateActions", () => {
     ["The 4hr timeframe is good for swing", "timeframe_mention"],
   ])("CREATE that contains '%s' is auto-rejected with reason '%s'", (text, reason) => {
     const title = text.length >= 10 ? text : `Lesson: ${text}`;
-    const body = (text + " ").repeat(8) + "y".repeat(40);
+    const body = `${text} `.repeat(8) + "y".repeat(40);
     const r = validateActions(
       [
         {

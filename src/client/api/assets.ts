@@ -1,5 +1,5 @@
-import { safeHandler, ValidationError } from "./safeHandler";
 import { fetchOhlcv } from "../lib/marketData";
+import { safeHandler, ValidationError } from "./safeHandler";
 
 const VALID_INTERVALS = ["1m", "5m", "15m", "30m", "1h", "2h", "4h", "1d", "1w"] as const;
 const VALID_SOURCES = ["binance", "yahoo"] as const;

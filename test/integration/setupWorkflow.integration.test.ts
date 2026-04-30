@@ -37,7 +37,8 @@ let env: TestWorkflowEnvironment;
 let baseDir: string;
 
 const watchId = "btc-1h";
-const testWatch: WatchConfig = {
+// "fake" provider values key into test-only llmProviders maps.
+const testWatch = {
   id: watchId,
   enabled: true,
   asset: { symbol: "BTCUSDT", source: "binance" },
@@ -76,7 +77,7 @@ const testWatch: WatchConfig = {
     injection: { detector: true, reviewer: true, finalizer: true },
     context_providers_disabled: [],
   },
-};
+} as unknown as WatchConfig;
 
 const testConfig: { watches: WatchConfig[] } = { watches: [testWatch] };
 

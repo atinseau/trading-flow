@@ -102,7 +102,7 @@ describe("bootstrapWatch", () => {
     const calls = scheduleCreate.mock.calls as unknown as [
       { spec: { cronExpressions: string[] } },
     ][];
-    const call = calls[0]![0];
-    expect(call.spec.cronExpressions[0]).toBe("0 * * * *"); // 1h cron
+    const call = calls[0]?.[0];
+    expect(call?.spec.cronExpressions[0]).toBe("0 * * * *"); // 1h cron
   });
 });

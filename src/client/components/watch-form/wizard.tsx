@@ -1,9 +1,9 @@
-import { Button } from "../ui/button";
-import { Progress } from "../ui/progress";
-import { cn } from "../../lib/utils";
 import { Check } from "lucide-react";
 import * as React from "react";
 import { useFormContext } from "react-hook-form";
+import { cn } from "../../lib/utils";
+import { Button } from "../ui/button";
+import { Progress } from "../ui/progress";
 
 export type WizardStep = {
   id: string;
@@ -24,7 +24,8 @@ export function WatchFormWizard(props: {
   const [stepIdx, setStepIdx] = React.useState(0);
   const form = useFormContext();
 
-  const step = props.steps[stepIdx]!;
+  const step = props.steps[stepIdx];
+  if (!step) return null;
   const isLast = stepIdx === props.steps.length - 1;
   const progress = ((stepIdx + 1) / props.steps.length) * 100;
 
@@ -93,19 +94,10 @@ export function WatchFormWizard(props: {
 
       {/* Nav */}
       <div className="flex items-center justify-between border-t pt-6">
-        <Button
-          type="button"
-          variant="ghost"
-          onClick={goPrev}
-          disabled={stepIdx === 0}
-        >
+        <Button type="button" variant="ghost" onClick={goPrev} disabled={stepIdx === 0}>
           ← Précédent
         </Button>
-        <Button
-          type="button"
-          onClick={goNext}
-          disabled={props.isSubmitting}
-        >
+        <Button type="button" onClick={goNext} disabled={props.isSubmitting}>
           {isLast ? props.submitLabel : "Suivant →"}
         </Button>
       </div>

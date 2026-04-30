@@ -56,8 +56,8 @@ describe("PostMortemOhlcvContextProvider", () => {
     const provider = new PostMortemOhlcvContextProvider({ marketDataFetcher: fetcher });
     await provider.gather(scope);
     expect(fetcher.rangeCallsLog).toHaveLength(1);
-    const call = fetcher.rangeCallsLog[0]!;
-    expect(call.from.toISOString()).toBe("2026-04-29T12:00:00.000Z");
-    expect(call.to.toISOString()).toBe("2026-04-29T18:00:00.000Z"); // closedAt + 4h
+    const call = fetcher.rangeCallsLog[0];
+    expect(call?.from.toISOString()).toBe("2026-04-29T12:00:00.000Z");
+    expect(call?.to.toISOString()).toBe("2026-04-29T18:00:00.000Z"); // closedAt + 4h
   });
 });
