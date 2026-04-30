@@ -16,8 +16,9 @@ export function buildConfidenceBreakdownSchema(
   axes.add("trigger");
   for (const p of plugins) for (const a of p.breakdownAxes ?? []) axes.add(a);
   if (htfEnabled) axes.add("htf");
-  const shape: z.ZodRawShape = {};
-  for (const a of axes) shape[a] = z.number().min(0).max(25);
+  const shape: z.ZodRawShape = Object.fromEntries(
+    [...axes].map((a) => [a, z.number().min(0).max(25)]),
+  );
   return z.object(shape).strict();
 }
 
