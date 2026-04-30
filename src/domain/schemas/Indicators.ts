@@ -22,6 +22,3 @@ export function buildIndicatorsSchema(
 
 /** Loose carrier type for compute-side scalars before per-watch validation. */
 export type IndicatorScalars = Record<string, unknown>;
-
-// Temporary: legacy consumers still import `Indicators`. Removed in Task 40.
-export type Indicators = IndicatorScalars;
