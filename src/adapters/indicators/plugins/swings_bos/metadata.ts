@@ -1,4 +1,4 @@
-export const SWINGS_BOS_DEFAULT_PARAMS = { lookback: 2 } as const;
+export const SWINGS_BOS_DEFAULT_PARAMS = { lookback: 3 } as const;
 
 export const swingsBosMetadata = {
   id: "swings_bos" as const,

@@ -2,7 +2,7 @@ import type { Candle } from "@domain/schemas/Candle";
 import { detectBosState, detectSwings } from "../base/math";
 
 export type SwingsBosParams = { lookback: number };
-export const SWINGS_BOS_DEFAULT_PARAMS: SwingsBosParams = { lookback: 2 };
+export const SWINGS_BOS_DEFAULT_PARAMS: SwingsBosParams = { lookback: 3 };
 
 function readLookback(params?: Record<string, unknown>): number {
   const lb = params?.lookback;

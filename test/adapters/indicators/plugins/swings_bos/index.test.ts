@@ -87,7 +87,7 @@ describe("swingsBosPlugin", () => {
     expect(() => swingsBosPlugin.paramsSchema!.parse({ lookback: 0 })).toThrow(); // below min
     expect(() => swingsBosPlugin.paramsSchema!.parse({ lookback: 11 })).toThrow(); // above max
     expect(() => swingsBosPlugin.paramsSchema!.parse({ lookback: 1.5 })).toThrow(); // not int
-    expect(swingsBosPlugin.paramsSchema!.parse({ lookback: 2 })).toEqual({ lookback: 2 });
+    expect(swingsBosPlugin.paramsSchema!.parse({ lookback: 3 })).toEqual({ lookback: 3 });
   });
 
   test("defaultParams matches schema", () => {
