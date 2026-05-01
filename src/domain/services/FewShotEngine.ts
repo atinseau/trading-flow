@@ -39,7 +39,7 @@ Sideways tight range, no clean swing structure, no decisive close. Nothing actio
 `.trim();
 
 export class FewShotEngine {
-  private readonly maxFeatured = 3;
+  private readonly maxFeatured = 4;
 
   compose(plugins: ReadonlyArray<IndicatorPlugin>): string {
     const featured = plugins
