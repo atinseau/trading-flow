@@ -1,6 +1,7 @@
 import { Button } from "@client/components/ui/button";
 import { Card } from "@client/components/ui/card";
 import { Checkbox } from "@client/components/ui/checkbox";
+import { IndicatorParamsPanel } from "@client/components/watch-form/indicator-params-panel";
 import { buildIndicatorsMatrix, PRESETS, type PresetName } from "@client/lib/indicatorsPresets";
 import { INDICATOR_METADATA_BY_TAG } from "@shared/indicatorMetadata";
 import { useFormContext } from "react-hook-form";
@@ -53,7 +54,10 @@ function PresetButtons({ onApply }: { onApply: (preset: PresetName) => void }) {
 
 export function SectionIndicators() {
   const form = useFormContext();
-  const matrix = (form.watch("indicators") ?? {}) as Record<string, { enabled: boolean }>;
+  const matrix = (form.watch("indicators") ?? {}) as Record<
+    string,
+    { enabled: boolean; params?: Record<string, unknown> }
+  >;
 
   const apply = (preset: PresetName) => {
     form.setValue("indicators", buildIndicatorsMatrix(PRESETS[preset]), { shouldDirty: true });
@@ -76,25 +80,39 @@ export function SectionIndicators() {
                 {items.map((m) => {
                   const checked = matrix[m.id]?.enabled === true;
                   return (
-                    <label key={m.id} className="flex items-start gap-3 cursor-pointer">
-                      <Checkbox
-                        checked={checked}
-                        onCheckedChange={(v) => {
-                          form.setValue(
-                            `indicators.${m.id}` as "indicators",
-                            { enabled: v === true } as never,
-                            { shouldDirty: true },
-                          );
-                        }}
-                      />
-                      <div className="space-y-0.5">
-                        <div className="font-medium">{m.displayName}</div>
-                        <div className="text-xs text-muted-foreground">{m.shortDescription}</div>
-                        <div className="text-[11px] text-muted-foreground/80">
-                          {m.longDescription}
+                    <div key={m.id} className="space-y-0">
+                      <label className="flex items-start gap-3 cursor-pointer">
+                        <Checkbox
+                          checked={checked}
+                          onCheckedChange={(v) => {
+                            if (v === true) {
+                              form.setValue(
+                                `indicators.${m.id}` as "indicators",
+                                {
+                                  enabled: true,
+                                  params: m.defaultParams ?? undefined,
+                                } as never,
+                                { shouldDirty: true },
+                              );
+                            } else {
+                              form.setValue(
+                                `indicators.${m.id}` as "indicators",
+                                { enabled: false } as never,
+                                { shouldDirty: true },
+                              );
+                            }
+                          }}
+                        />
+                        <div className="space-y-0.5">
+                          <div className="font-medium">{m.displayName}</div>
+                          <div className="text-xs text-muted-foreground">{m.shortDescription}</div>
+                          <div className="text-[11px] text-muted-foreground/80">
+                            {m.longDescription}
+                          </div>
                         </div>
-                      </div>
-                    </label>
+                      </label>
+                      {checked && <IndicatorParamsPanel meta={m} />}
+                    </div>
                   );
                 })}
               </div>
