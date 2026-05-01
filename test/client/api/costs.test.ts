@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { events, setups } from "@adapters/persistence/schema";
+import { llmCalls } from "@adapters/persistence/schema";
 import { makeCostsApi } from "@client/api/costs";
 import { startTestPostgres } from "@test-helpers/postgres";
 
@@ -7,74 +7,30 @@ describe("costs API", () => {
   test("aggregates totals by watch", async () => {
     const tp = await startTestPostgres();
     try {
-      const sBtc = crypto.randomUUID();
-      const sEth = crypto.randomUUID();
-      await tp.db.insert(setups).values([
+      await tp.db.insert(llmCalls).values([
         {
-          id: sBtc,
           watchId: "btc-1h",
-          asset: "BTCUSDT",
-          timeframe: "1h",
-          status: "REVIEWING",
-          currentScore: "0",
-          ttlCandles: 50,
-          ttlExpiresAt: new Date(Date.now() + 1e9),
-          workflowId: "w1",
-        },
-        {
-          id: sEth,
-          watchId: "eth-4h",
-          asset: "ETHUSDT",
-          timeframe: "4h",
-          status: "REVIEWING",
-          currentScore: "0",
-          ttlCandles: 50,
-          ttlExpiresAt: new Date(Date.now() + 1e9),
-          workflowId: "w2",
-        },
-      ]);
-      await tp.db.insert(events).values([
-        {
-          setupId: sBtc,
-          sequence: 1,
           stage: "DETECTOR",
-          actor: "x",
-          type: "SetupCreated",
-          scoreAfter: "25",
-          statusBefore: "PROPOSED",
-          statusAfter: "REVIEWING",
-          payload: {} as never,
           provider: "claude_max",
           model: "sonnet",
           costUsd: "0.05",
+          occurredAt: new Date(),
         },
         {
-          setupId: sBtc,
-          sequence: 2,
+          watchId: "btc-1h",
           stage: "REVIEWER",
-          actor: "x",
-          type: "Strengthened",
-          scoreAfter: "35",
-          statusBefore: "REVIEWING",
-          statusAfter: "REVIEWING",
-          payload: {} as never,
           provider: "claude_max",
           model: "haiku",
           costUsd: "0.02",
+          occurredAt: new Date(),
         },
         {
-          setupId: sEth,
-          sequence: 1,
+          watchId: "eth-4h",
           stage: "DETECTOR",
-          actor: "x",
-          type: "SetupCreated",
-          scoreAfter: "25",
-          statusBefore: "PROPOSED",
-          statusAfter: "REVIEWING",
-          payload: {} as never,
           provider: "openrouter",
           model: "haiku",
           costUsd: "0.04",
+          occurredAt: new Date(),
         },
       ]);
 

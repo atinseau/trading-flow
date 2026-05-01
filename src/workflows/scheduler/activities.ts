@@ -7,7 +7,6 @@ import { buildDetectorOutputSchema } from "@domain/schemas/DetectorOutput";
 import { buildIndicatorsSchema } from "@domain/schemas/Indicators";
 import { getLogger } from "@observability/logger";
 import type { ActivityDeps } from "@workflows/activityDependencies";
-import { sql } from "drizzle-orm";
 import { z } from "zod";
 import { dedupNewSetups, type ProposedSetup } from "./dedup";
 import { evaluatePreFilter } from "./preFilter";
@@ -271,23 +270,18 @@ export function buildSchedulerActivities(deps: ActivityDeps) {
       const childLog = log.child({ watchId: input.watchId });
       childLog.info({ status: input.status, costUsd: input.costUsd }, "tick recorded");
       const now = deps.clock.now();
-      const costStr = String(input.costUsd);
       await deps.db
         .insert(watchStates)
         .values({
           watchId: input.watchId,
           lastTickAt: now,
           lastTickStatus: input.status,
-          totalCostUsdMtd: costStr,
-          totalCostUsdAllTime: costStr,
         })
         .onConflictDoUpdate({
           target: watchStates.watchId,
           set: {
             lastTickAt: now,
             lastTickStatus: input.status,
-            totalCostUsdMtd: sql`${watchStates.totalCostUsdMtd} + ${costStr}`,
-            totalCostUsdAllTime: sql`${watchStates.totalCostUsdAllTime} + ${costStr}`,
           },
         });
     },

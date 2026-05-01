@@ -20,12 +20,8 @@ export const watchStates = pgTable("watch_states", {
   enabled: boolean("enabled").notNull().default(true),
   lastTickAt: timestamp("last_tick_at", { withTimezone: true }),
   lastTickStatus: text("last_tick_status"),
-  totalCostUsdMtd: numeric("total_cost_usd_mtd", { precision: 10, scale: 4 })
-    .notNull()
-    .default("0"),
-  totalCostUsdAllTime: numeric("total_cost_usd_all_time", { precision: 12, scale: 4 })
-    .notNull()
-    .default("0"),
+  // totalCostUsdMtd and totalCostUsdAllTime were dropped in migration 0008.
+  // Cost aggregation is now done on-the-fly from llm_calls (see watches API).
   setupsCreatedMtd: integer("setups_created_mtd").notNull().default(0),
   setupsConfirmedMtd: integer("setups_confirmed_mtd").notNull().default(0),
   deletedAt: timestamp("deleted_at", { withTimezone: true }),

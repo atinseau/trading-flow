@@ -43,7 +43,7 @@ describe("INDICATOR_METADATA", () => {
     expect(byId.atr!.defaultParams).toEqual({ period: 14 });
     expect(byId.bollinger!.defaultParams).toEqual({ period: 20, std_mul: 2 });
     expect(byId.macd!.defaultParams).toEqual({ fast: 12, slow: 26, signal: 9 });
-    expect(byId.swings_bos!.defaultParams).toEqual({ lookback: 2 });
+    expect(byId.swings_bos!.defaultParams).toEqual({ lookback: 3 });
     expect(byId.structure_levels!.defaultParams).toEqual({ window: 50, poc_buckets: 30 });
     expect(byId.ema_stack!.defaultParams).toEqual({
       period_short: 20,
