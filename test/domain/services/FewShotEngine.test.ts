@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { FewShotEngine } from "@domain/services/FewShotEngine";
 import type { IndicatorPlugin } from "@domain/services/IndicatorPlugin";
+import { IndicatorRegistry } from "@adapters/indicators/IndicatorRegistry";
 
 const fakePlugin = (id: string, example: string | null): IndicatorPlugin => ({
   id: id as never, displayName: id, tag: "trend",
@@ -38,5 +39,19 @@ describe("FewShotEngine", () => {
     const eng = new FewShotEngine();
     const out = eng.compose([fakePlugin("p1", null)]);
     expect(out.split("### Example").length - 1).toBe(2);
+  });
+
+  test("real registry: 4 plugins ship featured examples; capped at 3 in compose()", () => {
+    const reg = new IndicatorRegistry();
+    const all = reg.all();
+    const featured = all
+      .map((p) => p.featuredFewShotExample?.())
+      .filter((s): s is string => typeof s === "string");
+    expect(featured.length).toBeGreaterThanOrEqual(4);
+
+    const eng = new FewShotEngine();
+    const composed = eng.compose(all);
+    const exampleCount = composed.split("### Example").length - 1;
+    expect(exampleCount).toBe(2 + 3); // 2 generic + 3 plugin (cap)
   });
 });
