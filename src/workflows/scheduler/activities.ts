@@ -46,7 +46,12 @@ export function buildSchedulerActivities(deps: ActivityDeps) {
       const candles = z.array(CandleSchema).parse(JSON.parse(input.ohlcvJson, dateReviver));
       const slice = candles.slice(-watch.candles.reviewer_chart_window);
       const plugins = deps.indicatorRegistry.resolveActive(watch.indicators);
-      const series = await deps.indicatorCalculator.computeSeries(slice, plugins);
+      const paramsByPlugin: Record<string, Record<string, unknown>> = {};
+      for (const p of plugins) {
+        const cfg = watch.indicators[p.id];
+        paramsByPlugin[p.id] = (cfg?.params as Record<string, unknown>) ?? (p.defaultParams as Record<string, unknown> ?? {});
+      }
+      const series = await deps.indicatorCalculator.computeSeries(slice, plugins, paramsByPlugin);
       const enabledIds = plugins.map((p) => p.id);
       const naked = enabledIds.length === 0;
       const tempUri = `file:///tmp/temp-chart-${crypto.randomUUID()}.png`;
@@ -74,7 +79,12 @@ export function buildSchedulerActivities(deps: ActivityDeps) {
       if (!watch) throw new InvalidConfigError(`Unknown watch: ${input.watchId}`);
       const candles = z.array(CandleSchema).parse(JSON.parse(input.ohlcvJson, dateReviver));
       const plugins = deps.indicatorRegistry.resolveActive(watch.indicators);
-      const scalars = await deps.indicatorCalculator.compute(candles, plugins);
+      const paramsByPlugin: Record<string, Record<string, unknown>> = {};
+      for (const p of plugins) {
+        const cfg = watch.indicators[p.id];
+        paramsByPlugin[p.id] = (cfg?.params as Record<string, unknown>) ?? (p.defaultParams as Record<string, unknown> ?? {});
+      }
+      const scalars = await deps.indicatorCalculator.compute(candles, plugins, paramsByPlugin);
       const validated = buildIndicatorsSchema(plugins).parse(scalars);
       return { indicatorsJson: JSON.stringify(validated) };
     },

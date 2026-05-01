@@ -8,9 +8,11 @@ export interface IndicatorCalculator {
   compute(
     candles: Candle[],
     plugins: ReadonlyArray<IndicatorPlugin>,
+    paramsByPlugin?: Readonly<Record<string, Record<string, unknown>>>,
   ): Promise<Record<string, unknown>>;
   computeSeries(
     candles: Candle[],
     plugins: ReadonlyArray<IndicatorPlugin>,
+    paramsByPlugin?: Readonly<Record<string, Record<string, unknown>>>,
   ): Promise<Record<string, IndicatorSeriesContribution>>;
 }

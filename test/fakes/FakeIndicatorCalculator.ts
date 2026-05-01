@@ -20,6 +20,7 @@ export class FakeIndicatorCalculator implements IndicatorCalculator {
   async compute(
     _candles: Candle[],
     _plugins: ReadonlyArray<IndicatorPlugin>,
+    _paramsByPlugin?: Readonly<Record<string, Record<string, unknown>>>,
   ): Promise<Record<string, unknown>> {
     return { ...this.fixed };
   }
@@ -27,6 +28,7 @@ export class FakeIndicatorCalculator implements IndicatorCalculator {
   async computeSeries(
     _candles: Candle[],
     _plugins: ReadonlyArray<IndicatorPlugin>,
+    _paramsByPlugin?: Readonly<Record<string, Record<string, unknown>>>,
   ): Promise<Record<string, IndicatorSeriesContribution>> {
     return {};
   }
