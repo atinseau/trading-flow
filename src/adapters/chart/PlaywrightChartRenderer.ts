@@ -62,6 +62,7 @@ export class PlaywrightChartRenderer implements ChartRenderer {
       const page = await this.browser.newPage({
         viewport: { width: 1280, height: 720 },
         locale: "en-US",
+        deviceScaleFactor: 2,  // higher pixel density → sharper screenshots after resize cap
       });
       await page.setContent(this.templateHtml);
       this.pagePool.push(page);
@@ -152,7 +153,11 @@ export class PlaywrightChartRenderer implements ChartRenderer {
     const fromPool = this.pagePool.pop();
     if (fromPool) return fromPool;
     if (!this.browser) throw new Error("Browser not initialized");
-    return this.browser.newPage({ viewport: { width: 1280, height: 720 } });
+    return this.browser.newPage({
+      viewport: { width: 1280, height: 720 },
+      locale: "en-US",
+      deviceScaleFactor: 2,  // higher pixel density → sharper screenshots after resize cap
+    });
   }
 
   private releasePage(page: Page): void {
