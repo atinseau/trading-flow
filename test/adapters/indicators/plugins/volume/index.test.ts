@@ -46,4 +46,11 @@ describe("volumePlugin", () => {
   test("chartScript contains registerPlugin volume", () => {
     expect(volumePlugin.chartScript).toContain('__registerPlugin("volume"');
   });
+
+  test("featuredFewShotExample contains volume climax pattern", () => {
+    const ex = volumePlugin.featuredFewShotExample?.();
+    expect(ex).toBeTruthy();
+    expect(ex!).toContain("volume_climax");
+    expect(ex!).toContain("percentile");
+  });
 });

@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { IndicatorPlugin } from "@domain/services/IndicatorPlugin";
 import { volumeMetadata } from "./metadata";
 import { computeScalars, computeSeries } from "./compute";
-import { detectorFragment as detectorPromptFragment } from "./promptFragments";
+import { detectorFragment as detectorPromptFragment, featuredFewShotExample } from "./promptFragments";
 import { CHART_SCRIPT } from "./chartScript";
 
 export const volumePlugin: IndicatorPlugin = {
@@ -19,6 +19,7 @@ export const volumePlugin: IndicatorPlugin = {
   }),
   chartScript: CHART_SCRIPT, chartPane: "secondary", secondaryPaneStretch: 13,
   detectorPromptFragment,
+  featuredFewShotExample,
   breakdownAxes: ["volume"],
   preFilterCriterion: "volume_spike_min",
 };
