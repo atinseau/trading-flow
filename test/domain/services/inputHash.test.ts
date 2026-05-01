@@ -87,4 +87,12 @@ describe("inputHash params sensitivity", () => {
     const h2 = computeInputHash({ ...BASE, indicatorParams: { rsi: { period: 21 } } });
     expect(h1).not.toBe(h2);
   });
+
+  test("inner key order doesn't affect hash", () => {
+    const a = { rsi: { period: 21, smoothing: 3 } };
+    const b = { rsi: { smoothing: 3, period: 21 } };
+    const h1 = computeInputHash({ ...BASE, indicatorParams: a });
+    const h2 = computeInputHash({ ...BASE, indicatorParams: b });
+    expect(h1).toBe(h2);
+  });
 });

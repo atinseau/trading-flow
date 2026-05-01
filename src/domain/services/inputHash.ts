@@ -1,6 +1,16 @@
 import { createHash } from "node:crypto";
 import { REGISTRY } from "@adapters/indicators/IndicatorRegistry";
 
+function canonicalize(value: unknown): unknown {
+  if (value === null || typeof value !== "object") return value;
+  if (Array.isArray(value)) return value.map(canonicalize);
+  const sorted: Record<string, unknown> = {};
+  for (const k of Object.keys(value as Record<string, unknown>).sort()) {
+    sorted[k] = canonicalize((value as Record<string, unknown>)[k]);
+  }
+  return sorted;
+}
+
 export type HashInput = {
   setupId: string;
   promptVersion: string;
@@ -37,7 +47,7 @@ function normalizeIndicatorParams(
     const plugin = REGISTRY.find((pl) => pl.id === id);
     const isDefault =
       !plugin?.defaultParams ||
-      JSON.stringify(p) === JSON.stringify(plugin.defaultParams);
+      JSON.stringify(canonicalize(p)) === JSON.stringify(canonicalize(plugin.defaultParams));
     if (!isDefault) {
       out[id] = p;
     }
@@ -46,23 +56,18 @@ function normalizeIndicatorParams(
 }
 
 export function computeInputHash(input: HashInput): string {
-  const sortedIndicators = Object.fromEntries(
-    Object.entries(input.indicators).sort(([a], [b]) => a.localeCompare(b)),
-  );
   const normalizedParams = input.indicatorParams
     ? normalizeIndicatorParams(input.indicatorParams)
     : {};
-  const sortedParams = Object.fromEntries(
-    Object.entries(normalizedParams).sort(([a], [b]) => a.localeCompare(b)),
-  );
-  const canonical = JSON.stringify({
+  const payload = {
     setupId: input.setupId,
     promptVersion: input.promptVersion,
     ohlcvSnapshot: input.ohlcvSnapshot,
     chartUri: input.chartUri,
-    indicators: sortedIndicators,
-    indicatorParams: sortedParams,
+    indicators: input.indicators,
+    indicatorParams: normalizedParams,
     activeLessonIds: input.activeLessonIds ?? [],
-  });
+  };
+  const canonical = JSON.stringify(canonicalize(payload));
   return createHash("sha256").update(canonical).digest("hex");
 }
