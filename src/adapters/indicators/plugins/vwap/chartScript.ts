@@ -5,7 +5,7 @@ export const CHART_SCRIPT = `
     chartPane: "price_overlay",
     addToChart(chart, paneIndex) {
       return { vwap: chart.addSeries(LC.LineSeries, {
-        color: "#ffeb3b", lineWidth: 2, priceLineVisible: false, lastValueVisible: true,
+        color: "#fdd835", lineWidth: 1, priceLineVisible: false, lastValueVisible: true,
         title: "VWAP",
       }, paneIndex) };
     },
