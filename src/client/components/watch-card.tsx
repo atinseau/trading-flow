@@ -10,6 +10,12 @@ import { api } from "@client/lib/api";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 
+/**
+ * `totalCostUsdMtd` is a synthesized field on the API response — the column
+ * was dropped from `watch_states` (migration 0008). The `/api/watches/:id`
+ * endpoint computes it on read by aggregating `llm_calls` for the watch
+ * within the current calendar month. See `src/client/api/watches.ts:get`.
+ */
 type WatchDetail = {
   state: {
     lastTickAt: string | null;

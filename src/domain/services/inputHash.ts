@@ -16,6 +16,18 @@ export type HashInput = {
   activeLessonIds?: string[];
 };
 
+/**
+ * Note on what's NOT in the hash:
+ * - HTF context (daily candles, weekly H/L) is derived from market data; if
+ *   the daily candle ticked over between two reviews of the same setup, the
+ *   ohlcv snapshot will already have changed (different tick). HTF is
+ *   purely a function of (asset, time-of-fetch).
+ * - Funding rates change every 8h; fast cache hits within a 15m tick are a
+ *   non-issue (cached verdict replayed implies same OHLCV).
+ * - The reviewer cache exists to absorb Temporal activity retries on the
+ *   exact same input, not to time-cache across genuinely different ticks.
+ */
+
 export function computeInputHash(input: HashInput): string {
   const sortedIndicators = Object.fromEntries(
     Object.entries(input.indicators).sort(([a], [b]) => a.localeCompare(b)),

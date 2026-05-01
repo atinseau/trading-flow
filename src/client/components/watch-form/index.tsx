@@ -1,5 +1,5 @@
-import { Button } from "@client/components/ui/button";
 import { Form } from "@client/components/ui/form";
+import { WatchEditTabs } from "@client/components/watch-form/edit-tabs";
 import { SectionAdvanced } from "@client/components/watch-form/section-advanced";
 import { SectionAnalyzers } from "@client/components/watch-form/section-analyzers";
 import { SectionAsset } from "@client/components/watch-form/section-asset";
@@ -26,7 +26,14 @@ const SENSIBLE_DEFAULTS = {
     score_threshold_dead: 10,
     invalidation_policy: "strict" as const,
     score_max: 100,
+    min_risk_reward_ratio: 2,
   },
+  optimization: {
+    reviewer_skip_when_detector_corroborated: true,
+    allow_same_tick_fast_path: true,
+  },
+  costs: { fees_pct: 0.1, slippage_pct: 0.05 },
+  budget: { pause_on_budget_exceeded: true },
   analyzers: {
     detector: { provider: "claude_max", model: "claude-sonnet-4-6", max_tokens: 2000 },
     reviewer: { provider: "claude_max", model: "claude-haiku-4-5", max_tokens: 2000 },
@@ -37,6 +44,11 @@ const SENSIBLE_DEFAULTS = {
   include_chart_image: true,
   include_reasoning: true,
   feedback: {},
+  pre_filter: {
+    enabled: true,
+    mode: "lenient" as const,
+    thresholds: { atr_ratio_min: 1.3, volume_spike_min: 1.5, rsi_extreme_distance: 25 },
+  },
 };
 
 /** Loose partial — caller passes whatever subset of the shape they have. */
@@ -154,27 +166,12 @@ export function WatchForm({ initial, preset, mode, onSubmit }: WatchFormProps) {
             isSubmitting={form.formState.isSubmitting}
           />
         ) : (
-          // Edit mode: keep the linear single-page form (familiar to power users
-          // who already know their config — no need to walk through 6 steps to
-          // change one field).
-          <div className="space-y-8 max-w-2xl">
-            <SectionAsset />
-            <SectionSchedule />
-            <SectionLifecycle />
-            <SectionAnalyzers />
-            <SectionNotifications />
-            <SectionBudget />
-            <SectionAdvanced />
-            <div className="flex gap-2 pt-4 border-t">
-              <Button
-                type="button"
-                onClick={() => form.handleSubmit(onSubmit)()}
-                disabled={form.formState.isSubmitting}
-              >
-                Enregistrer
-              </Button>
-            </div>
-          </div>
+          <WatchEditTabs
+            steps={WIZARD_STEPS}
+            onSubmit={() => form.handleSubmit(onSubmit)()}
+            onReset={() => form.reset(merged)}
+            isSubmitting={form.formState.isSubmitting}
+          />
         )}
       </form>
     </Form>

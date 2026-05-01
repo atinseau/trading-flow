@@ -20,14 +20,17 @@ describe("PlaywrightChartRenderer", () => {
     await rm(outDir, { recursive: true, force: true });
   });
 
-  test("renders 100 candles to PNG with valid sha256", async () => {
+  test("renders 100 candles to compressed WebP with valid sha256", async () => {
     const candles = FakeMarketDataFetcher.generateLinear(100, 100);
     const out = `file://${join(outDir, "test.png")}`;
     const result = await renderer.render({ candles, width: 1280, height: 720, outputUri: out });
-    expect(result.mimeType).toBe("image/png");
+    // Renderer post-processes PNG → WebP via sharp; the .png suffix in
+    // outputUri is rewritten to .webp on disk.
+    expect(result.mimeType).toBe("image/webp");
+    expect(result.uri.endsWith(".webp")).toBe(true);
     expect(result.sha256).toMatch(/^[a-f0-9]{64}$/);
     expect(result.bytes).toBeGreaterThan(1000);
-    expect(Bun.file(out.replace(/^file:\/\//, "")).size).toBe(result.bytes);
+    expect(Bun.file(result.uri.replace(/^file:\/\//, "")).size).toBe(result.bytes);
   }, 30_000);
 
   test("rendering twice produces consistent output sizes", async () => {

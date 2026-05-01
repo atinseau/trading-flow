@@ -4,6 +4,7 @@ import { FeedbackContextProviderRegistry } from "@adapters/feedback-context/Feed
 import { PostMortemOhlcvContextProvider } from "@adapters/feedback-context/PostMortemOhlcvContextProvider";
 import { SetupEventsContextProvider } from "@adapters/feedback-context/SetupEventsContextProvider";
 import { TickSnapshotsContextProvider } from "@adapters/feedback-context/TickSnapshotsContextProvider";
+import { BinanceFundingRateProvider } from "@adapters/funding/BinanceFundingRateProvider";
 import { PureJsIndicatorCalculator } from "@adapters/indicators/PureJsIndicatorCalculator";
 import { buildProviderRegistry } from "@adapters/llm/buildProviderRegistry";
 import { BinanceFetcher } from "@adapters/market-data/BinanceFetcher";
@@ -15,6 +16,7 @@ import { FilesystemArtifactStore } from "@adapters/persistence/FilesystemArtifac
 import { PostgresEventStore } from "@adapters/persistence/PostgresEventStore";
 import { PostgresLessonEventStore } from "@adapters/persistence/PostgresLessonEventStore";
 import { PostgresLessonStore } from "@adapters/persistence/PostgresLessonStore";
+import { PostgresLLMCallStore } from "@adapters/persistence/PostgresLLMCallStore";
 import { PostgresLLMUsageStore } from "@adapters/persistence/PostgresLLMUsageStore";
 import { PostgresSetupRepository } from "@adapters/persistence/PostgresSetupRepository";
 import { PostgresTickSnapshotStore } from "@adapters/persistence/PostgresTickSnapshotStore";
@@ -25,6 +27,7 @@ import { TemporalScheduleController } from "@adapters/temporal/TemporalScheduleC
 import { SystemClock } from "@adapters/time/SystemClock";
 import type { InfraConfig } from "@config/InfraConfig";
 import { parseTimeframeToMs } from "@domain/ports/Clock";
+import type { FundingRateProvider } from "@domain/ports/FundingRateProvider";
 import type { LLMProvider } from "@domain/ports/LLMProvider";
 import type { MarketDataFetcher } from "@domain/ports/MarketDataFetcher";
 import type { Notifier } from "@domain/ports/Notifier";
@@ -71,6 +74,7 @@ export async function buildContainer(
   const tickSnapshotStore = new PostgresTickSnapshotStore(db);
   const artifactStore = new FilesystemArtifactStore(db, infra.artifacts.base_dir);
   const llmUsageStore = new PostgresLLMUsageStore(db);
+  const llmCallStore = new PostgresLLMCallStore(db);
   const lessonStore = new PostgresLessonStore(db);
   const lessonEventStore = new PostgresLessonEventStore(db);
   const clock = new SystemClock();
@@ -103,15 +107,19 @@ export async function buildContainer(
     },
   );
 
-  const usedSources = new Set(watches.filter((w) => w.enabled).map((w) => w.asset.source));
-
   // Market data fetchers: scheduler runs the live tracking loop; analysis runs
   // feedback context providers (post-mortem OHLCV + chart). Notification needs
-  // none.
+  // none. Both adapters are stateless singletons — register them eagerly so
+  // watches added after worker boot (via the web UI) resolve without restart.
   const marketDataFetchers = new Map<string, MarketDataFetcher>();
+  const fundingRateProviders = new Map<string, FundingRateProvider>();
   if (role === "scheduler" || role === "analysis") {
-    if (usedSources.has("binance")) marketDataFetchers.set("binance", new BinanceFetcher());
-    if (usedSources.has("yahoo")) marketDataFetchers.set("yahoo", new YahooFinanceFetcher());
+    marketDataFetchers.set("binance", new BinanceFetcher());
+    marketDataFetchers.set("yahoo", new YahooFinanceFetcher());
+    // Binance perp covers BTCUSDT, ETHUSDT, etc. Yahoo equities have no
+    // funding concept — register provider keyed on the spot source name so
+    // activities can lookup `fundingRateProviders.get(watch.asset.source)`.
+    fundingRateProviders.set("binance", new BinanceFundingRateProvider());
   }
 
   // Chart renderer: scheduler builds setup charts; analysis renders post-mortem
@@ -231,6 +239,8 @@ export async function buildContainer(
     chartRenderer: chartRenderer ?? (null as unknown as PlaywrightChartRenderer),
     indicatorCalculator: indicatorCalculator ?? (null as unknown as PureJsIndicatorCalculator),
     llmProviders,
+    llmCallStore,
+    fundingRateProviders,
     priceFeeds,
     notifier,
     setupRepo,

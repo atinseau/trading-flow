@@ -20,6 +20,7 @@ import type { WatchConfig, WatchesConfig } from "@domain/schemas/WatchesConfig";
 import { FakeChartRenderer } from "@test-fakes/FakeChartRenderer";
 import { FakeFeedbackContextProvider } from "@test-fakes/FakeFeedbackContextProvider";
 import { FakeIndicatorCalculator } from "@test-fakes/FakeIndicatorCalculator";
+import { FakeLLMCallStore } from "@test-fakes/FakeLLMCallStore";
 import { FakeLLMProvider } from "@test-fakes/FakeLLMProvider";
 import { FakeMarketDataFetcher } from "@test-fakes/FakeMarketDataFetcher";
 import { FakeNotifier } from "@test-fakes/FakeNotifier";
@@ -155,6 +156,8 @@ function buildDepsForWatch(args: {
     chartRenderer: new FakeChartRenderer(),
     indicatorCalculator: new FakeIndicatorCalculator(),
     llmProviders,
+    llmCallStore: new FakeLLMCallStore(),
+    fundingRateProviders: new Map(),
     priceFeeds: new Map([["fake", new FakePriceFeed()]]),
     notifier: new FakeNotifier(),
     setupRepo,
@@ -189,6 +192,8 @@ async function seedClosedSetup(deps: ActivityDeps, watchId: string): Promise<str
     status: "TRACKING",
     currentScore: 85,
     patternHint: "double_bottom",
+    patternCategory: "accumulation",
+    expectedMaturationTicks: null,
     invalidationLevel: 95,
     direction: "LONG",
     ttlCandles: 50,

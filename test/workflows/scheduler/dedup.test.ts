@@ -10,6 +10,8 @@ test("proposed setup similar to alive → corroborate", () => {
       direction: "LONG" as const,
       keyLevels: { invalidation: 41800 },
       initialScore: 25,
+      category: "accumulation" as const,
+      expectedMaturationTicks: 4,
       rawObservation: "x",
     },
   ];
@@ -24,6 +26,7 @@ test("proposed setup similar to alive → corroborate", () => {
       invalidationLevel: 41805,
       direction: "LONG" as const,
       patternHint: "double_bottom",
+      patternCategory: "accumulation" as const,
       ageInCandles: 2,
     },
   ];
@@ -40,6 +43,8 @@ test("proposed setup with different direction → create", () => {
       direction: "SHORT" as const,
       keyLevels: { invalidation: 41800 },
       initialScore: 25,
+      category: "accumulation" as const,
+      expectedMaturationTicks: 4,
       rawObservation: "x",
     },
   ];
@@ -54,6 +59,7 @@ test("proposed setup with different direction → create", () => {
       invalidationLevel: 41805,
       direction: "LONG" as const,
       patternHint: "double_bottom",
+      patternCategory: "accumulation" as const,
       ageInCandles: 2,
     },
   ];
@@ -68,6 +74,8 @@ test("alive setup too old → create new", () => {
       direction: "LONG" as const,
       keyLevels: { invalidation: 41800 },
       initialScore: 25,
+      category: "accumulation" as const,
+      expectedMaturationTicks: 4,
       rawObservation: "x",
     },
   ];
@@ -82,6 +90,7 @@ test("alive setup too old → create new", () => {
       invalidationLevel: 41805,
       direction: "LONG" as const,
       patternHint: "double_bottom",
+      patternCategory: "accumulation" as const,
       ageInCandles: 10,
     },
   ];

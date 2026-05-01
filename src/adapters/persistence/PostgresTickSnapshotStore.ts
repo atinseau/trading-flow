@@ -1,6 +1,6 @@
 import type { TickSnapshot } from "@domain/entities/TickSnapshot";
 import type { TickSnapshotStore } from "@domain/ports/TickSnapshotStore";
-import { and, asc, between, eq } from "drizzle-orm";
+import { and, asc, between, desc, eq } from "drizzle-orm";
 import type { drizzle } from "drizzle-orm/node-postgres";
 import { tickSnapshots } from "./schema";
 
@@ -20,6 +20,7 @@ export class PostgresTickSnapshotStore implements TickSnapshotStore {
         ohlcvUri: s.ohlcvUri,
         chartUri: s.chartUri,
         indicators: s.indicators,
+        lastClose: s.lastClose != null ? String(s.lastClose) : null,
         preFilterPass: s.preFilterPass,
       })
       .returning();
@@ -49,6 +50,16 @@ export class PostgresTickSnapshotStore implements TickSnapshotStore {
       .orderBy(asc(tickSnapshots.tickAt));
     return rows.map(mapTick);
   }
+
+  async latestForWatch(watchId: string): Promise<TickSnapshot | null> {
+    const [row] = await this.db
+      .select()
+      .from(tickSnapshots)
+      .where(eq(tickSnapshots.watchId, watchId))
+      .orderBy(desc(tickSnapshots.tickAt))
+      .limit(1);
+    return row ? mapTick(row) : null;
+  }
 }
 
 function mapTick(r: typeof tickSnapshots.$inferSelect): TickSnapshot {
@@ -61,6 +72,7 @@ function mapTick(r: typeof tickSnapshots.$inferSelect): TickSnapshot {
     ohlcvUri: r.ohlcvUri,
     chartUri: r.chartUri,
     indicators: r.indicators,
+    lastClose: r.lastClose != null ? Number(r.lastClose) : null,
     preFilterPass: r.preFilterPass,
   };
 }

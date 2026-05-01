@@ -17,6 +17,10 @@ build/
 # Data volumes
 data/
 
+# Dev compose bind-mounted volumes (chart artifacts, claude workspace)
+.dev-artifacts/
+.dev-claude-workspace/
+
 # Logs
 *.log
 npm-debug.log*
@@ -40,3 +44,7 @@ coverage/
 # Git worktrees
 .worktrees/
 TODO.md
+
+# Dev compose bind-mounted volumes (artifacts, claude workspace)
+.dev-artifacts/
+.dev-claude-workspace/

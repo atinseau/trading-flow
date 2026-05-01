@@ -9,5 +9,8 @@ export type TickSnapshot = {
   ohlcvUri: string;
   chartUri: string;
   indicators: Indicators;
+  /** Last candle close at snapshot time. Source of truth for "live price"
+      in HTF/regime computation. Null for legacy rows. */
+  lastClose: number | null;
   preFilterPass: boolean;
 };

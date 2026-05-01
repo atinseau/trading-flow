@@ -30,13 +30,34 @@ services:
     ports:
       - "127.0.0.1:8080:8080"
 
+  # Worker services that make LLM calls bind-mount the host's Claude Code
+  # OAuth credentials so the bundled `claude` binary (used by the
+  # claude-agent-sdk provider) can authenticate without an interactive
+  # `claude /login` per container. macOS keeps the creds in the Keychain — to
+  # populate the file-on-disk read here, run once:
+  #   security find-generic-password -s "Claude Code-credentials" -w \
+  #     > ~/.claude/.credentials.json
+  # Refresh the file when the OAuth token expires (the SDK will say "Not
+  # logged in"). Read-only mount: the container can't write back, so refresh
+  # rotation lives on the host.
   scheduler-worker:
     ports:
       - "127.0.0.1:8081:8081"
+    # Compose REPLACES volume lists, so re-state the base worker_volumes too.
+    volumes:
+      - ./prompts:/app/prompts:ro
+      - artifacts_data:/data/artifacts
+      - claude_workspace:/data/claude-workspace
+      - ${HOME}/.claude/.credentials.json:/home/bun/.claude/.credentials.json:ro
 
   analysis-worker:
     ports:
       - "127.0.0.1:8082:8082"
+    volumes:
+      - ./prompts:/app/prompts:ro
+      - artifacts_data:/data/artifacts
+      - claude_workspace:/data/claude-workspace
+      - ${HOME}/.claude/.credentials.json:/home/bun/.claude/.credentials.json:ro
 
   notification-worker:
     ports:
@@ -67,8 +88,13 @@ services:
       - tf_dev_node_modules:/app/node_modules
     # On every start: `bun install` syncs node_modules with the (possibly
     # updated) lockfile — no-op if nothing changed, fast incremental install
-    # if a package was added/removed. Then `bun --hot` for React + server HMR.
-    command: sh -c "bun install && bun --hot src/client/server.ts"
+    # if a package was added/removed. Then `bun --watch` for full-process
+    # restart on any source change — required for new files (`--hot` keeps the
+    # module graph in memory, which means newly-created files aren't picked up
+    # by the alias resolver). Client-side React HMR still runs via `Bun.serve`
+    # `development.hmr: true` in server.ts, so component edits don't full-reload
+    # the browser even though the server process restarts.
+    command: sh -c "bun install && bun --watch src/client/server.ts"
     healthcheck:
       # Longer start_period — first boot installs deps into the named volume,
       # subsequent boots are fast (~1-2s).
@@ -76,3 +102,20 @@ services:
 
 volumes:
   tf_dev_node_modules:
+  # Re-bind the named volumes from the base file to host directories so chart
+  # screenshots, OHLCV snapshots, and the Claude Code workspace are
+  # browseable on the host in dev (./artifacts, ./claude-workspace). Both are
+  # gitignored. Containers still see the same /data/* mount points, so no
+  # service-level config changes are needed.
+  artifacts_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${PWD}/.dev-artifacts
+  claude_workspace:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${PWD}/.dev-claude-workspace

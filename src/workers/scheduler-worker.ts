@@ -9,6 +9,7 @@ import { buildPriceMonitorActivities } from "@workflows/price-monitor/activities
 import { buildSchedulerActivities } from "@workflows/scheduler/activities";
 import pg from "pg";
 import { buildContainer } from "./buildContainer";
+import { workflowBundlerOptions } from "./workflowBundlerOptions";
 
 const log = getLogger({ component: "scheduler-worker" });
 
@@ -35,6 +36,7 @@ const worker = await Worker.create({
   namespace: infra.temporal.namespace,
   taskQueue: infra.temporal.task_queues.scheduler,
   workflowsPath: require.resolve("../workflows/scheduler/index.ts"),
+  bundlerOptions: workflowBundlerOptions,
   activities: {
     ...buildSchedulerActivities(container.deps),
     ...buildPriceMonitorActivities(container.deps),

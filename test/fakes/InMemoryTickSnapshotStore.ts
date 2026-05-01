@@ -24,6 +24,15 @@ export class InMemoryTickSnapshotStore implements TickSnapshotStore {
     return out.sort((a, b) => a.tickAt.getTime() - b.tickAt.getTime());
   }
 
+  async latestForWatch(watchId: string): Promise<TickSnapshot | null> {
+    let latest: TickSnapshot | null = null;
+    for (const t of this.store.values()) {
+      if (t.watchId !== watchId) continue;
+      if (!latest || t.tickAt > latest.tickAt) latest = t;
+    }
+    return latest;
+  }
+
   reset(): void {
     this.store.clear();
   }

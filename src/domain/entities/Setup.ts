@@ -8,6 +8,14 @@ export type Setup = {
   status: SetupStatus;
   currentScore: number;
   patternHint: string | null;
+  /** "event" (1-tick triggers) | "accumulation" (multi-touch) — analytic label, no longer the maturation control. */
+  patternCategory: "event" | "accumulation" | null;
+  /**
+   * Detector estimate of reviewer ticks needed to reach finalizer-ready
+   * conviction. 1 = instant (event, trigger formed), 6 = slow accumulation.
+   * Used by finalizer's maturation rule. Null for legacy rows.
+   */
+  expectedMaturationTicks: number | null;
   invalidationLevel: number | null;
   direction: "LONG" | "SHORT" | null;
   ttlCandles: number;

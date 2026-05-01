@@ -11,6 +11,7 @@ type DB = ReturnType<typeof drizzle>;
 const EXT_BY_MIME: Record<string, string> = {
   "image/png": "png",
   "image/jpeg": "jpg",
+  "image/webp": "webp",
   "application/json": "json",
   "application/gzip": "gz",
   "text/plain": "txt",

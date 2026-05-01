@@ -46,7 +46,7 @@ export class ChartPostMortemContextProvider implements FeedbackContextProvider {
     const stored = await this.deps.artifactStore.put({
       kind: "chart_image",
       content: result.content,
-      mimeType: "image/png",
+      mimeType: result.mimeType,
     });
     return [
       {

@@ -19,7 +19,13 @@ history).
 CONSTRAINTS
 - Never increase score on observations that were already counted in a previous
   tick. Each STRENGTHEN must cite NEW evidence.
-- Never INVALIDATE on a single touch of the invalidation level — wait for
-  confirmation (close below for LONG, close above for SHORT, ideally on the
-  next candle too).
+- INVALIDATE rules (be permissive — INVALIDATE is a stop, not an entry filter):
+  - **Decisive close beyond invalidation** (close > 0.3% past the level for a
+    LONG break-up / SHORT break-down) → INVALIDATE immediately. Do NOT wait a
+    second candle — by then slippage has eaten most of the adverse move.
+  - **Wick-through then reclaim** (wick beyond invalidation but close back
+    inside) → WEAKEN with `scoreDelta ≤ -10` to reflect structure stress, but
+    not INVALIDATE.
+  - **Repeated wicks on tight range** (3+ candles testing without decisive
+    close) → WEAKEN -5 each tick; INVALIDATE on the 4th if no bounce.
 - Never copy schema's literal type unions into output.

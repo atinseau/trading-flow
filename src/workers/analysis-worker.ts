@@ -7,6 +7,7 @@ import { buildFeedbackActivities } from "@workflows/feedback/activities";
 import { buildSetupActivities } from "@workflows/setup/activities";
 import pg from "pg";
 import { buildContainer } from "./buildContainer";
+import { workflowBundlerOptions } from "./workflowBundlerOptions";
 
 const log = getLogger({ component: "analysis-worker" });
 
@@ -34,6 +35,7 @@ const worker = await Worker.create({
   // setupWorkflow.ts re-exports feedbackLoopWorkflow so this single bundle
   // ships both the parent and the child workflow definitions (Phase 9).
   workflowsPath: require.resolve("../workflows/setup/setupWorkflow.ts"),
+  bundlerOptions: workflowBundlerOptions,
   activities: {
     ...buildSetupActivities(container.deps),
     ...buildFeedbackActivities(container.deps),

@@ -142,6 +142,8 @@ export async function wireFeedbackActivitiesForCli(): Promise<FeedbackCliWiring>
     chartRenderer,
     indicatorCalculator,
     llmProviders,
+    llmCallStore: { record: async () => {} },
+    fundingRateProviders: new Map(),
     priceFeeds: new Map<string, PriceFeed>(),
     notifier,
     setupRepo,

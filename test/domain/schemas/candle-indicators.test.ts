@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { CandleSchema } from "@domain/schemas/Candle";
 import { IndicatorsSchema } from "@domain/schemas/Indicators";
+import { NEUTRAL_INDICATORS } from "../../fakes/FakeIndicatorCalculator";
 
 test("CandleSchema parses valid OHLCV", () => {
   const raw = {
@@ -30,6 +31,7 @@ test("CandleSchema rejects negative volume", () => {
 
 test("IndicatorsSchema parses valid set", () => {
   const ind = IndicatorsSchema.parse({
+    ...NEUTRAL_INDICATORS,
     rsi: 58.4,
     ema20: 67234.5,
     ema50: 66980.1,
@@ -45,18 +47,5 @@ test("IndicatorsSchema parses valid set", () => {
 });
 
 test("IndicatorsSchema rejects rsi outside 0-100", () => {
-  expect(() =>
-    IndicatorsSchema.parse({
-      rsi: 150,
-      ema20: 1,
-      ema50: 1,
-      ema200: 1,
-      atr: 1,
-      atrMa20: 1,
-      volumeMa20: 1,
-      lastVolume: 1,
-      recentHigh: 1,
-      recentLow: 1,
-    }),
-  ).toThrow();
+  expect(() => IndicatorsSchema.parse({ ...NEUTRAL_INDICATORS, rsi: 150 })).toThrow();
 });

@@ -1,0 +1,1 @@
+ALTER TABLE "tick_snapshots" ADD COLUMN "last_close" numeric(20, 8);

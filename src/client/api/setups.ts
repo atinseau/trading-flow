@@ -1,8 +1,8 @@
-import { events, setups, tickSnapshots } from "@adapters/persistence/schema";
+import { events, llmCalls, setups, tickSnapshots } from "@adapters/persistence/schema";
 import { NotFoundError, requireParam, safeHandler } from "@client/api/safeHandler";
 import { streamArtifact } from "@client/lib/artifacts";
 import { TERMINAL_STATUSES } from "@domain/state-machine/setupTransitions";
-import { and, asc, desc, eq, inArray, isNotNull, notInArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, notInArray, sql } from "drizzle-orm";
 import type { drizzle } from "drizzle-orm/node-postgres";
 
 type DB = ReturnType<typeof drizzle>;
@@ -93,14 +93,15 @@ export function makeSetupsApi(deps: { db: DB }) {
       const avgScoreAtConfirmation =
         avgRow?.avg !== null && avgRow?.avg !== undefined ? Number(avgRow.avg) : null;
 
-      // total cost in scope.
+      // Cost source = llm_calls (every LLM invocation). Filtering by watchId
+      // here covers detector ticks even when they didn't produce a setup —
+      // the previous events-based join silently zeroed those out.
       const [costRow] = await db
         .select({
-          total: sql<string | null>`coalesce(sum(${events.costUsd}::numeric), 0)`,
+          total: sql<string | null>`coalesce(sum(${llmCalls.costUsd}::numeric), 0)`,
         })
-        .from(events)
-        .innerJoin(setups, eq(events.setupId, setups.id))
-        .where(and(isNotNull(events.costUsd), watchId ? eq(setups.watchId, watchId) : undefined));
+        .from(llmCalls)
+        .where(watchId ? eq(llmCalls.watchId, watchId) : undefined);
       const totalCostUsd = Number(costRow?.total ?? 0);
 
       return Response.json({

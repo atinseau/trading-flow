@@ -1,0 +1,1 @@
+ALTER TABLE "setups" ADD COLUMN "pattern_category" text;

@@ -3,6 +3,8 @@ import { clearPromptCache } from "@adapters/prompts/loadPrompt";
 import type { TickSnapshot } from "@domain/entities/TickSnapshot";
 import type { LLMProvider } from "@domain/ports/LLMProvider";
 import type { WatchConfig, WatchesConfig } from "@domain/schemas/WatchesConfig";
+import { NEUTRAL_INDICATORS } from "@test-fakes/FakeIndicatorCalculator";
+import { FakeLLMCallStore } from "@test-fakes/FakeLLMCallStore";
 import { FakeLLMProvider } from "@test-fakes/FakeLLMProvider";
 import { InMemoryArtifactStore } from "@test-fakes/InMemoryArtifactStore";
 import { InMemoryLessonStore } from "@test-fakes/InMemoryLessonStore";
@@ -82,18 +84,8 @@ async function buildHarness(injectionDetector: boolean): Promise<Harness> {
     timeframe: "1h",
     ohlcvUri: "mem://ohlcv",
     chartUri: chart.uri,
-    indicators: {
-      rsi: 50,
-      ema20: 100,
-      ema50: 100,
-      ema200: 100,
-      atr: 1,
-      atrMa20: 1,
-      volumeMa20: 100,
-      lastVolume: 100,
-      recentHigh: 110,
-      recentLow: 90,
-    },
+    indicators: NEUTRAL_INDICATORS,
+    lastClose: null,
     preFilterPass: true,
   });
 
@@ -116,6 +108,7 @@ async function buildHarness(injectionDetector: boolean): Promise<Harness> {
     chartRenderer: null,
     indicatorCalculator: null,
     llmProviders,
+    llmCallStore: new FakeLLMCallStore(),
     priceFeeds: new Map(),
     notifier: null,
     setupRepo: null,

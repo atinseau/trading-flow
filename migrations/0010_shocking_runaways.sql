@@ -1,0 +1,1 @@
+ALTER TABLE "setups" ADD COLUMN "expected_maturation_ticks" integer;

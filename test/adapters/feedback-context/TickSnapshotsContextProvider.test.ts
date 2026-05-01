@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { TickSnapshotsContextProvider } from "@adapters/feedback-context/TickSnapshotsContextProvider";
 import type { FeedbackContextScope } from "@domain/ports/FeedbackContextProvider";
+import { NEUTRAL_INDICATORS } from "../../fakes/FakeIndicatorCalculator";
 import { InMemoryTickSnapshotStore } from "../../fakes/InMemoryTickSnapshotStore";
 
 const scope: FeedbackContextScope = {
@@ -15,6 +16,7 @@ const scope: FeedbackContextScope = {
 };
 
 const baseIndicators = {
+  ...NEUTRAL_INDICATORS,
   rsi: 42.5,
   ema20: 42100,
   ema50: 42050,
@@ -38,6 +40,7 @@ describe("TickSnapshotsContextProvider", () => {
       ohlcvUri: "file:///x.csv",
       chartUri: "file:///y.png",
       indicators: baseIndicators,
+      lastClose: null,
       preFilterPass: true,
     });
     expect(tick.id).toBeDefined();
@@ -61,6 +64,7 @@ describe("TickSnapshotsContextProvider", () => {
       ohlcvUri: "file:///x.csv",
       chartUri: "file:///y.png",
       indicators: { ...baseIndicators, rsi: 99 },
+      lastClose: null,
       preFilterPass: true,
     });
     await tickStore.create({
@@ -71,6 +75,7 @@ describe("TickSnapshotsContextProvider", () => {
       ohlcvUri: "file:///x.csv",
       chartUri: "file:///y.png",
       indicators: { ...baseIndicators, rsi: 50 },
+      lastClose: null,
       preFilterPass: true,
     });
     const provider = new TickSnapshotsContextProvider({ tickStore });

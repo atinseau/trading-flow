@@ -4,9 +4,11 @@ import type { ArtifactStore } from "@domain/ports/ArtifactStore";
 import type { ChartRenderer } from "@domain/ports/ChartRenderer";
 import type { Clock } from "@domain/ports/Clock";
 import type { EventStore } from "@domain/ports/EventStore";
+import type { FundingRateProvider } from "@domain/ports/FundingRateProvider";
 import type { IndicatorCalculator } from "@domain/ports/IndicatorCalculator";
 import type { LessonEventStore } from "@domain/ports/LessonEventStore";
 import type { LessonStore } from "@domain/ports/LessonStore";
+import type { LLMCallStore } from "@domain/ports/LLMCallStore";
 import type { LLMProvider } from "@domain/ports/LLMProvider";
 import type { MarketDataFetcher } from "@domain/ports/MarketDataFetcher";
 import type { Notifier } from "@domain/ports/Notifier";
@@ -38,6 +40,13 @@ export type ActivityDeps = {
   chartRenderer: ChartRenderer;
   indicatorCalculator: IndicatorCalculator;
   llmProviders: Map<string, LLMProvider>;
+  llmCallStore: LLMCallStore;
+  /**
+   * Crypto-perp funding/OI providers keyed by source. Optional for non-crypto
+   * watches; reviewer/finalizer skip the funding block when null is returned
+   * or no provider is registered for the watch's source.
+   */
+  fundingRateProviders: Map<string, FundingRateProvider>;
   priceFeeds: Map<string, PriceFeed>;
   notifier: Notifier;
   setupRepo: SetupRepository;

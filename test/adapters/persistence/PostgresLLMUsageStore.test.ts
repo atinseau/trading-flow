@@ -1,56 +1,25 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { PostgresLLMUsageStore } from "@adapters/persistence/PostgresLLMUsageStore";
-import { events, setups } from "@adapters/persistence/schema";
+import { llmCalls } from "@adapters/persistence/schema";
 import { startTestPostgres, type TestPostgres } from "../../helpers/postgres";
 
 let pg: TestPostgres;
 let store: PostgresLLMUsageStore;
-let testSetupId: string;
 
 beforeAll(async () => {
   pg = await startTestPostgres();
   store = new PostgresLLMUsageStore(pg.db);
-
-  // Seed a setup row (events have FK to setups)
-  const [s] = await pg.db
-    .insert(setups)
-    .values({
-      watchId: "test-watch",
-      asset: "BTCUSDT",
-      timeframe: "1h",
-      status: "REVIEWING",
-      ttlCandles: 50,
-      ttlExpiresAt: new Date(Date.now() + 86400_000),
-      workflowId: `wf-${crypto.randomUUID()}`,
-    })
-    .returning({ id: setups.id });
-  testSetupId = s?.id;
 }, 60_000);
 
 afterAll(async () => {
   await pg.cleanup();
 });
 
-async function insertEvent(args: {
-  provider: string;
-  costUsd: number;
-  occurredAt: Date;
-  sequence: number;
-}) {
-  await pg.db.insert(events).values({
-    setupId: testSetupId,
-    sequence: args.sequence,
+async function insertCall(args: { provider: string; costUsd: number; occurredAt: Date }) {
+  await pg.db.insert(llmCalls).values({
+    watchId: "test-watch",
+    setupId: null,
     stage: "reviewer",
-    actor: "test",
-    type: "Strengthened",
-    scoreDelta: "0",
-    scoreAfter: "50",
-    statusBefore: "REVIEWING",
-    statusAfter: "REVIEWING",
-    payload: {
-      type: "Strengthened",
-      data: { reasoning: "x", observations: [], source: "reviewer_full" },
-    },
     provider: args.provider,
     model: "fake",
     costUsd: String(args.costUsd),
@@ -59,18 +28,18 @@ async function insertEvent(args: {
 }
 
 describe("PostgresLLMUsageStore", () => {
-  test("getCallsToday counts events for provider in current UTC day", async () => {
+  test("getCallsToday counts llm_calls for provider in current UTC day", async () => {
     const now = new Date();
-    await insertEvent({ provider: "claude_max", costUsd: 0, occurredAt: now, sequence: 1 });
-    await insertEvent({ provider: "claude_max", costUsd: 0, occurredAt: now, sequence: 2 });
+    await insertCall({ provider: "claude_max", costUsd: 0, occurredAt: now });
+    await insertCall({ provider: "claude_max", costUsd: 0, occurredAt: now });
 
     // Yesterday — should be excluded
     const yesterday = new Date(now);
     yesterday.setUTCDate(yesterday.getUTCDate() - 1);
-    await insertEvent({ provider: "claude_max", costUsd: 0, occurredAt: yesterday, sequence: 3 });
+    await insertCall({ provider: "claude_max", costUsd: 0, occurredAt: yesterday });
 
     // Different provider — should be excluded
-    await insertEvent({ provider: "openrouter", costUsd: 0.001, occurredAt: now, sequence: 4 });
+    await insertCall({ provider: "openrouter", costUsd: 0.001, occurredAt: now });
 
     expect(await store.getCallsToday("claude_max")).toBe(2);
     expect(await store.getCallsToday("openrouter")).toBe(1);

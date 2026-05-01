@@ -21,8 +21,10 @@
 ## Active guidelines (learned from previous trades)
 
 These principles emerged from retrospective analysis of past failed trades on
-this watch. Apply them whenever they apply to the current decision. They take
-precedence over generic best practice when there is a conflict.
+this watch. Apply them when they fit the current data. **However**: if a
+lesson contradicts strong evidence in the current tick (a decisive close, a
+clear structural break, an obvious confluence), override the lesson and cite
+your reasoning. Lessons inform; current evidence wins ties.
 
 {{#each activeLessons}}
 ### {{{this.title}}}
@@ -57,8 +59,60 @@ precedence over generic best practice when there is a conflict.
 ## Fresh data (tick {{tick.tickAt}})
 
 - Last close: `{{fresh.lastClose}}`
-- Indicators: RSI `{{fresh.indicators.rsi}}`, ATR `{{fresh.indicators.atr}}`
-- Chart image attached.
+- Indicators: RSI `{{fresh.indicators.rsi}}`, ATR `{{fresh.indicators.atr}}` (z-score `{{fresh.indicators.atrZScore200}}`)
+- BB bandwidth: `{{fresh.indicators.bbBandwidthPct}}%` (squeeze if < 4)
+- MACD hist: `{{fresh.indicators.macdHist}}` | BOS state: `{{fresh.indicators.bosState}}`
+- VWAP: `{{fresh.indicators.vwapSession}}` (price `{{fresh.indicators.priceVsVwapPct}}%` vs VWAP)
+- POC (last 50p): `{{fresh.indicators.pocPrice}}`
+- Chart image attached (timeframe primary).
+
+{{#if htf}}
+## Higher-timeframe context
+
+- **Daily regime**: `{{htf.dailyTrend}}`
+- **Weekly range**: H=`{{htf.weeklyHigh}}` L=`{{htf.weeklyLow}}` — current price at `{{htf.positionInWeeklyRange}}` of the range (0 = at weekly low, 1 = at weekly high)
+- **Monthly range** (30d): H=`{{htf.monthlyHigh}}` L=`{{htf.monthlyLow}}`
+- **Last 5 daily candles** (oldest → newest):
+{{#each htf.daily5}}
+  - {{this.date}}: H={{this.high}} L={{this.low}} C={{this.close}}
+{{/each}}
+
+→ A setup that fights the daily regime and is at an extreme of the weekly range deserves a WEAKEN, not a STRENGTHEN, even if the local TF looks good. Conversely, alignment with daily regime + room in the weekly range = STRENGTHEN-friendly context.
+
+{{#if funding}}
+### Funding / Open Interest (crypto perp)
+
+- **Last funding rate**: `{{funding.lastFundingRatePct}}%` (next at {{funding.nextFundingAt}})
+- **7-cycle avg**: `{{funding.avg7dFundingRatePct}}%`
+  - Persistent positive (>+0.05%) = longs paying shorts → crowded long, short-bias signal
+  - Persistent negative (<-0.05%) = shorts paying longs → crowded short, long-bias signal (squeeze potential)
+- **Open Interest**: `{{funding.openInterest}}` (24h delta `{{funding.openInterest24hDeltaPct}}%`)
+  - OI ↑ on price ↓ = new shorts piling in (continuation bias)
+  - OI ↓ on price ↑ = squeeze unwind (possible exhaustion)
+  - OI ↑ on price ↑ = new longs (trend confirmation)
+{{/if}}
+
+### Tool: request HTF chart
+
+If you cannot judge the macro context from the text alone — e.g., you need
+to see whether price is rejecting a daily resistance, breaking a daily
+trendline, or sitting at a daily HVN — you may emit
+`request_additional: { htfChart: true, reason: "..." }` in your response.
+The activity will replay this call with a daily chart attached as a 2nd
+image and you'll produce a final verdict in the next round.
+
+**Constraints:**
+- **Use at most ONCE per setup lifecycle** (ideally on the first review
+  tick, when daily structure is most relevant). Subsequent reviews should
+  rely on accumulated memory from the first HTF observation rather than
+  re-requesting the chart every tick.
+- **Each request doubles the cost of the call.** Don't request when the
+  text HTF context (regime label, weekly H/L, position) is sufficient —
+  it is for ~80% of decisions.
+- **Round 2 is FINAL.** Do not request more artifacts in round 2; produce a
+  complete verdict regardless of remaining uncertainty. NEUTRAL with the
+  uncertainty cited is acceptable; another `request_additional` is not.
+{{/if}}
 
 ## `scoreDelta` calibration
 
@@ -73,9 +127,9 @@ precedence over generic best practice when there is a conflict.
 
 ## Few-shot examples
 
-### Example 1 — STRENGTHEN
+### Example 1 — STRENGTHEN with HTF text confluence
 
-Setup `double_bottom` LONG score 50. Memory: volume confirmed on the previous tick. Fresh data: RSI moves from 35 to 42, EMA20 crosses above EMA50 on this tick.
+Setup `bb_squeeze_breakout` LONG (event), score 60, age 2 ticks. Memory: tick #1 = breakout candle with BOS bullish + 1.8× volume. Fresh data: MACD hist accelerating (+12 → +35), price 76200 above VWAP (+0.8%), held above the broken level on retest. HTF: daily uptrend, weekly position 0.42 (mid-range, room to upside), funding avg7d -0.05% (slightly crowded short = squeeze tailwind for LONG).
 
 → Output:
 ```
@@ -83,39 +137,89 @@ Setup `double_bottom` LONG score 50. Memory: volume confirmed on the previous ti
   "type": "STRENGTHEN",
   "scoreDelta": 15,
   "observations": [
-    { "kind": "ema_cross", "text": "EMA20 crosses above EMA50", "evidence": { "ema20": 42100, "ema50": 42050 } },
-    { "kind": "rsi_recovery", "text": "RSI exits oversold zone: 35 → 42", "evidence": { "previous": 35, "current": 42 } }
+    { "kind": "macd_acceleration", "text": "MACD hist +12 → +35 (3x acceleration)", "evidence": { "previous": 12, "current": 35 } },
+    { "kind": "vwap_distance", "text": "Price +0.8% above VWAP, trending away (institutional bias confirmed)", "evidence": { "priceVsVwapPct": 0.8 } },
+    { "kind": "retest_held", "text": "Retest of broken level 76050 held — close 76200, no structure stress" }
   ],
-  "reasoning": "Bearish confluence fades: EMA cross + RSI recovery confirm the double bottom recovery",
+  "reasoning": "Tick-2 confirmation of the BB squeeze breakout: MACD acceleration + VWAP extension + retest held. HTF context aligned (daily uptrend, weekly mid-range, slightly crowded short = squeeze tailwind for our long). Move toward EQH target 76470 is on track.",
   "invalidationLevelUpdate": null
 }
 ```
 
-### Example 2 — INVALIDATE
+### Example 2 — STRENGTHEN with `request_additional` (round 1)
 
-Setup score 60. Fresh data: price drops below the invalidation level, structure clearly broken (close < invalidation for the 2nd consecutive candle).
+Setup `liquidity_sweep` SHORT (event), score 60, age 1 tick. Fresh data: follow-through candle closed -0.4% below the sweep candle, MACD hist flattening, BB lower band rejected. HTF text says daily downtrend, but the trigger price 76200 is near a daily-level zone I want to verify visually before committing the score.
+
+→ Output (round 1):
+```
+{
+  "type": "STRENGTHEN",
+  "scoreDelta": 10,
+  "observations": [
+    { "kind": "follow_through", "text": "Close -0.4% below sweep candle = continuation confirmed" },
+    { "kind": "macd_flattening", "text": "MACD hist flattening (positive but decelerating) = momentum loss for the bullish side" }
+  ],
+  "reasoning": "Tick 1 confirmation. The setup is structurally aligned with daily downtrend per text. Requesting HTF chart to verify the entry zone 76200 isn't sitting at a daily HVN that could absorb the move.",
+  "request_additional": { "htfChart": true, "reason": "Verify 76200 zone vs daily structure before locking in conviction" }
+}
+```
+
+→ Output (round 2, after HTF chart attached):
+```
+{
+  "type": "STRENGTHEN",
+  "scoreDelta": 15,
+  "observations": [
+    { "kind": "follow_through", "text": "Close -0.4% below sweep candle = continuation confirmed" },
+    { "kind": "macd_flattening", "text": "MACD hist flattening on local TF" },
+    { "kind": "htf_no_support_below", "text": "HTF chart confirms 76200 zone is mid-range on daily, no major HVN absorbing — clean path toward weekly low at 75300" }
+  ],
+  "reasoning": "HTF confirms no immediate daily support. Setup has clean structural alignment + macro target. Bumping delta to +15 with full conviction.",
+  "invalidationLevelUpdate": null
+}
+```
+
+### Example 3 — INVALIDATE on decisive close (immediate, no second-candle wait)
+
+Setup `bb_squeeze_breakout` LONG, invalidation 75880, age 3 ticks. Fresh data: price closed at 75730 — that's 0.2% below invalidation, decisive (more than the 0.3% buffer required to wait, so this IS a decisive break). Volume 2.4× MA20 on the breakdown candle.
 
 → Output:
 ```
 {
   "type": "INVALIDATE",
-  "reason": "structure_break_confirmed",
+  "reason": "decisive_close_below_invalidation",
   "observations": [
-    { "kind": "price_below_invalidation", "text": "Close 41420 below invalidation 41500 across 2 candles" }
+    { "kind": "decisive_break", "text": "Close 75730 vs invalidation 75880 = -0.2% beyond level on heavy volume (2.4x MA20). Decisive break — no second-candle wait needed; slippage on stop already eats most of any further wait." }
   ]
 }
 ```
 
-### Example 3 — NEUTRAL
+### Example 4 — WEAKEN on wick-and-reclaim (structure stress without break)
 
-Setup score 45. Fresh data: tight range across 3 candles, anemic volume, stable indicators.
+Setup `liquidity_sweep` SHORT, invalidation 76310. Fresh data: price wicked to 76340 (above invalidation by 0.04%) but closed back at 76185 (well inside the structure). Volume on the wick: 2.8× MA20 = clear stop-run / absorption.
+
+→ Output:
+```
+{
+  "type": "WEAKEN",
+  "scoreDelta": -10,
+  "observations": [
+    { "kind": "wick_reclaim", "text": "Wick 76340 above invalidation 76310, but close 76185 reclaimed inside. Volume 2.8x = absorption, not a real break." }
+  ],
+  "reasoning": "Structure stress signal — the level was tested and held but the wick shows real pressure. Reduce conviction without invalidating; another wick + reclaim on the next tick = WEAKEN -5 again; a decisive close above 76310 = INVALIDATE."
+}
+```
+
+### Example 5 — NEUTRAL (nothing material since last tick)
+
+Setup `double_bottom` LONG (accumulation), age 4 ticks. Memory: 2 STRENGTHEN, 1 NEUTRAL prior. Fresh data: tight range 75900-76050 (3 candles), volume 0.7× MA20, RSI flat 51 → 53, MACD hist unchanged. HTF unchanged.
 
 → Output:
 ```
 {
   "type": "NEUTRAL",
   "observations": [
-    { "kind": "consolidation", "text": "Range 41850-41920 across 3 candles, volume <0.7x average" }
+    { "kind": "consolidation", "text": "Range 75900-76050 over 3 candles, volume 0.7x MA20, RSI 51→53 — no new evidence either direction" }
   ]
 }
 ```
@@ -142,3 +246,4 @@ Expected response schema:
 | `reasoning` | string | Required for STRENGTHEN/WEAKEN. 2-3 sentences |
 | `reason` | string | Required for INVALIDATE (e.g. "structure_break", "volume_collapse") |
 | `invalidationLevelUpdate` | number or null | If you want to adjust the invalidation level |
+| `request_additional` | object optional | `{ htfChart: true, reason: "..." }` — only on round 1, only when you genuinely need the daily chart to decide |

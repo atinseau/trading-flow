@@ -3,10 +3,17 @@ import { loadPrompt } from "@adapters/prompts/loadPrompt";
 import { InvalidConfigError } from "@domain/errors";
 import type { EventPayload } from "@domain/events/schemas";
 import type { NewEvent, SetupStateUpdate } from "@domain/ports/EventStore";
+import type { ReviewerLlmOutput } from "@domain/schemas/ReviewerOutput";
+import { ReviewerLlmOutputSchema } from "@domain/schemas/ReviewerOutput";
 import type { Verdict } from "@domain/schemas/Verdict";
 import { VerdictSchema } from "@domain/schemas/Verdict";
+import { renderHtfChart } from "@domain/services/htfChartRenderer";
+import { computeHtfContext } from "@domain/services/htfContext";
+import { inferImageMimeType } from "@domain/services/imageMimeType";
 import { computeInputHash } from "@domain/services/inputHash";
+import { classifyRegime } from "@domain/services/marketRegime";
 import { getSession, getSessionState } from "@domain/services/marketSession";
+import { getTradingSession } from "@domain/services/tradingSession";
 import { getLogger } from "@observability/logger";
 import type { ActivityDeps } from "@workflows/activityDependencies";
 import { ensurePriceMonitorStarted } from "@workflows/price-monitor/ensureRunning";
@@ -30,6 +37,8 @@ export function buildSetupActivities(deps: ActivityDeps) {
       asset: string;
       timeframe: string;
       patternHint: string;
+      patternCategory: "event" | "accumulation";
+      expectedMaturationTicks: number;
       invalidationLevel: number;
       direction: "LONG" | "SHORT";
       ttlCandles: number;
@@ -45,6 +54,8 @@ export function buildSetupActivities(deps: ActivityDeps) {
         status: "REVIEWING",
         currentScore: input.initialScore,
         patternHint: input.patternHint,
+        patternCategory: input.patternCategory,
+        expectedMaturationTicks: input.expectedMaturationTicks,
         invalidationLevel: input.invalidationLevel,
         direction: input.direction,
         ttlCandles: input.ttlCandles,
@@ -157,6 +168,32 @@ export function buildSetupActivities(deps: ActivityDeps) {
       }
 
       const history = await deps.eventStore.listForSetup(input.setupId);
+
+      // Reviewer gets the HTF text context (the detector now skips this — it
+      // only needs the regime label). Source-of-truth for "is this setup
+      // aligned with the macro?" lives at this stage.
+      // Live price = the snapshot's actual lastClose (set at creation from the
+      // last OHLCV candle). The previous proxy `recentHigh` was the 50-period
+      // high — biased toward 1.0 in `positionInWeeklyRange` and just wrong.
+      const fetcher = deps.marketDataFetchers.get(watch.asset.source);
+      const livePrice = snap.lastClose ?? snap.indicators.recentHigh;
+      const htf = fetcher
+        ? await computeHtfContext({
+            marketDataFetcher: fetcher,
+            asset: watch.asset.symbol,
+            livePrice,
+          })
+        : null;
+
+      // Funding/OI: only meaningful for crypto perp-tradable assets. The
+      // provider returns null for unsupported symbols (Yahoo equities,
+      // exotic Binance pairs without a perp). Failures don't block the
+      // reviewer — the prompt simply omits the section.
+      const fundingProvider = deps.fundingRateProviders.get(watch.asset.source);
+      const funding = fundingProvider
+        ? await fundingProvider.fetchSnapshot(watch.asset.symbol)
+        : null;
+
       const userPrompt = reviewerPrompt.render({
         setup: {
           id: setup.id,
@@ -176,38 +213,126 @@ export function buildSetupActivities(deps: ActivityDeps) {
         })),
         tick: { tickAt: snap.tickAt.toISOString() },
         fresh: { lastClose: 0, indicators: snap.indicators },
+        htf,
+        funding,
         activeLessons: activeLessons.map((l) => ({ title: l.title, body: l.body })),
       });
 
-      const result = await resolveAndCall(
+      // Round 1: tick chart only.
+      const round1Images = [
+        { sourceUri: snap.chartUri, mimeType: inferImageMimeType(snap.chartUri) },
+      ];
+      const round1 = await resolveAndCall(
         watch.analyzers.reviewer.provider,
         {
           systemPrompt: reviewerPrompt.systemPrompt,
           userPrompt,
-          images: [{ sourceUri: snap.chartUri, mimeType: "image/png" }],
+          images: round1Images,
           model: watch.analyzers.reviewer.model,
           maxTokens: watch.analyzers.reviewer.max_tokens,
-          responseSchema: VerdictSchema,
+          responseSchema: ReviewerLlmOutputSchema,
         },
         deps.llmProviders,
       );
-      const verdict = result.output.parsed as Verdict;
+      await deps.llmCallStore.record({
+        watchId: input.watchId,
+        setupId: input.setupId,
+        stage: "reviewer",
+        provider: round1.usedProvider,
+        model: watch.analyzers.reviewer.model,
+        promptTokens: round1.output.promptTokens,
+        completionTokens: round1.output.completionTokens,
+        cacheReadTokens: round1.output.cacheReadTokens ?? 0,
+        cacheCreateTokens: round1.output.cacheWriteTokens ?? 0,
+        costUsd: round1.output.costUsd,
+        latencyMs: round1.output.latencyMs,
+      });
+
+      let finalParsed = round1.output.parsed as ReviewerLlmOutput;
+      let totalCost = round1.output.costUsd;
+      let usedProvider = round1.usedProvider;
+      // Effective prompt version reported on the persisted event. Round-2
+      // appends the HTF-chart directive to the user prompt; tag it explicitly
+      // so cache lookups and audit trails distinguish the two prompts.
+      let effectivePromptVersion = promptVersion;
+
+      // Round 2 (on-demand): if reviewer asked for the HTF chart, render a
+      // daily chart and replay the call so it can refine its judgment with
+      // the wider structure visible. Only one extra round — no recursion.
+      if (finalParsed.request_additional?.htfChart === true && fetcher) {
+        childLog.info(
+          { reason: finalParsed.request_additional.reason ?? "unspecified" },
+          "reviewer requested HTF chart, replaying with daily attached",
+        );
+        try {
+          const htfChartUri = await renderHtfChart({
+            chartRenderer: deps.chartRenderer,
+            indicatorCalculator: deps.indicatorCalculator,
+            artifactStore: deps.artifactStore,
+            fetcher,
+            asset: watch.asset.symbol,
+          });
+          const round2Images = [
+            ...round1Images,
+            { sourceUri: htfChartUri, mimeType: inferImageMimeType(htfChartUri) },
+          ];
+          const round2 = await resolveAndCall(
+            watch.analyzers.reviewer.provider,
+            {
+              systemPrompt: reviewerPrompt.systemPrompt,
+              userPrompt: `${userPrompt}\n\n## Additional context: HTF (daily) chart attached as 2nd image\n\nThe daily chart you requested is now attached. Update your verdict with this extra structural context. Do NOT request additional artifacts in this round — answer with a final verdict.`,
+              images: round2Images,
+              model: watch.analyzers.reviewer.model,
+              maxTokens: watch.analyzers.reviewer.max_tokens,
+              responseSchema: ReviewerLlmOutputSchema,
+            },
+            deps.llmProviders,
+          );
+          await deps.llmCallStore.record({
+            watchId: input.watchId,
+            setupId: input.setupId,
+            stage: "reviewer_htf_chart",
+            provider: round2.usedProvider,
+            model: watch.analyzers.reviewer.model,
+            promptTokens: round2.output.promptTokens,
+            completionTokens: round2.output.completionTokens,
+            cacheReadTokens: round2.output.cacheReadTokens ?? 0,
+            cacheCreateTokens: round2.output.cacheWriteTokens ?? 0,
+            costUsd: round2.output.costUsd,
+            latencyMs: round2.output.latencyMs,
+          });
+          finalParsed = round2.output.parsed as ReviewerLlmOutput;
+          totalCost += round2.output.costUsd;
+          usedProvider = round2.usedProvider;
+          effectivePromptVersion = `${promptVersion}+htf2`;
+        } catch (err) {
+          childLog.warn(
+            { err: (err as Error).message },
+            "HTF chart render/replay failed, falling back to round-1 verdict",
+          );
+        }
+      }
+
+      // Strip the wire-only request_additional field before persisting.
+      const { request_additional: _unused, ...persistedFields } = finalParsed;
+      const verdict = VerdictSchema.parse(persistedFields) as Verdict;
+
       childLog.info(
         {
           verdict: verdict.type,
-          costUsd: result.output.costUsd,
-          provider: result.usedProvider,
+          costUsd: totalCost,
+          provider: usedProvider,
           model: watch.analyzers.reviewer.model,
         },
         "runReviewer complete",
       );
       return {
         verdictJson: JSON.stringify(verdict),
-        costUsd: result.output.costUsd,
+        costUsd: totalCost,
         eventAlreadyExisted: false,
         inputHash,
-        promptVersion,
-        provider: result.usedProvider,
+        promptVersion: effectivePromptVersion,
+        provider: usedProvider,
         model: watch.analyzers.reviewer.model,
       };
     },
@@ -262,31 +387,100 @@ export function buildSetupActivities(deps: ActivityDeps) {
         await deps.lessonStore.incrementUsage(activeLessons.map((l) => l.id));
       }
 
+      // Finalizer is the gatekeeper — always include HTF text + chart, no
+      // tool-call shortcut. We're about to fire real capital, no half-measures.
+      // Pull the latest tick snapshot for the watch to get fresh indicators
+      // (events don't carry indicator state) AND the live price (snapshot's
+      // lastClose). Previous code used setup.invalidationLevel as a price
+      // proxy — that's the stop-loss, completely wrong.
+      const latestSnap = await deps.tickSnapshotStore.latestForWatch(input.watchId);
+      const fetcher = deps.marketDataFetchers.get(watch.asset.source);
+      const livePrice = latestSnap?.lastClose ?? setup.invalidationLevel ?? 0;
+      const htf = fetcher
+        ? await computeHtfContext({
+            marketDataFetcher: fetcher,
+            asset: watch.asset.symbol,
+            livePrice,
+          })
+        : null;
+      let htfChartUri: string | null = null;
+      if (fetcher) {
+        try {
+          htfChartUri = await renderHtfChart({
+            chartRenderer: deps.chartRenderer,
+            indicatorCalculator: deps.indicatorCalculator,
+            artifactStore: deps.artifactStore,
+            fetcher,
+            asset: watch.asset.symbol,
+          });
+        } catch (err) {
+          childLog.warn({ err: (err as Error).message }, "finalizer HTF chart render failed");
+        }
+      }
+
+      const fundingProvider = deps.fundingRateProviders.get(watch.asset.source);
+      const funding = fundingProvider
+        ? await fundingProvider.fetchSnapshot(watch.asset.symbol)
+        : null;
+
+      // Regime classification needs CURRENT indicators. Events don't carry
+      // them (StrengthenedPayload schema has no `indicators` field, the old
+      // `extractIndicators` always returned null). Pull from the latest tick
+      // snapshot — it has the freshest indicator state.
+      const regime = latestSnap ? classifyRegime(latestSnap.indicators, htf) : null;
+      const session = getTradingSession(deps.clock.now());
+
       const finalizerPrompt = await loadPrompt("finalizer");
+      // Reviewer-tick count = setup events excluding SetupCreated, Confirmed,
+      // Expired, and other non-reviewer event types. Drives the maturation rule.
+      const actualReviewerTicks = history.filter((e) =>
+        ["Strengthened", "Weakened", "Neutral"].includes(e.type),
+      ).length;
+
+      const minRR = watch.setup_lifecycle.min_risk_reward_ratio;
+      const costs = {
+        fees_pct: watch.costs.fees_pct,
+        slippage_pct: watch.costs.slippage_pct,
+        totalPct: (watch.costs.fees_pct + watch.costs.slippage_pct).toFixed(3),
+      };
+
       const userPrompt = finalizerPrompt.render({
         setup: {
           id: setup.id,
           asset: setup.asset,
           timeframe: setup.timeframe,
           patternHint: setup.patternHint,
+          patternCategory: setup.patternCategory,
+          expectedMaturationTicks: setup.expectedMaturationTicks ?? "(not declared)",
           direction: setup.direction,
           currentScore: setup.currentScore,
           invalidationLevel: setup.invalidationLevel,
         },
+        minRiskRewardRatio: minRR,
+        costs,
         historyCount: history.length,
+        actualReviewerTicks,
         history: history.map((e) => ({
           sequence: e.sequence,
           type: e.type,
           scoreAfter: e.scoreAfter,
         })),
+        htf,
+        funding,
+        regime,
+        session,
         activeLessons: activeLessons.map((l) => ({ title: l.title, body: l.body })),
       });
 
+      const finalizerImages = htfChartUri
+        ? [{ sourceUri: htfChartUri, mimeType: inferImageMimeType(htfChartUri) }]
+        : undefined;
       const result = await resolveAndCall(
         watch.analyzers.finalizer.provider,
         {
           systemPrompt: finalizerPrompt.systemPrompt,
           userPrompt,
+          images: finalizerImages,
           model: watch.analyzers.finalizer.model,
           maxTokens: watch.analyzers.finalizer.max_tokens,
           responseSchema: FinalizerOutputSchema,
@@ -295,6 +489,19 @@ export function buildSetupActivities(deps: ActivityDeps) {
       );
 
       const decision = result.output.parsed as { go: boolean };
+      await deps.llmCallStore.record({
+        watchId: input.watchId,
+        setupId: input.setupId,
+        stage: "finalizer",
+        provider: result.usedProvider,
+        model: watch.analyzers.finalizer.model,
+        promptTokens: result.output.promptTokens,
+        completionTokens: result.output.completionTokens,
+        cacheReadTokens: result.output.cacheReadTokens ?? 0,
+        cacheCreateTokens: result.output.cacheWriteTokens ?? 0,
+        costUsd: result.output.costUsd,
+        latencyMs: result.output.latencyMs,
+      });
       childLog.info(
         {
           go: decision.go,

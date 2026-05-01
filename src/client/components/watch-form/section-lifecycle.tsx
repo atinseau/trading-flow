@@ -68,6 +68,34 @@ export function SectionLifecycle() {
 
       <FormField
         control={f.control}
+        name="setup_lifecycle.min_risk_reward_ratio"
+        render={({ field }) => (
+          <FormItem>
+            <FormLabel className="flex items-center justify-between">
+              <span>R:R minimum</span>
+              <span className="font-mono text-sm">1:{(field.value ?? 2).toFixed(1)}</span>
+            </FormLabel>
+            <FormControl>
+              <Slider
+                min={1.5}
+                max={5}
+                step={0.1}
+                value={[field.value ?? 2]}
+                onValueChange={(v) => field.onChange(v[0])}
+              />
+            </FormControl>
+            <FormDescription>
+              Ratio reward/risk minimal pour qu'un setup soit confirmé GO. Plus haut = moins de
+              trades mais EV par trade plus élevée. <span className="font-mono">1:2</span> est le
+              standard ; <span className="font-mono">1:3+</span> pour profil conservateur.
+            </FormDescription>
+            <FormMessage />
+          </FormItem>
+        )}
+      />
+
+      <FormField
+        control={f.control}
         name="setup_lifecycle.invalidation_policy"
         render={({ field }) => (
           <FormItem>

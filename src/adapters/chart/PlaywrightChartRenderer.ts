@@ -5,6 +5,14 @@ import { fileURLToPath } from "node:url";
 import type { ChartRenderer, ChartRenderResult } from "@domain/ports/ChartRenderer";
 import type { Candle } from "@domain/schemas/Candle";
 import { type Browser, chromium, type Page } from "playwright";
+import sharp from "sharp";
+
+// Claude Vision auto-resizes images to 1568px max on the long side before
+// tokenization (`tokens = (W × H) / 750`). Rendering above this is wasted
+// bytes; rendering at exactly this cap matches Claude's billing without
+// degrading detail. Capping is the only way to *reduce* image tokens; format
+// (WebP vs PNG) only affects bytes/transfer, not tokens.
+const MAX_LLM_DIMENSION = 1568;
 
 export class PlaywrightChartRenderer implements ChartRenderer {
   private browser: Browser | null = null;
@@ -37,7 +45,10 @@ export class PlaywrightChartRenderer implements ChartRenderer {
       `<script>${libSource}</script>`,
     );
     for (let i = 0; i < size; i++) {
-      const page = await this.browser.newPage({ viewport: { width: 1280, height: 720 } });
+      const page = await this.browser.newPage({
+        viewport: { width: 1280, height: 720 },
+        locale: "en-US",
+      });
       await page.setContent(this.templateHtml);
       this.pagePool.push(page);
     }
@@ -45,6 +56,7 @@ export class PlaywrightChartRenderer implements ChartRenderer {
 
   async render(args: {
     candles: Candle[];
+    indicators?: import("@domain/ports/IndicatorCalculator").IndicatorSeries;
     width: number;
     height: number;
     outputUri: string;
@@ -54,32 +66,48 @@ export class PlaywrightChartRenderer implements ChartRenderer {
     try {
       await page.setViewportSize({ width: args.width, height: args.height });
       await page.setContent(this.templateHtml as string);
-      await page.evaluate(
-        (data) => {
-          (window as unknown as { __renderCandles: (c: unknown) => void }).__renderCandles(data);
-        },
-        args.candles.map((c) => ({
+      const payload = {
+        candles: args.candles.map((c) => ({
           time: Math.floor(c.timestamp.getTime() / 1000),
           open: c.open,
           high: c.high,
           low: c.low,
           close: c.close,
+          volume: c.volume,
         })),
-      );
+        indicators: args.indicators ?? null,
+      };
+      await page.evaluate((data) => {
+        (window as unknown as { __renderCandles: (c: unknown) => void }).__renderCandles(data);
+      }, payload);
       await page.waitForFunction(
         () => (window as unknown as { __chartReady?: boolean }).__chartReady === true,
         { timeout: 5000 },
       );
-      const buffer = await page.screenshot({ type: "png", omitBackground: false });
+      const png = await page.screenshot({ type: "png", omitBackground: false });
+      // Resize-to-cap + WebP encode in one pipeline. `fit: "inside"` preserves
+      // aspect ratio; `withoutEnlargement` no-ops if the source is already
+      // smaller than the cap. WebP @ q85 is visually indistinguishable from
+      // PNG for line/candle charts and ~5× smaller bytes.
+      const buffer = await sharp(png)
+        .resize(MAX_LLM_DIMENSION, MAX_LLM_DIMENSION, {
+          fit: "inside",
+          withoutEnlargement: true,
+        })
+        .webp({ quality: 85 })
+        .toBuffer();
       const sha256 = createHash("sha256").update(buffer).digest("hex");
-      const path = args.outputUri.replace(/^file:\/\//, "");
+      // Swap the .png suffix from the caller's outputUri to .webp so the
+      // file extension matches the bytes.
+      const webpUri = args.outputUri.replace(/\.png$/i, ".webp");
+      const path = webpUri.replace(/^file:\/\//, "");
       await mkdir(dirname(path), { recursive: true });
       await Bun.write(path, buffer);
       return {
-        uri: args.outputUri,
+        uri: webpUri,
         sha256,
         bytes: buffer.length,
-        mimeType: "image/png",
+        mimeType: "image/webp",
         content: buffer,
       };
     } finally {
@@ -112,7 +140,7 @@ export class PlaywrightChartRenderer implements ChartRenderer {
     const fromPool = this.pagePool.pop();
     if (fromPool) return fromPool;
     if (!this.browser) throw new Error("Browser not initialized");
-    return this.browser.newPage({ viewport: { width: 1280, height: 720 } });
+    return this.browser.newPage({ viewport: { width: 1280, height: 720 }, locale: "en-US" });
   }
 
   private releasePage(page: Page): void {

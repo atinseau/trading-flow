@@ -1,4 +1,9 @@
-import { watchConfigRevisions, watchConfigs, watchStates } from "@adapters/persistence/schema";
+import {
+  llmCalls,
+  watchConfigRevisions,
+  watchConfigs,
+  watchStates,
+} from "@adapters/persistence/schema";
 import { NotFoundError, requireParam, safeHandler } from "@client/api/safeHandler";
 import {
   createWatchConfig,
@@ -8,7 +13,7 @@ import {
 } from "@client/lib/watchConfigService";
 import { lookupYahooMetadata } from "@client/lib/yahooMetadata";
 import { WatchSchema } from "@domain/schemas/WatchesConfig";
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, gte, isNull, sql } from "drizzle-orm";
 import type { drizzle } from "drizzle-orm/node-postgres";
 import { z } from "zod";
 
@@ -46,12 +51,48 @@ export function makeWatchesApi(deps: { db: DB; hooks: WatchConfigHooks }) {
         .where(and(eq(watchConfigs.id, id), isNull(watchConfigs.deletedAt)));
       if (!row) throw new NotFoundError(`watch ${id} not found`);
       const [state] = await db.select().from(watchStates).where(eq(watchStates.watchId, id));
+
+      // Cost source-of-truth = llm_calls. The state.totalCostUsd* columns are
+      // legacy (only updated by recordWatchTick which itself is being phased
+      // out); they can drift from llm_calls. Override the response fields so
+      // the UI sees consistent numbers across pages.
+      const monthStart = new Date();
+      monthStart.setUTCDate(1);
+      monthStart.setUTCHours(0, 0, 0, 0);
+      const [costAggMtd] = await db
+        .select({
+          total: sql<string | null>`coalesce(sum(${llmCalls.costUsd}::numeric), 0)`,
+        })
+        .from(llmCalls)
+        .where(and(eq(llmCalls.watchId, id), gte(llmCalls.occurredAt, monthStart)));
+      const [costAggAll] = await db
+        .select({
+          total: sql<string | null>`coalesce(sum(${llmCalls.costUsd}::numeric), 0)`,
+        })
+        .from(llmCalls)
+        .where(eq(llmCalls.watchId, id));
+
+      // Parse the stored config through WatchSchema so Zod prefaults populate
+      // any fields added after this watch was originally saved (e.g. new
+      // `costs` block, `optimization.allow_same_tick_fast_path`,
+      // `setup_lifecycle.min_risk_reward_ratio`). Without this, the form
+      // shows empty inputs for newly added fields. Falls back to raw config
+      // if the stored shape doesn't validate (legacy invalid rows).
+      const parsedConfig = WatchSchema.safeParse(row.config);
+      const responseConfig = parsedConfig.success ? parsedConfig.data : row.config;
+
       return Response.json({
         id: row.id,
         enabled: row.enabled,
         version: row.version,
-        config: row.config,
-        state: state ?? null,
+        config: responseConfig,
+        state: state
+          ? {
+              ...state,
+              totalCostUsdMtd: String(costAggMtd?.total ?? "0"),
+              totalCostUsdAllTime: String(costAggAll?.total ?? "0"),
+            }
+          : null,
         createdAt: row.createdAt,
         updatedAt: row.updatedAt,
       });

@@ -80,6 +80,10 @@ export type InitialEvidence = {
   asset: string;
   timeframe: string;
   patternHint: string;
+  patternCategory: "event" | "accumulation";
+  expectedMaturationTicks: number;
+  /** Watch-level config — gates the same-tick detector→finalizer shortcut. */
+  allowSameTickFastPath: boolean;
   direction: "LONG" | "SHORT";
   invalidationLevel: number;
   initialScore: number;
@@ -349,6 +353,8 @@ export async function setupWorkflow(initial: InitialEvidence): Promise<SetupStat
     asset: initial.asset,
     timeframe: initial.timeframe,
     patternHint: initial.patternHint,
+    patternCategory: initial.patternCategory,
+    expectedMaturationTicks: initial.expectedMaturationTicks,
     invalidationLevel: initial.invalidationLevel,
     direction: initial.direction,
     ttlCandles: initial.ttlCandles,
@@ -386,6 +392,26 @@ export async function setupWorkflow(initial: InitialEvidence): Promise<SetupStat
     },
   });
   state.sequence = createdEvt.sequence;
+
+  // Same-tick fast-path for high-conviction event setups.
+  // If the detector emitted a setup that already meets the finalizer
+  // threshold AND declared a 1-tick maturation, route directly to the
+  // finalizer in this same workflow tick — skip the reviewer entirely.
+  // Rationale: a clean liquidity-sweep + reclaim or BB-squeeze break is
+  // fully formed at proposal time; waiting one full reviewer tick (15min
+  // on a 15m TF) gives away most of the move. The architectural guard:
+  // BOTH score ≥ threshold AND maturation = 1 must hold; either alone is
+  // not sufficient (high score without instant maturation = needs at
+  // least 1 follow-through tick; instant maturation without high score =
+  // not yet finalizer-eligible).
+  if (
+    initial.allowSameTickFastPath &&
+    state.score >= initial.scoreThresholdFinalizer &&
+    initial.expectedMaturationTicks === 1 &&
+    state.status === "REVIEWING"
+  ) {
+    state.status = "FINALIZING";
+  }
 
   // TTL timer (Temporal-native, durable). Runs in a cancellable scope so we
   // can stop it as soon as the workflow leaves an active state.

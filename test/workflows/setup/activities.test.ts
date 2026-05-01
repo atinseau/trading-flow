@@ -8,6 +8,7 @@
 import { describe, expect, test } from "bun:test";
 import type { WatchConfig } from "@domain/schemas/WatchesConfig";
 import { FakeClock } from "@test-fakes/FakeClock";
+import { FakeLLMCallStore } from "@test-fakes/FakeLLMCallStore";
 import { FakeLLMProvider } from "@test-fakes/FakeLLMProvider";
 import { InMemoryArtifactStore } from "@test-fakes/InMemoryArtifactStore";
 import { InMemoryEventStore } from "@test-fakes/InMemoryEventStore";
@@ -35,7 +36,8 @@ const nasdaqWatch: WatchConfig = {
     score_threshold_finalizer: 80,
     score_threshold_dead: 10,
     score_max: 100,
-    invalidation_policy: "strict",
+    invalidation_policy: "strict" as const,
+    min_risk_reward_ratio: 2,
   },
   history_compaction: { max_raw_events_in_context: 40, summarize_after_age_hours: 48 },
   deduplication: { similar_setup_window_candles: 5, similar_price_tolerance_pct: 0.5 },
@@ -52,12 +54,18 @@ const nasdaqWatch: WatchConfig = {
     // biome-ignore lint/suspicious/noExplicitAny: test fake provider
     finalizer: { provider: "fake" as any, model: "fake-model", max_tokens: 2000 },
   },
-  optimization: { reviewer_skip_when_detector_corroborated: true },
+  optimization: { reviewer_skip_when_detector_corroborated: true, allow_same_tick_fast_path: true },
+  costs: { fees_pct: 0.1, slippage_pct: 0.05 },
   notify_on: [],
   include_chart_image: true,
   include_reasoning: true,
   budget: { pause_on_budget_exceeded: true },
-  feedback: { enabled: false, max_active_lessons_per_category: 30, injection: { detector: false, reviewer: false, finalizer: false }, context_providers_disabled: [] },
+  feedback: {
+    enabled: false,
+    max_active_lessons_per_category: 30,
+    injection: { detector: false, reviewer: false, finalizer: false },
+    context_providers_disabled: [],
+  },
 };
 
 /**
@@ -76,7 +84,8 @@ const binanceWatch: WatchConfig = {
     score_threshold_finalizer: 80,
     score_threshold_dead: 10,
     score_max: 100,
-    invalidation_policy: "strict",
+    invalidation_policy: "strict" as const,
+    min_risk_reward_ratio: 2,
   },
   history_compaction: { max_raw_events_in_context: 40, summarize_after_age_hours: 48 },
   deduplication: { similar_setup_window_candles: 5, similar_price_tolerance_pct: 0.5 },
@@ -93,12 +102,18 @@ const binanceWatch: WatchConfig = {
     // biome-ignore lint/suspicious/noExplicitAny: test fake provider
     finalizer: { provider: "fake" as any, model: "fake-model", max_tokens: 2000 },
   },
-  optimization: { reviewer_skip_when_detector_corroborated: true },
+  optimization: { reviewer_skip_when_detector_corroborated: true, allow_same_tick_fast_path: true },
+  costs: { fees_pct: 0.1, slippage_pct: 0.05 },
   notify_on: [],
   include_chart_image: true,
   include_reasoning: true,
   budget: { pause_on_budget_exceeded: true },
-  feedback: { enabled: false, max_active_lessons_per_category: 30, injection: { detector: false, reviewer: false, finalizer: false }, context_providers_disabled: [] },
+  feedback: {
+    enabled: false,
+    max_active_lessons_per_category: 30,
+    injection: { detector: false, reviewer: false, finalizer: false },
+    context_providers_disabled: [],
+  },
 };
 
 // A Saturday 12:00 UTC — NASDAQ is always closed on Saturday.
@@ -127,6 +142,8 @@ function makeDeps(
     status: "REVIEWING",
     currentScore: 25,
     patternHint: "double_bottom",
+    patternCategory: "accumulation",
+    expectedMaturationTicks: null,
     invalidationLevel: 100,
     direction: "LONG",
     ttlCandles: 50,
@@ -142,6 +159,8 @@ function makeDeps(
     artifactStore,
     tickSnapshotStore,
     llmProviders: new Map([["fake", llmProvider]]),
+    llmCallStore: new FakeLLMCallStore(),
+    fundingRateProviders: new Map(),
     // The rest are never reached in these tests
     marketDataFetchers: new Map(),
     chartRenderer: null as never,
@@ -200,7 +219,8 @@ describe("runReviewer — market-hours guard", () => {
         score_threshold_finalizer: 80,
         score_threshold_dead: 10,
         score_max: 100,
-        invalidation_policy: "strict",
+        invalidation_policy: "strict" as const,
+        min_risk_reward_ratio: 2,
       },
       history_compaction: { max_raw_events_in_context: 40, summarize_after_age_hours: 48 },
       deduplication: { similar_setup_window_candles: 5, similar_price_tolerance_pct: 0.5 },
@@ -217,12 +237,21 @@ describe("runReviewer — market-hours guard", () => {
         // biome-ignore lint/suspicious/noExplicitAny: test fake provider
         finalizer: { provider: "fake" as any, model: "fake-model", max_tokens: 2000 },
       },
-      optimization: { reviewer_skip_when_detector_corroborated: true },
+      optimization: {
+        reviewer_skip_when_detector_corroborated: true,
+        allow_same_tick_fast_path: true,
+      },
+      costs: { fees_pct: 0.1, slippage_pct: 0.05 },
       notify_on: [],
       include_chart_image: true,
       include_reasoning: true,
       budget: { pause_on_budget_exceeded: true },
-      feedback: { enabled: false, max_active_lessons_per_category: 30, injection: { detector: false, reviewer: false, finalizer: false }, context_providers_disabled: [] },
+      feedback: {
+        enabled: false,
+        max_active_lessons_per_category: 30,
+        injection: { detector: false, reviewer: false, finalizer: false },
+        context_providers_disabled: [],
+      },
     };
 
     const clock = new FakeClock(SATURDAY_UTC);

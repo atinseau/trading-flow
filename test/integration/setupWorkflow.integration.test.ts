@@ -14,7 +14,8 @@ import type { WatchConfig } from "@domain/schemas/WatchesConfig";
 import { TestWorkflowEnvironment } from "@temporalio/testing";
 import { Worker } from "@temporalio/worker";
 import { FakeChartRenderer } from "@test-fakes/FakeChartRenderer";
-import { FakeIndicatorCalculator } from "@test-fakes/FakeIndicatorCalculator";
+import { FakeIndicatorCalculator, NEUTRAL_INDICATORS } from "@test-fakes/FakeIndicatorCalculator";
+import { FakeLLMCallStore } from "@test-fakes/FakeLLMCallStore";
 import { FakeLLMProvider } from "@test-fakes/FakeLLMProvider";
 import { FakeMarketDataFetcher } from "@test-fakes/FakeMarketDataFetcher";
 import { FakeNotifier } from "@test-fakes/FakeNotifier";
@@ -127,18 +128,8 @@ describe("SetupWorkflow integration (real Postgres + real activities)", () => {
       timeframe: "1h",
       ohlcvUri: ohlcvArtifact.uri,
       chartUri: chartArtifact.uri,
-      indicators: {
-        rsi: 50,
-        ema20: 100,
-        ema50: 100,
-        ema200: 100,
-        atr: 1,
-        atrMa20: 1,
-        volumeMa20: 100,
-        lastVolume: 100,
-        recentHigh: 110,
-        recentLow: 90,
-      },
+      indicators: NEUTRAL_INDICATORS,
+      lastClose: null,
       preFilterPass: true,
     });
 
@@ -215,6 +206,8 @@ describe("SetupWorkflow integration (real Postgres + real activities)", () => {
       chartRenderer: new FakeChartRenderer(),
       indicatorCalculator: new FakeIndicatorCalculator(),
       llmProviders,
+      llmCallStore: new FakeLLMCallStore(),
+      fundingRateProviders: new Map(),
       priceFeeds: new Map([["fake", new FakePriceFeed()]]),
       notifier: fakeNotifier,
       setupRepo,
@@ -256,6 +249,9 @@ describe("SetupWorkflow integration (real Postgres + real activities)", () => {
       asset: "BTCUSDT",
       timeframe: "1h",
       patternHint: "double_bottom",
+      patternCategory: "accumulation",
+      expectedMaturationTicks: 4,
+      allowSameTickFastPath: true,
       direction: "LONG",
       invalidationLevel: 95,
       initialScore: 25,

@@ -11,6 +11,7 @@ export type AliveSetupSummary = {
   invalidationLevel: number | null;
   direction: "LONG" | "SHORT" | null;
   patternHint: string | null;
+  patternCategory: "event" | "accumulation" | null;
   ageInCandles: number;
 };
 

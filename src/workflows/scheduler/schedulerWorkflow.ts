@@ -132,6 +132,7 @@ async function runOneTick(
     watchId,
     chartUri,
     ohlcvUri,
+    ohlcvJson,
     indicatorsJson,
     preFilterPass: preFilter.passed,
   });
@@ -185,6 +186,9 @@ async function runOneTick(
       asset: watch.asset.symbol,
       timeframe: watch.timeframes.primary,
       patternHint: newSetup.type,
+      patternCategory: newSetup.category,
+      expectedMaturationTicks: newSetup.expectedMaturationTicks,
+      allowSameTickFastPath: watch.optimization.allow_same_tick_fast_path,
       direction: newSetup.direction,
       invalidationLevel: newSetup.keyLevels.invalidation,
       initialScore: newSetup.initialScore,

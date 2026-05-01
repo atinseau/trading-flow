@@ -20,7 +20,7 @@ describe("PlaywrightChartRenderer visual regression", () => {
     await rm(outDir, { recursive: true, force: true });
   });
 
-  test("rendering deterministic candles produces non-empty, valid PNG", async () => {
+  test("rendering deterministic candles produces non-empty, valid WebP", async () => {
     // Hand-crafted candle set — known values, fully deterministic.
     const candles: Candle[] = [
       {
@@ -73,21 +73,26 @@ describe("PlaywrightChartRenderer visual regression", () => {
       outputUri: out,
     });
 
-    // Sanity: PNG must be valid.
-    expect(result.bytes).toBeGreaterThan(2000); // smallest realistic chart > 2KB
-    expect(result.bytes).toBeLessThan(200_000); // < 200KB sanity upper bound
+    // Sanity: WebP must be valid.
+    expect(result.bytes).toBeGreaterThan(500); // realistic compressed chart
+    expect(result.bytes).toBeLessThan(200_000);
     expect(result.sha256).toMatch(/^[a-f0-9]{64}$/);
-    expect(result.mimeType).toBe("image/png");
+    expect(result.mimeType).toBe("image/webp");
+    expect(result.uri.endsWith(".webp")).toBe(true);
 
     // Verify the file exists on disk and matches the reported size.
-    const buffer = await Bun.file(out.replace(/^file:\/\//, "")).bytes();
+    const buffer = await Bun.file(result.uri.replace(/^file:\/\//, "")).bytes();
     expect(buffer.length).toBe(result.bytes);
 
-    // PNG magic bytes (89 50 4E 47).
-    expect(buffer[0]).toBe(0x89);
-    expect(buffer[1]).toBe(0x50);
-    expect(buffer[2]).toBe(0x4e);
-    expect(buffer[3]).toBe(0x47);
+    // WebP container: bytes 0-3 = "RIFF", 8-11 = "WEBP".
+    expect(buffer[0]).toBe(0x52); // R
+    expect(buffer[1]).toBe(0x49); // I
+    expect(buffer[2]).toBe(0x46); // F
+    expect(buffer[3]).toBe(0x46); // F
+    expect(buffer[8]).toBe(0x57); // W
+    expect(buffer[9]).toBe(0x45); // E
+    expect(buffer[10]).toBe(0x42); // B
+    expect(buffer[11]).toBe(0x50); // P
   }, 30_000);
 
   test("rendering same candles twice produces ~identical sizes (within 5%)", async () => {

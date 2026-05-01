@@ -1,23 +1,13 @@
 import { expect, test } from "bun:test";
 import { evaluatePreFilter } from "@workflows/scheduler/preFilter";
+import { NEUTRAL_INDICATORS } from "../../fakes/FakeIndicatorCalculator";
 
 const baseConfig = {
   enabled: true,
   mode: "lenient" as const,
   thresholds: { atr_ratio_min: 1.3, volume_spike_min: 1.5, rsi_extreme_distance: 25 },
 };
-const baseInd = {
-  rsi: 50,
-  ema20: 100,
-  ema50: 100,
-  ema200: 100,
-  atr: 1,
-  atrMa20: 1,
-  volumeMa20: 100,
-  lastVolume: 100,
-  recentHigh: 110,
-  recentLow: 90,
-};
+const baseInd = NEUTRAL_INDICATORS;
 
 test("disabled pre_filter always passes", () => {
   expect(evaluatePreFilter([], baseInd, { ...baseConfig, enabled: false }).passed).toBe(true);

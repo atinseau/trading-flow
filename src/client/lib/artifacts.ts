@@ -4,6 +4,7 @@ const MIMES: Record<string, string> = {
   png: "image/png",
   jpg: "image/jpeg",
   jpeg: "image/jpeg",
+  webp: "image/webp",
   json: "application/json",
   svg: "image/svg+xml",
 };

@@ -1,4 +1,11 @@
-import { createChart, type IChartApi, type ISeriesApi, type Time } from "lightweight-charts";
+import {
+  CandlestickSeries,
+  createChart,
+  HistogramSeries,
+  type IChartApi,
+  type ISeriesApi,
+  type Time,
+} from "lightweight-charts";
 import { useEffect, useRef } from "react";
 
 export type AssetCandle = {
@@ -35,7 +42,7 @@ export function AssetChart({ candles }: { candles: AssetCandle[] }) {
       height: 480,
     });
 
-    const candleSeries = chart.addCandlestickSeries({
+    const candleSeries = chart.addSeries(CandlestickSeries, {
       upColor: "#10b981",
       downColor: "#ef4444",
       borderUpColor: "#10b981",
@@ -45,7 +52,7 @@ export function AssetChart({ candles }: { candles: AssetCandle[] }) {
     });
     candleSeries.priceScale().applyOptions({ scaleMargins: { top: 0.05, bottom: 0.25 } });
 
-    const volumeSeries = chart.addHistogramSeries({
+    const volumeSeries = chart.addSeries(HistogramSeries, {
       priceFormat: { type: "volume" },
       priceScaleId: "volume",
     });

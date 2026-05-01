@@ -20,12 +20,6 @@ export const watchStates = pgTable("watch_states", {
   enabled: boolean("enabled").notNull().default(true),
   lastTickAt: timestamp("last_tick_at", { withTimezone: true }),
   lastTickStatus: text("last_tick_status"),
-  totalCostUsdMtd: numeric("total_cost_usd_mtd", { precision: 10, scale: 4 })
-    .notNull()
-    .default("0"),
-  totalCostUsdAllTime: numeric("total_cost_usd_all_time", { precision: 12, scale: 4 })
-    .notNull()
-    .default("0"),
   setupsCreatedMtd: integer("setups_created_mtd").notNull().default(0),
   setupsConfirmedMtd: integer("setups_confirmed_mtd").notNull().default(0),
   deletedAt: timestamp("deleted_at", { withTimezone: true }),
@@ -41,6 +35,22 @@ export const setups = pgTable(
     status: text("status").notNull(),
     currentScore: numeric("current_score", { precision: 5, scale: 2 }).notNull().default("0"),
     patternHint: text("pattern_hint"),
+    /**
+     * Detector's classification of the pattern: "event" (single-trigger:
+     * breakout, sweep, fvg_retest, BOS-reaction, level_reclaim, gap_fill) or
+     * "accumulation" (multi-touch: double_top/bottom, divergence, prolonged
+     * compression). Used by the finalizer to apply the correct maturation
+     * threshold (1-2 ticks for events, ≥3 for accumulation).
+     */
+    patternCategory: text("pattern_category"),
+    /**
+     * Detector's estimated number of reviewer ticks needed to mature this
+     * setup to a finalizer-ready conviction. 1 = instantly ready (event with
+     * fully formed trigger), 6 = slow accumulation. Replaces the binary
+     * event/accumulation maturation rule in the finalizer with a smooth
+     * per-setup expectation. Null for legacy rows.
+     */
+    expectedMaturationTicks: integer("expected_maturation_ticks"),
     invalidationLevel: numeric("invalidation_level"),
     direction: text("direction"),
     ttlCandles: integer("ttl_candles").notNull(),
@@ -123,6 +133,10 @@ export const tickSnapshots = pgTable(
     ohlcvUri: text("ohlcv_uri").notNull(),
     chartUri: text("chart_uri").notNull(),
     indicators: jsonb("indicators").$type<Indicators>().notNull(),
+    /** Last candle close at snapshot time. Source of truth for "live price"
+        used by HTF positioning and finalizer regime — replaces the buggy
+        proxies (recentHigh / invalidationLevel). Nullable for legacy rows. */
+    lastClose: numeric("last_close", { precision: 20, scale: 8 }),
     preFilterPass: boolean("pre_filter_pass").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -210,5 +224,34 @@ export const lessonEvents = pgTable(
     index("idx_lesson_events_lesson_time").on(t.lessonId, t.occurredAt),
     index("idx_lesson_events_setup").on(t.triggerSetupId),
     index("idx_lesson_events_input_hash").on(t.inputHash),
+  ],
+);
+
+// Per-call ledger of every LLM invocation. Independent of `events` (which is
+// scoped to setups) so we capture detector ticks that don't produce a setup
+// — those costs were previously only summed into watch_states.totalCostUsdMtd
+// with no breakdown by provider/model/day.
+export const llmCalls = pgTable(
+  "llm_calls",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    watchId: text("watch_id"),
+    setupId: uuid("setup_id"),
+    stage: text("stage").notNull(),
+    provider: text("provider").notNull(),
+    model: text("model").notNull(),
+    promptTokens: integer("prompt_tokens").notNull().default(0),
+    completionTokens: integer("completion_tokens").notNull().default(0),
+    cacheReadTokens: integer("cache_read_tokens").notNull().default(0),
+    cacheCreateTokens: integer("cache_create_tokens").notNull().default(0),
+    costUsd: numeric("cost_usd", { precision: 10, scale: 6 }).notNull(),
+    latencyMs: integer("latency_ms"),
+    occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("idx_llm_calls_watch_time").on(t.watchId, t.occurredAt),
+    index("idx_llm_calls_setup").on(t.setupId),
+    index("idx_llm_calls_provider_time").on(t.provider, t.occurredAt),
+    index("idx_llm_calls_occurred").on(t.occurredAt),
   ],
 );

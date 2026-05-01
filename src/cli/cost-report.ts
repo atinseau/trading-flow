@@ -1,6 +1,6 @@
-import { events, setups } from "@adapters/persistence/schema";
+import { llmCalls } from "@adapters/persistence/schema";
 import { getLogger } from "@observability/logger";
-import { and, eq, gte, isNotNull, sql } from "drizzle-orm";
+import { and, eq, gte, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
 
@@ -19,41 +19,34 @@ if (!url) {
 const pool = new pg.Pool({ connectionString: url });
 const db = drizzle(pool);
 
+// Source of truth = `llm_calls` (every LLM invocation). The legacy aggregation
+// joined `events` to `setups` and silently dropped detector ticks that didn't
+// produce a setup. The /api/costs endpoint also reads from llm_calls — both
+// CLI and UI now agree.
 const groupColumn =
   byFilter === "model"
-    ? events.model
+    ? llmCalls.model
     : byFilter === "stage"
-      ? events.stage
+      ? llmCalls.stage
       : byFilter === "day"
-        ? sql<string>`DATE_TRUNC('day', ${events.occurredAt})::text`
-        : events.provider;
+        ? sql<string>`DATE_TRUNC('day', ${llmCalls.occurredAt})::text`
+        : byFilter === "watch"
+          ? sql<string>`coalesce(${llmCalls.watchId}, '(no-watch)')`
+          : llmCalls.provider;
 
-const wheres = [isNotNull(events.costUsd)];
-if (sinceFilter) wheres.push(gte(events.occurredAt, new Date(sinceFilter)));
-if (watchFilter) wheres.push(eq(setups.watchId, watchFilter));
+const wheres = [];
+if (sinceFilter) wheres.push(gte(llmCalls.occurredAt, new Date(sinceFilter)));
+if (watchFilter) wheres.push(eq(llmCalls.watchId, watchFilter));
 
-const baseQuery = watchFilter
-  ? db
-      .select({
-        group: groupColumn,
-        callCount: sql<number>`COUNT(*)::int`,
-        totalCostUsd: sql<string>`COALESCE(SUM(${events.costUsd}), 0)::text`,
-      })
-      .from(events)
-      .innerJoin(setups, eq(events.setupId, setups.id))
-      .where(and(...wheres))
-      .groupBy(groupColumn)
-  : db
-      .select({
-        group: groupColumn,
-        callCount: sql<number>`COUNT(*)::int`,
-        totalCostUsd: sql<string>`COALESCE(SUM(${events.costUsd}), 0)::text`,
-      })
-      .from(events)
-      .where(and(...wheres))
-      .groupBy(groupColumn);
-
-const rows = await baseQuery;
+const rows = await db
+  .select({
+    group: groupColumn,
+    callCount: sql<number>`COUNT(*)::int`,
+    totalCostUsd: sql<string>`COALESCE(SUM(${llmCalls.costUsd}), 0)::text`,
+  })
+  .from(llmCalls)
+  .where(wheres.length ? and(...wheres) : undefined)
+  .groupBy(groupColumn);
 
 console.log(
   `\nCost report (by ${byFilter}${watchFilter ? `, watch=${watchFilter}` : ""}${sinceFilter ? `, since=${sinceFilter}` : ""}):\n`,

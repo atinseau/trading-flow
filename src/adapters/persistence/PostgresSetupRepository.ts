@@ -25,6 +25,8 @@ export class PostgresSetupRepository implements SetupRepository {
         status: setup.status,
         currentScore: String(setup.currentScore),
         patternHint: setup.patternHint,
+        patternCategory: setup.patternCategory,
+        expectedMaturationTicks: setup.expectedMaturationTicks,
         invalidationLevel: setup.invalidationLevel != null ? String(setup.invalidationLevel) : null,
         direction: setup.direction,
         ttlCandles: setup.ttlCandles,
@@ -93,6 +95,7 @@ export class PostgresSetupRepository implements SetupRepository {
       invalidationLevel: r.invalidationLevel != null ? Number(r.invalidationLevel) : null,
       direction: r.direction as "LONG" | "SHORT" | null,
       patternHint: r.patternHint,
+      patternCategory: r.patternCategory as "event" | "accumulation" | null,
       ageInCandles,
     };
   }
@@ -107,6 +110,8 @@ function mapSetup(r: typeof setups.$inferSelect): Setup {
     status: r.status as SetupStatus,
     currentScore: Number(r.currentScore),
     patternHint: r.patternHint,
+    patternCategory: r.patternCategory as "event" | "accumulation" | null,
+    expectedMaturationTicks: r.expectedMaturationTicks,
     invalidationLevel: r.invalidationLevel != null ? Number(r.invalidationLevel) : null,
     direction: r.direction as "LONG" | "SHORT" | null,
     ttlCandles: r.ttlCandles,

@@ -66,6 +66,7 @@ export class InMemorySetupRepository implements SetupRepository {
       invalidationLevel: s.invalidationLevel,
       direction: s.direction,
       patternHint: s.patternHint,
+      patternCategory: s.patternCategory,
       ageInCandles: Math.floor((Date.now() - s.createdAt.getTime()) / candleMs),
     };
   }

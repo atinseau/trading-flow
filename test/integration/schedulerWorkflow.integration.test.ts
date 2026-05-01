@@ -15,6 +15,7 @@ import { TestWorkflowEnvironment } from "@temporalio/testing";
 import { Worker } from "@temporalio/worker";
 import { FakeChartRenderer } from "@test-fakes/FakeChartRenderer";
 import { FakeIndicatorCalculator } from "@test-fakes/FakeIndicatorCalculator";
+import { FakeLLMCallStore } from "@test-fakes/FakeLLMCallStore";
 import { FakeLLMProvider } from "@test-fakes/FakeLLMProvider";
 import { FakeMarketDataFetcher } from "@test-fakes/FakeMarketDataFetcher";
 import { FakeNotifier } from "@test-fakes/FakeNotifier";
@@ -124,6 +125,8 @@ async function buildDeps(
     chartRenderer: new FakeChartRenderer(),
     indicatorCalculator: indicators,
     llmProviders,
+    llmCallStore: new FakeLLMCallStore(),
+    fundingRateProviders: new Map(),
     priceFeeds: new Map([["binance", new FakePriceFeed()]]),
     notifier: new FakeNotifier(),
     setupRepo,

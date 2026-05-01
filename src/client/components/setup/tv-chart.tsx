@@ -1,4 +1,10 @@
-import { createChart, type IChartApi, type ISeriesApi, type Time } from "lightweight-charts";
+import {
+  CandlestickSeries,
+  createChart,
+  type IChartApi,
+  type ISeriesApi,
+  type Time,
+} from "lightweight-charts";
 import { useEffect, useRef } from "react";
 
 export type Candle = {
@@ -40,7 +46,7 @@ export function TVChart(props: {
       width: containerRef.current.clientWidth,
       height: 360,
     });
-    const series = chart.addCandlestickSeries({
+    const series = chart.addSeries(CandlestickSeries, {
       upColor: "#10b981",
       downColor: "#ef4444",
       borderUpColor: "#10b981",

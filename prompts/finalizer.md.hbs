@@ -11,17 +11,20 @@
 
 - **ID**: `{{setup.id}}`
 - **Asset / Timeframe**: {{setup.asset}} / {{setup.timeframe}}
-- **Pattern**: {{setup.patternHint}}
+- **Pattern**: {{setup.patternHint}} (`{{setup.patternCategory}}`)
 - **Direction**: `{{setup.direction}}`
 - **Score reached**: {{setup.currentScore}}/100 (threshold crossed)
 - **Invalidation level**: {{setup.invalidationLevel}}
+- **Detector's expected maturation**: `{{setup.expectedMaturationTicks}}` ticks | **Actual reviewer ticks so far**: `{{actualReviewerTicks}}` (sum of STRENGTHEN/WEAKEN/NEUTRAL events). Apply the maturation rule from the system prompt.
 
 {{#if activeLessons.length}}
 ## Active guidelines (learned from previous trades)
 
 These principles emerged from retrospective analysis of past failed trades on
-this watch. Apply them whenever they apply to the current decision. They take
-precedence over generic best practice when there is a conflict.
+this watch. Apply them when they fit. **However**: if a lesson contradicts
+strong, multi-signal evidence in the current setup history + macro context,
+override the lesson and cite your reasoning. Lessons inform; current
+evidence wins ties.
 
 {{#each activeLessons}}
 ### {{{this.title}}}
@@ -38,9 +41,55 @@ precedence over generic best practice when there is a conflict.
 - Tick {{this.sequence}}: `{{this.type}}` (score → {{this.scoreAfter}})
 {{/each}}
 
-## Chart image
+{{#if regime}}
+## Market regime classification
 
-See attached image (may be omitted if not provided — rely on history).
+- **Primary**: `{{regime.label}}`
+- **Squeeze**: {{regime.squeeze}} (BB / ATR compression)
+- **Volatility expansion**: {{regime.volatilityExpansion}}
+- **Rationale**: {{regime.rationale}}
+{{/if}}
+
+{{#if htf}}
+## Higher-timeframe context (daily)
+
+- **Daily regime**: `{{htf.dailyTrend}}`
+- **Weekly H/L**: `{{htf.weeklyHigh}}` / `{{htf.weeklyLow}}` — current at `{{htf.positionInWeeklyRange}}` of weekly range
+- **Monthly H/L** (30d): `{{htf.monthlyHigh}}` / `{{htf.monthlyLow}}`
+- **Last 5 daily candles**:
+{{#each htf.daily5}}
+  - {{this.date}}: H={{this.high}} L={{this.low}} C={{this.close}}
+{{/each}}
+
+→ A LONG against a `downtrend` daily regime AND in the upper third of the
+weekly range is a HIGH BAR for GO. A SHORT in mirror conditions same.
+{{/if}}
+
+{{#if funding}}
+## Funding / Open Interest (crypto perp)
+
+- **Last funding**: `{{funding.lastFundingRatePct}}%` — 7-cycle avg `{{funding.avg7dFundingRatePct}}%`
+- **Open Interest**: `{{funding.openInterest}}` (24h Δ `{{funding.openInterest24hDeltaPct}}%`)
+
+→ Symmetric reading:
+- **Setup aligned with crowded side** = HIGH BAR. (LONG with avg7d > +0.1%, SHORT with avg7d < -0.1%.) The crowd is positioned with you — paying funding for it — and squeeze risk works against you.
+- **Setup contrarian to crowded side** = TAILWIND. Fading crowded positioning is positive expected value when the setup itself is structurally valid; the squeeze, when it triggers, fuels your direction.
+- **OI 24h Δ aligned with setup direction** = trend confirmation (new participants in your direction). Opposite = yellow flag (your move is unwinding rather than extending).
+{{/if}}
+
+## Trading session
+
+Current session: `{{session}}`.
+
+- `london_ny_overlap` (12-16 UTC) = prime liquidity, normal sizing
+- `london` / `ny` = healthy
+- `asian` = thinner book, increase implicit-cost buffer; raise R:R bar to ≥ 1:2.5
+- **`off_hours` = automatic NO_GO** unless ALL of the following: setup score ≥ 95, R:R ≥ 1:3, AND a clean event-driven pattern (no accumulation patterns off-hours). Spreads + slippage off-hours systematically erode the published R:R; the bar must be elevated to compensate.
+
+## Chart images
+
+The HTF (daily) chart is attached. Use it to confirm the macro structure
+matches the text above.
 
 ## Decision criteria
 
@@ -54,52 +103,64 @@ You must be **skeptical**. A score of 80+ is a **necessary** but not **sufficien
 ### 2. Risk / reward
 - Distance entry → invalidation = risk
 - Distance entry → take_profit = reward
-- **Minimum acceptable R:R ratio: 1:2** (reward ≥ 2× risk)
-- If you cannot compute a clean ratio ≥ 1:2, it's NO_GO.
+- **Minimum acceptable R:R ratio: `{{minRiskRewardRatio}}`** (configured for this watch).
+- If you cannot compute a clean ratio ≥ `{{minRiskRewardRatio}}`, it's NO_GO.
 
 ### 3. Market context
-- Time of day: if we're in a thin session (e.g., Sunday evening crypto, US opening on stocks), reduce your confidence.
+- Time of day: see `Trading session` block above. Off-hours = elevated bar.
 - Volatility (ATR/ATR_MA20 in the history): very high → spreads/slippage increase → effective risk > calculated risk.
-- Implicit costs: account for ~0.1% fees + typical slippage. The R:R must hold AFTER fees.
+- **Implicit costs (per-watch calibrated):** fees `{{costs.fees_pct}}%` + slippage `{{costs.slippage_pct}}%` = total `{{costs.totalPct}}%` of notional. The R:R must hold AFTER fees, i.e. `(reward - cost%) / (risk + cost%) ≥ min_risk_reward_ratio`. For a tight setup these costs can flip a 1:2 nominal R:R below threshold.
 
 ## Few-shot examples
 
-### Example 1 — Solid GO
+### Example 1 — Solid GO on EVENT pattern with full macro alignment
 
-Setup score 85, 6 ticks of analysis, 5 consecutive Strengthened, 1 NEUTRAL. Pattern: double_bottom LONG. Entry 42100, invalidation 41700 (risk 400), TP1 43000, TP2 44000. R:R on TP1 = 900/400 = 2.25. R:R on TP2 = 1900/400 = 4.75.
+Setup `bb_squeeze_breakout` LONG (event), score 85, age 2 ticks: tick #1 = trigger formed, tick #2 = STRENGTHEN +15 (BOS confirmation + MACD acceleration). Entry 76050, invalidation 75880 (risk 170), targets EQH liquidity 76470 (reward 420 → R:R 2.47) and weekly H 77100 (reward 1050 → R:R 6.18). Regime: uptrend, no squeeze. HTF: daily uptrend, weekly position 0.45 (mid-range, room to upside). Funding avg7d -0.05% (slightly crowded short = squeeze tailwind for LONG). Session: london_ny_overlap. Net delta sum on history: +25 (no WEAKEN).
 
 → Output:
 ```
 {
   "go": true,
-  "reasoning": "Mature setup (6 ticks, 5 consecutive STRENGTHEN). R:R 2.25 on TP1, 4.75 on TP2 — good. Clean invalidation below the second bottom.",
-  "entry": 42100,
-  "stop_loss": 41700,
-  "take_profit": [43000, 44000]
+  "reasoning": "Event-driven setup mature in 2 ticks (BB squeeze + BOS + MACD acceleration), fully aligned with daily uptrend regime. R:R 2.47 on TP1 (EQH 76470), 6.18 on TP2 (weekly H 77100). Funding -0.05% gives squeeze tailwind. London-NY overlap = prime liquidity. Net STRENGTHEN delta +25, no WEAKEN events. Clean.",
+  "entry": 76050,
+  "stop_loss": 75880,
+  "take_profit": [76470, 77100]
 }
 ```
 
-### Example 2 — NO_GO on weak R:R
+### Example 2 — NO_GO: setup fights the macro regime
 
-Setup score 82. Possible entry 42500, invalidation 42000 (risk 500), natural target 42800 (reward 300). R:R = 0.6. Not acceptable.
+Setup `double_bottom` LONG (accumulation), score 82 after 5 ticks (3 STRENGTHEN +30, 2 WEAKEN -8 = net +22). HTF says daily DOWNTREND, weekly position 0.62 (upper half of weekly range = limited upside). Funding avg7d +0.18% (very crowded long — risk of squeeze AGAINST a long). Entry 75500, invalidation 75250 (risk 250), nearest visible resistance 75900 (reward 400, R:R 1.6).
 
 → Output:
 ```
 {
   "go": false,
-  "reasoning": "Unfavorable R:R (0.6) — the entry is too close to an obvious resistance. No clean target offers a ratio ≥ 1:2."
+  "reasoning": "Setup fights the daily downtrend AND sits in upper-half weekly range — limited room. Funding crowded long (+0.18%) = squeeze risk for our long. R:R 1.6 below 1:2 minimum. Combined: 3 macro headwinds + sub-threshold R:R. The score 82 was reached on local TF signals that didn't survive the HTF + funding test."
 }
 ```
 
-### Example 3 — NO_GO on questionable history
+### Example 3 — NO_GO: ACCUMULATION with negative net delta despite high score
 
-Setup score 81 reached in 3 quick ticks via 3 STRENGTHEN on vague observations ("RSI seems to recover", "the volume is interesting"). No multi-timeframe confluence, no clearly respected levels.
+Setup `multi_touch_support` LONG, score 80 after 8 ticks. History: 4 STRENGTHEN at +5 each (+20 total), 4 WEAKEN at -3 each (-12 total). Net = +8. The setup *technically* crossed 80 because of compounding small +5s, but the WEAKEN side is also active — structure has been tested 4 times and stressed.
 
 → Output:
 ```
 {
   "go": false,
-  "reasoning": "Score grew too fast on qualitative observations. Lack of quantitative signals (numbers, percentages, precise levels). Risk of false positive."
+  "reasoning": "ACCUMULATION pattern with net delta only +8 despite 4 STRENGTHEN events — counter-balanced by 4 WEAKEN events. Score growth came from compounding marginal positive observations rather than clean conviction. Magnitude > count, and the magnitude here doesn't support a real-money trigger. Wait for a decisive STRENGTHEN that breaks the back-and-forth pattern."
+}
+```
+
+### Example 4 — NO_GO: off_hours session
+
+Setup `liquidity_sweep` SHORT (event), score 88, R:R 2.4. Session = `off_hours` (Saturday 22:00 UTC). Pattern is event-driven, score is high enough, R:R clears the 1:2 bar — but R:R is only 2.4 (below the 1:3 off-hours bar) AND we're in off_hours.
+
+→ Output:
+```
+{
+  "go": false,
+  "reasoning": "Off-hours session (Saturday late) — auto-NO_GO unless score ≥ 95 AND R:R ≥ 1:3. Setup has score 88 and R:R 2.4 — clears the standard threshold but not the off-hours-elevated threshold. Spreads + slippage off-hours systematically erode published R:R. Wait for London open."
 }
 ```
 

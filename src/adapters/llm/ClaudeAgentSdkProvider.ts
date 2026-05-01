@@ -1,9 +1,36 @@
+import { existsSync } from "node:fs";
 import { computeClaudeCost } from "@adapters/llm/claudePricing";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { LLMRateLimitError, LLMSchemaValidationError } from "@domain/errors";
 import type { LLMInput, LLMOutput, LLMProvider } from "@domain/ports/LLMProvider";
 import type { LLMUsageStore } from "@domain/ports/LLMUsageStore";
 import { getLogger } from "@observability/logger";
+
+// Workaround for `@anthropic-ai/claude-agent-sdk`'s binary probing: it tries
+// `linux-<arch>-musl` before `linux-<arch>`, so on Debian (glibc) workers it
+// always picks the musl binary first and exec fails with "no such file or
+// directory" (the dynamic linker can't find a musl libc). Resolved once per
+// process: explicit env override > glibc prebuilt if it exists on Linux > let
+// the SDK probe (covers macOS/Windows local dev).
+const claudeBinaryOverride = (() => {
+  let cached: string | null | undefined;
+  return (): string | null => {
+    if (cached !== undefined) return cached;
+    if (process.env.CLAUDE_AGENT_SDK_BINARY) {
+      cached = process.env.CLAUDE_AGENT_SDK_BINARY;
+      return cached;
+    }
+    if (process.platform === "linux") {
+      const glibcPath = `/app/node_modules/@anthropic-ai/claude-agent-sdk-linux-${process.arch}/claude`;
+      if (existsSync(glibcPath)) {
+        cached = glibcPath;
+        return cached;
+      }
+    }
+    cached = null;
+    return cached;
+  };
+})();
 
 export type ClaudeAgentSdkConfig = {
   workspaceDir: string;
@@ -95,12 +122,14 @@ export class ClaudeAgentSdkProvider implements LLMProvider {
     let cacheCreateTokens = 0;
 
     try {
+      const claudeBinary = claudeBinaryOverride();
       const stream = query({
         prompt,
         options: {
           model: input.model,
           permissionMode: "bypassPermissions",
           cwd: this.config.workspaceDir,
+          ...(claudeBinary ? { pathToClaudeCodeExecutable: claudeBinary } : {}),
         },
       });
 

@@ -40,6 +40,13 @@ const SetupLifecycleSchema = z
     score_threshold_dead: z.number().min(0).max(100),
     score_max: z.number().min(0).max(100).default(100),
     invalidation_policy: z.enum(["strict", "wick_tolerant", "confirmed_close"]).default("strict"),
+    /**
+     * Minimum reward-to-risk ratio the finalizer requires before approving a
+     * GO. 2.0 = TP must be ≥ 2× the distance entry → SL. Lower (1.5) = more
+     * trades, lower per-trade EV multiplier; higher (3.0) = fewer but
+     * higher-quality. Hardcoded was `1:2`; now configurable per watch.
+     */
+    min_risk_reward_ratio: z.number().min(1).max(10).default(2.0),
   })
   .refine(
     (s) =>
@@ -178,6 +185,30 @@ export const WatchSchema = z
     optimization: z
       .object({
         reviewer_skip_when_detector_corroborated: z.boolean().default(true),
+        /**
+         * If true, the detector may emit a setup with `initial_score ≥
+         * threshold` AND `expected_maturation_ticks = 1`, in which case the
+         * setup workflow skips the reviewer entirely and routes the setup
+         * directly to the finalizer in the same tick. Saves ~15-60 minutes on
+         * clean event patterns (sweep+reclaim, BB squeeze break) at the cost
+         * of bypassing one quality gate. Disable for ultra-conservative use.
+         */
+        allow_same_tick_fast_path: z.boolean().default(true),
+      })
+      .prefault({}),
+    /**
+     * Trading-cost calibration for R:R math at the finalizer. Anthropic's
+     * generic "0.1%" prompt was wildly off for many venues (Binance perp
+     * maker = 0.02%, Yahoo equities w/ spread can be 0.5%+). Calibrate per
+     * watch so the finalizer's risk/reward sanity check is accurate after
+     * fees & slippage.
+     */
+    costs: z
+      .object({
+        /** Total trading fee (entry + exit) as % of notional. Binance perp ≈ 0.04, spot ≈ 0.2. */
+        fees_pct: z.number().min(0).max(2).default(0.1),
+        /** Expected slippage as % of notional. Liquid crypto perp ≈ 0.02, illiquid alt ≈ 0.3. */
+        slippage_pct: z.number().min(0).max(2).default(0.05),
       })
       .prefault({}),
     notify_on: z.array(NotifyEventSchema).default([]),

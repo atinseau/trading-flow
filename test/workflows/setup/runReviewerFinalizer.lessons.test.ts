@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, test } from "bun:test";
 import { clearPromptCache } from "@adapters/prompts/loadPrompt";
 import type { LLMProvider } from "@domain/ports/LLMProvider";
 import type { WatchConfig, WatchesConfig } from "@domain/schemas/WatchesConfig";
+import { NEUTRAL_INDICATORS } from "@test-fakes/FakeIndicatorCalculator";
+import { FakeLLMCallStore } from "@test-fakes/FakeLLMCallStore";
 import { FakeLLMProvider } from "@test-fakes/FakeLLMProvider";
 import { InMemoryArtifactStore } from "@test-fakes/InMemoryArtifactStore";
 import { InMemoryEventStore } from "@test-fakes/InMemoryEventStore";
@@ -30,6 +32,7 @@ function makeWatch(injection: { reviewer: boolean; finalizer: boolean }): WatchC
       score_threshold_dead: 10,
       score_max: 100,
       invalidation_policy: "strict",
+      min_risk_reward_ratio: 2,
     },
     history_compaction: { max_raw_events_in_context: 40, summarize_after_age_hours: 48 },
     deduplication: { similar_setup_window_candles: 5, similar_price_tolerance_pct: 0.5 },
@@ -44,7 +47,11 @@ function makeWatch(injection: { reviewer: boolean; finalizer: boolean }): WatchC
       finalizer: { provider: "fake", model: "fake", max_tokens: 2000 },
       feedback: { provider: "fake", model: "fake" },
     },
-    optimization: { reviewer_skip_when_detector_corroborated: true },
+    optimization: {
+      reviewer_skip_when_detector_corroborated: true,
+      allow_same_tick_fast_path: true,
+    },
+    costs: { fees_pct: 0.1, slippage_pct: 0.05 },
     notify_on: [],
     include_chart_image: false,
     include_reasoning: true,
@@ -95,18 +102,8 @@ async function buildHarness(injection: {
     timeframe: "1h",
     ohlcvUri: ohlcv.uri,
     chartUri: chart.uri,
-    indicators: {
-      rsi: 50,
-      ema20: 100,
-      ema50: 100,
-      ema200: 100,
-      atr: 1,
-      atrMa20: 1,
-      volumeMa20: 100,
-      lastVolume: 100,
-      recentHigh: 110,
-      recentLow: 90,
-    },
+    indicators: NEUTRAL_INDICATORS,
+    lastClose: null,
     preFilterPass: true,
   });
 
@@ -118,6 +115,8 @@ async function buildHarness(injection: {
     status: "REVIEWING",
     currentScore: 25,
     patternHint: "double_bottom",
+    patternCategory: "accumulation",
+    expectedMaturationTicks: null,
     invalidationLevel: 95,
     direction: "LONG",
     ttlCandles: 50,
@@ -130,7 +129,10 @@ async function buildHarness(injection: {
     name: "fake",
     available: true,
     completeImpl: async (input) => {
-      if (input.systemPrompt.includes("Finalizer")) {
+      // Dispatch on prompt opening — the reviewer prompt mentions "Finalizer"
+      // in passing ("the Finalizer relies on..."), so a substring check would
+      // misroute reviewer calls to the finalizer branch.
+      if (input.systemPrompt.startsWith("You are the Finalizer")) {
         return {
           content: "{}",
           parsed: {
@@ -166,13 +168,15 @@ async function buildHarness(injection: {
     chartRenderer: null,
     indicatorCalculator: null,
     llmProviders,
+    llmCallStore: new FakeLLMCallStore(),
+    fundingRateProviders: new Map(),
     priceFeeds: new Map(),
     notifier: null,
     setupRepo,
     eventStore,
     artifactStore,
     tickSnapshotStore,
-    clock: null,
+    clock: { now: () => new Date("2026-04-29T13:00:00Z") },
     config: null as unknown as WatchesConfig,
     infra: null,
     watchById: (id: string) => (id === watchId ? watch : undefined),

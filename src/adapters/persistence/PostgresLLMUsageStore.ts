@@ -1,7 +1,7 @@
 import type { LLMUsageStore } from "@domain/ports/LLMUsageStore";
 import { and, eq, gte, lt, sql } from "drizzle-orm";
 import type { drizzle } from "drizzle-orm/node-postgres";
-import { events } from "./schema";
+import { llmCalls } from "./schema";
 
 type DB = ReturnType<typeof drizzle>;
 
@@ -16,12 +16,12 @@ export class PostgresLLMUsageStore implements LLMUsageStore {
 
     const [row] = await this.db
       .select({ count: sql<number>`COUNT(*)::int` })
-      .from(events)
+      .from(llmCalls)
       .where(
         and(
-          eq(events.provider, providerName),
-          gte(events.occurredAt, startOfDay),
-          lt(events.occurredAt, startOfNextDay),
+          eq(llmCalls.provider, providerName),
+          gte(llmCalls.occurredAt, startOfDay),
+          lt(llmCalls.occurredAt, startOfNextDay),
         ),
       );
     return Number(row?.count ?? 0);
@@ -34,14 +34,14 @@ export class PostgresLLMUsageStore implements LLMUsageStore {
 
     const [row] = await this.db
       .select({
-        total: sql<string>`COALESCE(SUM(${events.costUsd}), 0)`,
+        total: sql<string>`COALESCE(SUM(${llmCalls.costUsd}), 0)`,
       })
-      .from(events)
+      .from(llmCalls)
       .where(
         and(
-          eq(events.provider, providerName),
-          gte(events.occurredAt, startOfMonth),
-          lt(events.occurredAt, startOfNextMonth),
+          eq(llmCalls.provider, providerName),
+          gte(llmCalls.occurredAt, startOfMonth),
+          lt(llmCalls.occurredAt, startOfNextMonth),
         ),
       );
     return Number(row?.total ?? 0);

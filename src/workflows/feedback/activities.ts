@@ -278,6 +278,19 @@ export function buildFeedbackActivities(deps: ActivityDeps) {
       );
       const latencyMs = Date.now() - startedAt;
       const parsed = result.output.parsed as FeedbackOutput;
+      await deps.llmCallStore.record({
+        watchId: input.watchId,
+        setupId: input.setupId,
+        stage: "feedback",
+        provider: result.usedProvider,
+        model: analyzer.model,
+        promptTokens: result.output.promptTokens,
+        completionTokens: result.output.completionTokens,
+        cacheReadTokens: result.output.cacheReadTokens ?? 0,
+        cacheCreateTokens: result.output.cacheWriteTokens ?? 0,
+        costUsd: result.output.costUsd,
+        latencyMs,
+      });
 
       childLog.info(
         {

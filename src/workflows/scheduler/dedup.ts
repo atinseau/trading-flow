@@ -3,6 +3,13 @@ import type { AliveSetupSummary } from "@domain/ports/SetupRepository";
 export type ProposedSetup = {
   type: string;
   direction: "LONG" | "SHORT";
+  /** Detector classification — analytic label.
+      "event": single-trigger (breakout, sweep, fvg_retest, BOS-reaction, level_reclaim, gap_fill).
+      "accumulation": multi-touch / gradual (double_top/bottom, divergence, prolonged compression). */
+  category: "event" | "accumulation";
+  /** Detector estimate of reviewer ticks needed to reach finalizer-ready conviction. 1-6.
+      Drives finalizer's maturation rule (per-setup, not per-category). */
+  expectedMaturationTicks: number;
   keyLevels: { invalidation: number; entry?: number; target?: number };
   initialScore: number;
   rawObservation: string;
