@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { IndicatorPlugin } from "@domain/services/IndicatorPlugin";
 import { liquidityPoolsMetadata } from "./metadata";
 import { computeScalars, computePriceLines } from "./compute";
-import { detectorFragment } from "./promptFragments";
+import { detectorFragment, featuredFewShotExample } from "./promptFragments";
 import { CHART_SCRIPT } from "./chartScript";
 
 export const liquidityPoolsPlugin: IndicatorPlugin = {
@@ -17,5 +17,6 @@ export const liquidityPoolsPlugin: IndicatorPlugin = {
   }),
   chartScript: CHART_SCRIPT, chartPane: "price_overlay",
   detectorPromptFragment: detectorFragment,
+  featuredFewShotExample,
   breakdownAxes: ["structure"],
 };

@@ -52,4 +52,11 @@ describe("liquidityPoolsPlugin", () => {
   test("chartScript contains registerPlugin liquidity_pools", () => {
     expect(liquidityPoolsPlugin.chartScript).toContain('__registerPlugin("liquidity_pools"');
   });
+
+  test("featuredFewShotExample contains sweep+reclaim pattern", () => {
+    const ex = liquidityPoolsPlugin.featuredFewShotExample?.();
+    expect(ex).toBeTruthy();
+    expect(ex!).toContain("liquidity_sweep");
+    expect(ex!).toContain("EQH");
+  });
 });
