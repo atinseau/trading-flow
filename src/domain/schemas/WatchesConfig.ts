@@ -1,4 +1,5 @@
 import { isValidFiveFieldCron } from "@domain/services/cronForTimeframe";
+import { REGISTRY } from "@adapters/indicators/IndicatorRegistry";
 import { z } from "zod";
 
 const TimeframeSchema = z.enum(["1m", "5m", "15m", "30m", "1h", "2h", "4h", "1d", "1w"]);
@@ -227,6 +228,21 @@ export const WatchSchema = z
         path: ["feedback", "analyzer"],
         message: `watch '${watch.id}' has feedback.enabled: true but no LLM analyzer configured (set either feedback.analyzer or analyzers.feedback)`,
       });
+    }
+    for (const [id, cfg] of Object.entries(watch.indicators)) {
+      if (!cfg?.enabled || !cfg.params) continue;
+      const plugin = REGISTRY.find((p) => p.id === id);
+      if (!plugin?.paramsSchema) continue;
+      const result = plugin.paramsSchema.safeParse(cfg.params);
+      if (!result.success) {
+        for (const issue of result.error.issues) {
+          ctx.addIssue({
+            code: "custom",
+            path: ["indicators", id, "params", ...issue.path],
+            message: `${issue.message} (plugin '${id}')`,
+          });
+        }
+      }
     }
   });
 

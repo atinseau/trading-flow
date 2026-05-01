@@ -64,4 +64,28 @@ describe("WatchSchema.indicators", () => {
     });
     expect(parsed.indicators.rsi?.params).toBeUndefined();
   });
+
+  test("rejects invalid params (rsi.period out of range)", () => {
+    const result = WatchSchema.safeParse({
+      ...baseWatch,
+      indicators: { rsi: { enabled: true, params: { period: 100 } } },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  test("rejects non-number params (rsi.period: 'lol')", () => {
+    const result = WatchSchema.safeParse({
+      ...baseWatch,
+      indicators: { rsi: { enabled: true, params: { period: "lol" } } },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  test("accepts valid custom params", () => {
+    const parsed = WatchSchema.parse({
+      ...baseWatch,
+      indicators: { rsi: { enabled: true, params: { period: 21 } } },
+    });
+    expect(parsed.indicators.rsi?.params).toEqual({ period: 21 });
+  });
 });
