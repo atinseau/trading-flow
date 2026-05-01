@@ -49,7 +49,12 @@ export class PromptBuilder {
     const plugins = this.registry.resolveActive(args.indicatorsMatrix);
     const isVolumeActive = plugins.some((p) => p.id === "volume");
     const indicatorFragments = plugins
-      .map((p) => p.detectorPromptFragment(args.scalars))
+      .map((p) =>
+        p.detectorPromptFragment(
+          args.scalars,
+          args.indicatorsMatrix[p.id]?.params as Record<string, unknown> | undefined,
+        ),
+      )
       .filter((s): s is string => s != null)
       .join("\n");
     const classificationBlock = composeClassificationBlock(plugins, !!args.htf);
@@ -83,7 +88,12 @@ export class PromptBuilder {
     if (!this.reviewer) await this.warmUp();
     const plugins = this.registry.resolveActive(args.indicatorsMatrix);
     const reviewerIndicatorFragments = plugins
-      .map((p) => p.reviewerPromptFragment?.(args.fresh.scalars))
+      .map((p) =>
+        p.reviewerPromptFragment?.(
+          args.fresh.scalars,
+          args.indicatorsMatrix[p.id]?.params as Record<string, unknown> | undefined,
+        ),
+      )
       .filter((s): s is string => typeof s === "string")
       .map((s) => `- ${s}`)
       .join("\n");

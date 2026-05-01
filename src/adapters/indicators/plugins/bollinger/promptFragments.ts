@@ -1,13 +1,26 @@
-export function detectorFragment(s: Record<string, unknown>): string | null {
-  const bw = s.bbBandwidthPct; const pct = s.bbBandwidthPercentile200;
+export function detectorFragment(
+  s: Record<string, unknown>,
+  params?: Record<string, unknown>,
+): string | null {
+  const bw = s.bbBandwidthPct;
+  const pct = s.bbBandwidthPercentile200;
   if (typeof bw !== "number" || typeof pct !== "number") return null;
-  return `**BB bandwidth**: \`${bw.toFixed(2)}%\` — percentile vs last 200 candles: **\`${pct.toFixed(0)}\`** (< 15 = squeeze for THIS asset).`;
+  const period = typeof params?.period === "number" ? params.period : 20;
+  const stdMul = typeof params?.std_mul === "number" ? params.std_mul : 2;
+  return `**BB(${period}, ${stdMul}σ) bandwidth**: \`${bw.toFixed(2)}%\` — percentile vs last 200 candles: **\`${pct.toFixed(0)}\`** (< 15 = squeeze for THIS asset).`;
 }
-export function reviewerFragment(s: Record<string, unknown>): string | null {
+
+export function reviewerFragment(
+  s: Record<string, unknown>,
+  params?: Record<string, unknown>,
+): string | null {
   const bw = s.bbBandwidthPct;
   if (typeof bw !== "number") return null;
-  return `BB bandwidth: \`${bw.toFixed(2)}%\` (squeeze if < 4)`;
+  const period = typeof params?.period === "number" ? params.period : 20;
+  const stdMul = typeof params?.std_mul === "number" ? params.std_mul : 2;
+  return `BB(${period}, ${stdMul}σ) bandwidth: \`${bw.toFixed(2)}%\` (squeeze if < 4)`;
 }
+
 export function featuredFewShotExample(): string {
   return `### Example — BB squeeze breakout (event)
 

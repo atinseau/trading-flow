@@ -41,7 +41,14 @@ describe("bollingerPlugin", () => {
     const s = bollingerPlugin.computeScalars(sampleCandles);
     const txt = bollingerPlugin.detectorPromptFragment(s);
     expect(txt).not.toBeNull();
-    expect(txt).toContain("BB bandwidth");
+    expect(txt).toMatch(/BB\(?\d+/);
+    expect(txt).toContain("bandwidth");
+  });
+
+  test("detectorPromptFragment inlines custom period and std_mul", () => {
+    const s = bollingerPlugin.computeScalars(sampleCandles, { period: 10, std_mul: 1.5 });
+    const txt = bollingerPlugin.detectorPromptFragment(s, { period: 10, std_mul: 1.5 });
+    expect(txt).toContain("BB(10, 1.5σ)");
   });
 
   test("reviewerPromptFragment is condensed", () => {
