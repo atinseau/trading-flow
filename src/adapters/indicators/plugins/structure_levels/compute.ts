@@ -1,20 +1,32 @@
 import type { Candle } from "@domain/schemas/Candle";
 import { detectFvgs, pointOfControl } from "../base/math";
 
-const RECENT_WINDOW = 50;
-const POC_BUCKETS = 30;
 const FVG_TAIL = 10;
 
-export function computeScalars(candles: Candle[]) {
-  const tail = candles.slice(-RECENT_WINDOW);
+export type StructureLevelsParams = { window: number; poc_buckets: number };
+export const STRUCTURE_LEVELS_DEFAULT_PARAMS: StructureLevelsParams = { window: 50, poc_buckets: 30 };
+
+function readParams(params?: Record<string, unknown>): StructureLevelsParams {
+  const window = params?.window;
+  const poc_buckets = params?.poc_buckets;
+  return {
+    window: typeof window === "number" ? window : STRUCTURE_LEVELS_DEFAULT_PARAMS.window,
+    poc_buckets: typeof poc_buckets === "number" ? poc_buckets : STRUCTURE_LEVELS_DEFAULT_PARAMS.poc_buckets,
+  };
+}
+
+export function computeScalars(candles: Candle[], params?: Record<string, unknown>) {
+  const { window, poc_buckets } = readParams(params);
+  const tail = candles.slice(-window);
   const recentHigh = Math.max(...tail.map((c) => c.high));
   const recentLow = Math.min(...tail.map((c) => c.low));
-  const pocPrice = pointOfControl(tail, POC_BUCKETS);
+  const pocPrice = pointOfControl(tail, poc_buckets);
   return { recentHigh, recentLow, pocPrice };
 }
 
-export function computePriceLines(candles: Candle[]) {
-  const tail = candles.slice(-RECENT_WINDOW);
+export function computePriceLines(candles: Candle[], params?: Record<string, unknown>) {
+  const { window, poc_buckets: _poc } = readParams(params);
+  const tail = candles.slice(-window);
   const recentHigh = Math.max(...tail.map((c) => c.high));
   const recentLow = Math.min(...tail.map((c) => c.low));
   const fvgs = detectFvgs(candles).slice(-FVG_TAIL);

@@ -5,10 +5,15 @@ import { computeScalars, computePriceLines } from "./compute";
 import { detectorFragment, reviewerFragment } from "./promptFragments";
 import { CHART_SCRIPT } from "./chartScript";
 
+const STRUCTURE_LEVELS_PARAMS_SCHEMA = z.object({
+  window: z.number().int().min(10).max(200),
+  poc_buckets: z.number().int().min(10).max(100),
+}).strict();
+
 export const structureLevelsPlugin: IndicatorPlugin = {
   ...structureLevelsMetadata,
-  computeScalars,
-  computeSeries: (c) => ({ kind: "priceLines", lines: computePriceLines(c) }),
+  computeScalars: (candles, params) => computeScalars(candles, params),
+  computeSeries: (candles, params) => ({ kind: "priceLines", lines: computePriceLines(candles, params) }),
   scalarSchemaFragment: () => ({
     recentHigh: z.number(),
     recentLow: z.number(),
@@ -20,4 +25,5 @@ export const structureLevelsPlugin: IndicatorPlugin = {
   reviewerPromptFragment: reviewerFragment,
   breakdownAxes: ["structure"],
   preFilterCriterion: "near_pivot",
+  paramsSchema: STRUCTURE_LEVELS_PARAMS_SCHEMA,
 };

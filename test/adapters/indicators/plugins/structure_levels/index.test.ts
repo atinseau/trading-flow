@@ -41,4 +41,32 @@ describe("structureLevelsPlugin", () => {
     expect(txt).toContain("95.20");
     expect(txt).toContain("100.10");
   });
+
+  test("computeScalars uses default params when no params", () => {
+    const s = structureLevelsPlugin.computeScalars(sampleCandles);
+    expect(typeof s.recentHigh).toBe("number");
+    expect(typeof s.recentLow).toBe("number");
+    expect(typeof s.pocPrice).toBe("number");
+  });
+
+  test("computeScalars accepts custom params", () => {
+    // window=20 looks at fewer candles than default window=50
+    const sDefault = structureLevelsPlugin.computeScalars(sampleCandles);
+    const sCustom = structureLevelsPlugin.computeScalars(sampleCandles, { window: 20, poc_buckets: 15 });
+    expect(typeof sCustom.recentHigh).toBe("number");
+    // Smaller window should produce different (potentially tighter) high/low range
+    expect(sDefault.recentHigh).not.toBe(sCustom.recentHigh);
+  });
+
+  test("paramsSchema validates ranges", () => {
+    expect(() => structureLevelsPlugin.paramsSchema!.parse({ window: 9, poc_buckets: 30 })).toThrow(); // window below min
+    expect(() => structureLevelsPlugin.paramsSchema!.parse({ window: 201, poc_buckets: 30 })).toThrow(); // window above max
+    expect(() => structureLevelsPlugin.paramsSchema!.parse({ window: 50, poc_buckets: 9 })).toThrow(); // buckets below min
+    expect(() => structureLevelsPlugin.paramsSchema!.parse({ window: 50, poc_buckets: 101 })).toThrow(); // buckets above max
+    expect(structureLevelsPlugin.paramsSchema!.parse({ window: 50, poc_buckets: 30 })).toEqual({ window: 50, poc_buckets: 30 });
+  });
+
+  test("defaultParams matches schema", () => {
+    expect(structureLevelsPlugin.paramsSchema!.parse(structureLevelsPlugin.defaultParams!)).toEqual(structureLevelsPlugin.defaultParams!);
+  });
 });
