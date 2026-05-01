@@ -3,7 +3,7 @@ import { KNOWN_INDICATOR_IDS } from "@domain/schemas/WatchesConfig";
 
 export const PRESETS = {
   naked: [] as ReadonlyArray<IndicatorId>,
-  recommended: ["ema_stack", "rsi", "volume", "swings_bos"] as ReadonlyArray<IndicatorId>,
+  recommended: ["ema_stack", "rsi", "volume", "swings_bos", "structure_levels"] as ReadonlyArray<IndicatorId>,
   all: KNOWN_INDICATOR_IDS,
 } as const;
 
