@@ -19,18 +19,24 @@ export type PreFilterCriterion =
   | "rsi_extreme_distance"
   | "near_pivot";
 
+export type ParamDescriptor =
+  | { key: string; kind: "number"; label: string; min: number; max: number; step?: number; help?: string }
+  | { key: string; kind: "enum"; label: string; options: ReadonlyArray<string>; help?: string };
+
 export interface IndicatorPluginMetadata {
   readonly id: IndicatorId;
   readonly displayName: string;
   readonly tag: IndicatorTag;
   readonly shortDescription: string;
   readonly longDescription: string;
+  readonly defaultParams?: Readonly<Record<string, unknown>>;
+  readonly paramsDescriptor?: ReadonlyArray<ParamDescriptor>;
 }
 
 export interface IndicatorPlugin extends IndicatorPluginMetadata {
   // Compute
-  computeScalars(candles: Candle[]): Record<string, unknown>;
-  computeSeries(candles: Candle[]): IndicatorSeriesContribution;
+  computeScalars(candles: Candle[], params?: Record<string, unknown>): Record<string, unknown>;
+  computeSeries(candles: Candle[], params?: Record<string, unknown>): IndicatorSeriesContribution;
 
   // Schema
   scalarSchemaFragment(): z.ZodRawShape;
@@ -41,14 +47,16 @@ export interface IndicatorPlugin extends IndicatorPluginMetadata {
   readonly secondaryPaneStretch?: number;
 
   // Prompt fragments
-  detectorPromptFragment(scalars: Record<string, unknown>): string | null;
-  reviewerPromptFragment?(scalars: Record<string, unknown>): string | null;
+  detectorPromptFragment(scalars: Record<string, unknown>, params?: Record<string, unknown>): string | null;
+  reviewerPromptFragment?(scalars: Record<string, unknown>, params?: Record<string, unknown>): string | null;
   readonly contributedPatternTypes?: ReadonlyArray<string>;
   featuredFewShotExample?(): string | null;
 
   // Scoring & pre-filter
   readonly breakdownAxes?: ReadonlyArray<BreakdownAxis>;
   readonly preFilterCriterion?: PreFilterCriterion;
+
+  readonly paramsSchema?: z.ZodObject<z.ZodRawShape>;
 }
 
 export type IndicatorClientMetadata = IndicatorPluginMetadata;
