@@ -112,63 +112,11 @@ describe("PureJsIndicatorCalculator — extended indicators", () => {
     expect(ind.atrZScore200).toBeCloseTo(0, 5);
   });
 
-  test("Swing detection finds the obvious peak in a triangle wave", async () => {
-    const candles: Candle[] = [];
-    // 250 candles forming a tent: rise from 100 to 200, fall back to 100.
-    for (let i = 0; i < 125; i++) {
-      const close = 100 + i;
-      candles.push({
-        timestamp: new Date(i * 900_000),
-        open: close,
-        high: close + 1,
-        low: close - 1,
-        close,
-        volume: 100,
-      });
-    }
-    for (let i = 0; i < 125; i++) {
-      const close = 225 - i;
-      candles.push({
-        timestamp: new Date((125 + i) * 900_000),
-        open: close,
-        high: close + 1,
-        low: close - 1,
-        close,
-        volume: 100,
-      });
-    }
-    const series = await calc.computeSeries(candles, allPlugins);
-    // Should detect at least one swing high near the top.
-    expect(series.swingHighs.length).toBeGreaterThan(0);
-    const topIdx = series.swingHighs[series.swingHighs.length - 1]?.index ?? -1;
-    expect(topIdx).toBeGreaterThan(120);
-    expect(topIdx).toBeLessThan(135);
-  });
+  // NOTE: "Swing detection finds the obvious peak" is ported to
+  // test/adapters/indicators/plugins/swings_bos/index.test.ts
 
-  test("FVG detection finds a 3-candle gap up", async () => {
-    // Build a 250-candle baseline of stable values, then inject a clear gap up
-    // at indices 100-102 (candle 100's high < candle 102's low).
-    const candles: Candle[] = Array.from({ length: 250 }, (_, i) => ({
-      timestamp: new Date(i * 900_000),
-      open: 100,
-      high: 101,
-      low: 99,
-      close: 100,
-      volume: 100,
-    }));
-    candles[100] = { ...candles[100]!, high: 100, low: 99, close: 99.5 };
-    candles[101] = { ...candles[101]!, high: 110, low: 105, close: 109 };
-    candles[102] = { ...candles[102]!, high: 112, low: 108, close: 110 };
-
-    const series = await calc.computeSeries(candles, allPlugins);
-    const bullishFvg = series.fvgs.find((f) => f.direction === "bullish" && f.index === 101);
-    expect(bullishFvg).toBeDefined();
-    if (bullishFvg) {
-      // Gap is between candles[100].high (=100) and candles[102].low (=108).
-      expect(bullishFvg.bottom).toBeCloseTo(100, 1);
-      expect(bullishFvg.top).toBeCloseTo(108, 1);
-    }
-  });
+  // NOTE: "FVG detection finds a 3-candle gap up" is ported to
+  // test/adapters/indicators/plugins/structure_levels/index.test.ts
 
   test("BOS state goes bullish when price closes above prior swing high", async () => {
     // Build a series with a clean swing high at index 50, then a strong run-up
@@ -260,12 +208,44 @@ describe("PureJsIndicatorCalculator — extended indicators", () => {
   });
 
   test("computeSeries arrays are aligned with candle count", async () => {
+    // After modularisation, computeSeries returns Record<pluginId, IndicatorSeriesContribution>.
+    // Each plugin's series arrays must be aligned with the candle count (length=250).
     const candles = syntheticCandles(250);
-    const series = await calc.computeSeries(candles, allPlugins);
-    expect(series.ema20.length).toBe(250);
-    expect(series.vwap.length).toBe(250);
-    expect(series.bbUpper.length).toBe(250);
-    expect(series.macd.length).toBe(250);
-    expect(series.rsi.length).toBe(250);
+    const seriesMap = await calc.computeSeries(candles, allPlugins);
+
+    // ema_stack plugin: lines kind — emaShort/emaMid/emaLong arrays
+    const emaContrib = seriesMap["ema_stack"];
+    expect(emaContrib?.kind).toBe("lines");
+    if (emaContrib?.kind === "lines") {
+      expect(emaContrib.series["emaShort"]?.length).toBe(250);
+    }
+
+    // vwap plugin: lines kind with vwap series
+    const vwapContrib = seriesMap["vwap"];
+    expect(vwapContrib?.kind).toBe("lines");
+    if (vwapContrib?.kind === "lines") {
+      expect(vwapContrib.series["vwap"]?.length).toBe(250);
+    }
+
+    // bollinger plugin: lines kind — upper/middle/lower arrays
+    const bbContrib = seriesMap["bollinger"];
+    expect(bbContrib?.kind).toBe("lines");
+    if (bbContrib?.kind === "lines") {
+      expect(bbContrib.series["upper"]?.length).toBe(250);
+    }
+
+    // macd plugin: lines kind with macd/signal/hist series
+    const macdContrib = seriesMap["macd"];
+    expect(macdContrib?.kind).toBe("lines");
+    if (macdContrib?.kind === "lines") {
+      expect(macdContrib.series["macd"]?.length).toBe(250);
+    }
+
+    // rsi plugin: lines kind with rsi series
+    const rsiContrib = seriesMap["rsi"];
+    expect(rsiContrib?.kind).toBe("lines");
+    if (rsiContrib?.kind === "lines") {
+      expect(rsiContrib.series["rsi"]?.length).toBe(250);
+    }
   });
 });

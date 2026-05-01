@@ -108,42 +108,10 @@ describe("Bollinger Bands — deeper coverage", () => {
 });
 
 // ─── MACD ───────────────────────────────────────────────────────────────────
+// NOTE: Tests using computeSeries (histogram identity, sign flip, sine cycling)
+// are ported to test/adapters/indicators/plugins/macd/index.test.ts.
 
 describe("MACD — deeper coverage", () => {
-  test("histogram === macd - signal across many indices", async () => {
-    const closes = Array.from({ length: 250 }, (_, i) => 100 + Math.sin(i / 7) * 10 + i * 0.05);
-    const candles = fromCloses(closes);
-    const series = await calc.computeSeries(candles, allPlugins);
-    let checked = 0;
-    for (let i = 0; i < series.macd.length; i++) {
-      const m = series.macd[i];
-      const s = series.macdSignal[i];
-      const h = series.macdHist[i];
-      if (m == null || s == null || h == null) continue;
-      expect(h).toBeCloseTo(m - s, 8);
-      checked++;
-    }
-    expect(checked).toBeGreaterThan(100);
-  });
-
-  test("histogram flips negative → positive across a downtrend-to-uptrend pivot", async () => {
-    // 150 candles of falling closes, then 100 of rising closes ending at the latest.
-    const closes: number[] = [];
-    for (let i = 0; i < 150; i++) closes.push(200 - i * 0.5);
-    for (let i = 0; i < 100; i++) closes.push(125 + i * 0.8);
-    const candles = fromCloses(closes);
-    const series = await calc.computeSeries(candles, allPlugins);
-    // Find a point well into the downtrend where hist is negative.
-    const downIdx = 130;
-    const downHist = series.macdHist[downIdx];
-    expect(downHist).not.toBeNull();
-    expect(downHist as number).toBeLessThan(0);
-    // By the end of the uptrend, hist should have flipped positive.
-    const lastHist = series.macdHist[series.macdHist.length - 1];
-    expect(lastHist).not.toBeNull();
-    expect(lastHist as number).toBeGreaterThan(0);
-  });
-
   test("accelerating downtrend → macd < 0, signal < 0, macd more negative than signal", async () => {
     // For a series whose downtrend ACCELERATES at the end, the MACD line drops
     // faster than its 9-period EMA smoothing → macd < signal → hist < 0,
@@ -159,21 +127,6 @@ describe("MACD — deeper coverage", () => {
     expect(ind.macdSignal).toBeLessThan(0);
     expect(ind.macd).toBeLessThan(ind.macdSignal); // macd more negative than its smoothing
     expect(ind.macdHist).toBeLessThan(0);
-  });
-
-  test("cycling sine series → macd takes both positive and negative values", async () => {
-    const closes = Array.from({ length: 400 }, (_, i) => 100 + Math.sin(i / 10) * 5);
-    const candles = fromCloses(closes);
-    const series = await calc.computeSeries(candles, allPlugins);
-    let posCount = 0;
-    let negCount = 0;
-    for (const v of series.macd) {
-      if (v == null) continue;
-      if (v > 0.01) posCount++;
-      else if (v < -0.01) negCount++;
-    }
-    expect(posCount).toBeGreaterThan(20);
-    expect(negCount).toBeGreaterThan(20);
   });
 });
 
@@ -276,55 +229,10 @@ describe("ATR Z-score (200) — deeper coverage", () => {
 });
 
 // ─── VWAP (session) ─────────────────────────────────────────────────────────
+// NOTE: Tests using computeSeries (midnight reset, hand-computed VWAP at index 4)
+// are ported to test/adapters/indicators/plugins/vwap/index.test.ts.
 
 describe("VWAP (session) — deeper coverage", () => {
-  test("VWAP resets at UTC midnight (just-after-midnight VWAP = first candle's typical price)", async () => {
-    // Build 250 candles. The session reset uses Math.floor(ts / 86_400_000),
-    // so a candle at exactly N * 86_400_000 lands on a fresh day.
-    // We anchor the start so the second-to-last candle is just before midnight
-    // and the last candle is just after.
-    const ms = 86_400_000;
-    // Need 250 candles ending in a fresh day. Use 1-hour spacing (3_600_000).
-    // Place the boundary near the end:
-    //  - last candle timestamp = 5*ms exactly (a midnight)
-    //  - prior candle = 5*ms - 1h = day 4 (the last candle of day 4)
-    // start = lastTs - 249 * 1h
-    const lastTs = 5 * ms;
-    const stepMs = 3_600_000;
-    const startMs = lastTs - 249 * stepMs;
-    const candles: Candle[] = [];
-    for (let i = 0; i < 250; i++) {
-      const ts = startMs + i * stepMs;
-      // Distinct, large prices that make day-4 vs day-5 averages differ a lot.
-      // Day 4 candles trade around 100; day 5 candle trades at 200.
-      const onNewDay = Math.floor(ts / ms) === 5;
-      const price = onNewDay ? 200 : 100;
-      candles.push({
-        timestamp: new Date(ts),
-        open: price,
-        high: price + 1,
-        low: price - 1,
-        close: price,
-        volume: 100,
-      });
-    }
-    // Sanity: confirm the partition.
-    const lastCandle = candles[candles.length - 1]!;
-    const prevCandle = candles[candles.length - 2]!;
-    expect(Math.floor(lastCandle.timestamp.getTime() / ms)).toBe(5);
-    expect(Math.floor(prevCandle.timestamp.getTime() / ms)).toBe(4);
-
-    const series = await calc.computeSeries(candles, allPlugins);
-    const lastVwap = series.vwap[series.vwap.length - 1];
-    const prevVwap = series.vwap[series.vwap.length - 2];
-    expect(lastVwap).not.toBeNull();
-    expect(prevVwap).not.toBeNull();
-    // Just-before-midnight VWAP averages day 4 (price ~100). Just-after VWAP
-    // is the new-day candle's typical price = 200. They must differ.
-    expect(lastVwap as number).toBeCloseTo(200, 5);
-    expect(prevVwap as number).toBeCloseTo(100, 5);
-  });
-
   test("heavy-volume bar pulls VWAP toward its price", async () => {
     // Single-day session of 250 candles, all 1h spacing inside one day. To
     // stay in one day with 250 candles, we'd need a longer day — instead,
@@ -362,50 +270,6 @@ describe("VWAP (session) — deeper coverage", () => {
     expect(ind.vwapSession).toBeCloseTo(2_990_000 / 34_900, 1);
   });
 
-  test("hand-computed single-day VWAP matches", async () => {
-    // 5 candles in day 0, then pad to 200 in day 0 to satisfy the 200-candle
-    // requirement. We assert the VWAP at INDEX 4 via computeSeries (so the
-    // padding-after doesn't pollute our hand math).
-    const stepMs = 60_000;
-    const fiveCandles = [
-      { ts: 0 * stepMs, h: 102, l: 98, c: 100, v: 100 }, // typical = 100
-      { ts: 1 * stepMs, h: 103, l: 99, c: 101, v: 200 }, // typical = 101
-      { ts: 2 * stepMs, h: 105, l: 101, c: 103, v: 300 }, // typical = 103
-      { ts: 3 * stepMs, h: 104, l: 100, c: 102, v: 100 }, // typical = 102
-      { ts: 4 * stepMs, h: 106, l: 102, c: 104, v: 400 }, // typical = 104
-    ];
-    // Hand math:
-    //  cumPV = 100*100 + 101*200 + 103*300 + 102*100 + 104*400
-    //        = 10000 + 20200 + 30900 + 10200 + 41600 = 112900
-    //  cumV  = 100 + 200 + 300 + 100 + 400 = 1100
-    //  VWAP@4 = 112900 / 1100 = 102.6363636...
-    const expectedVwap = 112900 / 1100;
-
-    // Pad with extra candles AFTER, all in day 0 so they remain in the same
-    // session. The assertion is on index 4.
-    const candles: Candle[] = fiveCandles.map((s) => ({
-      timestamp: new Date(s.ts),
-      open: s.c,
-      high: s.h,
-      low: s.l,
-      close: s.c,
-      volume: s.v,
-    }));
-    for (let i = 5; i < 220; i++) {
-      candles.push({
-        timestamp: new Date(i * stepMs),
-        open: 104,
-        high: 105,
-        low: 103,
-        close: 104,
-        volume: 100,
-      });
-    }
-    const series = await calc.computeSeries(candles, allPlugins);
-    const v4 = series.vwap[4];
-    expect(v4).not.toBeNull();
-    expect(v4 as number).toBeCloseTo(expectedVwap, 6);
-  });
 });
 
 // ─── POC (Point of Control) ─────────────────────────────────────────────────
@@ -514,134 +378,8 @@ describe("POC — deeper coverage", () => {
   });
 });
 
-// ─── FVG (Fair Value Gap) ───────────────────────────────────────────────────
-
-describe("FVG — deeper coverage", () => {
-  test("bearish FVG: candles[i-1].low > candles[i+1].high", async () => {
-    const candles: Candle[] = Array.from({ length: 250 }, (_, i) => ({
-      timestamp: new Date(i * 900_000),
-      open: 100,
-      high: 101,
-      low: 99,
-      close: 100,
-      volume: 100,
-    }));
-    // Inject a bearish gap at indices 100-102:
-    //  candles[100]: low = 110 (high = 112)
-    //  candles[101]: middle / strong drop bar
-    //  candles[102]: high = 105 (low = 103)
-    // Gap exists if candles[100].low (=110) > candles[102].high (=105).
-    candles[100] = {
-      timestamp: candles[100]!.timestamp,
-      open: 112,
-      high: 112,
-      low: 110,
-      close: 110,
-      volume: 100,
-    };
-    candles[101] = {
-      timestamp: candles[101]!.timestamp,
-      open: 110,
-      high: 110,
-      low: 105,
-      close: 105,
-      volume: 100,
-    };
-    candles[102] = {
-      timestamp: candles[102]!.timestamp,
-      open: 105,
-      high: 105,
-      low: 103,
-      close: 103,
-      volume: 100,
-    };
-
-    const series = await calc.computeSeries(candles, allPlugins);
-    const bearish = series.fvgs.find((f) => f.direction === "bearish" && f.index === 101);
-    expect(bearish).toBeDefined();
-    if (bearish) {
-      // Per implementation: top = a.low (=110), bottom = c.high (=105).
-      expect(bearish.top).toBeCloseTo(110, 5);
-      expect(bearish.bottom).toBeCloseTo(105, 5);
-    }
-  });
-
-  test("no FVG on flat adjacent bars", async () => {
-    const candles: Candle[] = Array.from({ length: 250 }, (_, i) => ({
-      timestamp: new Date(i * 900_000),
-      open: 100,
-      high: 101,
-      low: 99,
-      close: 100,
-      volume: 100,
-    }));
-    const series = await calc.computeSeries(candles, allPlugins);
-    expect(series.fvgs.length).toBe(0);
-  });
-
-  test("two distinct FVGs detected and ordered by index", async () => {
-    const candles: Candle[] = Array.from({ length: 250 }, (_, i) => ({
-      timestamp: new Date(i * 900_000),
-      open: 100,
-      high: 101,
-      low: 99,
-      close: 100,
-      volume: 100,
-    }));
-    // Bullish gap at i=51: c[52].low > c[50].high (102 > 101).
-    // The inner bar c[51] is kept minimally distinct from neighbors so that
-    // it does NOT form collateral gaps at i=50 or i=52. We also bridge the
-    // step-down at i=53 by overlapping c[54]'s range with both c[52] and the
-    // baseline — without that bridge, the elevated c[52] would gap against
-    // baseline c[54], creating a spurious bearish FVG at i=53.
-    //   c[49] baseline: high=101, low=99
-    //   c[51]: high=102, low=100.5 → c[49].high≥c[51].low and c[51].high≥c[49].low
-    //   c[53] baseline: high=101, low=99 (no gap with c[51])
-    //   c[54] bridge: high=102, low=101 (overlaps c[52]=102..103 and c[56]=99..101)
-    candles[50] = { ...candles[50]!, high: 101, low: 99, close: 100 };
-    candles[51] = { ...candles[51]!, open: 101, high: 102, low: 100.5, close: 101.5 };
-    candles[52] = { ...candles[52]!, open: 102, high: 103, low: 102, close: 102.5 };
-    candles[54] = { ...candles[54]!, open: 102, high: 102, low: 101, close: 101.5 };
-    // Bearish gap at i=151: c[152].high < c[150].low (98 < 99). Symmetric
-    // construction with a bridging c[154] to avoid a spurious bullish FVG
-    // at i=153 (where the depressed c[152] would otherwise gap up against
-    // baseline c[154]).
-    //   c[151]: high=100, low=99.5 (minimally distinct from baseline neighbors)
-    //   c[154] bridge: high=99, low=98 (overlaps c[152]=97..98 and c[156]=99..101)
-    candles[150] = { ...candles[150]!, open: 100, high: 101, low: 99, close: 99.5 };
-    candles[151] = { ...candles[151]!, open: 99.5, high: 100, low: 99.5, close: 99.5 };
-    candles[152] = { ...candles[152]!, open: 98, high: 98, low: 97, close: 97.5 };
-    candles[154] = { ...candles[154]!, open: 98, high: 99, low: 98, close: 98.5 };
-
-    const series = await calc.computeSeries(candles, allPlugins);
-    // Enforce the "exactly two" claim made by the test name.
-    expect(series.fvgs.length).toBe(2);
-    const bullish = series.fvgs.find((f) => f.direction === "bullish" && f.index === 51);
-    const bearish = series.fvgs.find((f) => f.direction === "bearish" && f.index === 151);
-    expect(bullish).toBeDefined();
-    expect(bearish).toBeDefined();
-    // Detection scans candles in ascending order, so the bullish (i=51) FVG
-    // should appear before the bearish (i=151) one in the output.
-    const idxBull = series.fvgs.indexOf(bullish!);
-    const idxBear = series.fvgs.indexOf(bearish!);
-    expect(idxBull).toBeLessThan(idxBear);
-  });
-
-  test("touching but not gapping (a.high === c.low) → NOT detected as FVG", async () => {
-    const candles: Candle[] = Array.from({ length: 250 }, (_, i) => ({
-      timestamp: new Date(i * 900_000),
-      open: 100,
-      high: 101,
-      low: 99,
-      close: 100,
-      volume: 100,
-    }));
-    // a.high = 101, c.low = 101 (touching). Bullish requires c.low > a.high.
-    candles[100] = { ...candles[100]!, high: 101, low: 99, close: 100 };
-    candles[101] = { ...candles[101]!, high: 105, low: 101, close: 104 };
-    candles[102] = { ...candles[102]!, high: 106, low: 101, close: 105 };
-    const series = await calc.computeSeries(candles, allPlugins);
-    const fvg = series.fvgs.find((f) => f.index === 101);
-    expect(fvg).toBeUndefined();
-  });
-});
+// NOTE: "FVG — deeper coverage" tests are ported to
+// test/adapters/indicators/plugins/structure_levels/index.test.ts
+// (FVG detection is now exposed via detectFvgs from the base math module,
+// consumed by the structure_levels plugin; series.fvgs no longer exists on
+// the calculator-level computeSeries output).

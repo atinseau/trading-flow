@@ -370,24 +370,6 @@ describe("PureJsIndicatorCalculator — lastSwingHigh / lastSwingLow age", () =>
     expect(ind.lastSwingLowAge).toBeNull();
   });
 
-  test("age increments by 1 when an extra flat candle is appended (no new swing)", async () => {
-    const candles: Candle[] = Array.from({ length: 250 }, (_, i) => flatCandle(i, 100, 100));
-    // Single peak at 150; no other candle high > 100.
-    candles[150] = {
-      timestamp: new Date(150 * 900_000),
-      open: 100,
-      high: 110,
-      low: 100,
-      close: 110,
-      volume: 100,
-    };
-    const indA = await calc.compute(candles);
-    // Append one more flat candle: no new swing prints, but age grows by 1.
-    const candlesPlusOne = [...candles, flatCandle(250, 100, 100)];
-    const indB = await calc.compute(candlesPlusOne);
-    if (indA.lastSwingHighAge == null || indB.lastSwingHighAge == null) {
-      throw new Error("expected non-null swing ages");
-    }
-    expect(indB.lastSwingHighAge).toBe(indA.lastSwingHighAge + 1);
-  });
+  // NOTE: "age increments by 1 when an extra flat candle is appended" is ported to
+  // test/adapters/indicators/plugins/swings_bos/index.test.ts (uses plugin API directly).
 });

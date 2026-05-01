@@ -79,3 +79,71 @@ describe("macdPlugin", () => {
     expect(macdPlugin.paramsSchema!.parse(macdPlugin.defaultParams!)).toEqual(macdPlugin.defaultParams!);
   });
 });
+
+// ─── Ported from PureJsIndicatorCalculator.coverage.test.ts ──────────────────
+
+function fromCloses(closes: number[], stepMs = 900_000, startMs = 0) {
+  return closes.map((close, i) => ({
+    timestamp: new Date(startMs + i * stepMs),
+    open: i === 0 ? close : (closes[i - 1] ?? close),
+    high: close + 0.5,
+    low: close - 0.5,
+    close,
+    volume: 100,
+  }));
+}
+
+describe("macdPlugin — deeper coverage [ported]", () => {
+  test("histogram === macd - signal across many indices", () => {
+    const closes = Array.from({ length: 250 }, (_, i) => 100 + Math.sin(i / 7) * 10 + i * 0.05);
+    const candles = fromCloses(closes);
+    const raw = macdPlugin.computeSeries(candles);
+    if (raw.kind !== "lines") throw new Error("expected lines kind");
+    const macdArr = raw.series.macd;
+    const signalArr = raw.series.signal;
+    const histArr = raw.series.hist;
+    let checked = 0;
+    for (let i = 0; i < macdArr.length; i++) {
+      const m = macdArr[i];
+      const s = signalArr[i];
+      const h = histArr[i];
+      if (m == null || s == null || h == null) continue;
+      expect(h).toBeCloseTo(m - s, 8);
+      checked++;
+    }
+    expect(checked).toBeGreaterThan(100);
+  });
+
+  test("histogram flips negative → positive across a downtrend-to-uptrend pivot", () => {
+    const closes: number[] = [];
+    for (let i = 0; i < 150; i++) closes.push(200 - i * 0.5);
+    for (let i = 0; i < 100; i++) closes.push(125 + i * 0.8);
+    const candles = fromCloses(closes);
+    const raw = macdPlugin.computeSeries(candles);
+    if (raw.kind !== "lines") throw new Error("expected lines kind");
+    const histArr = raw.series.hist;
+    const downHist = histArr[130];
+    expect(downHist).not.toBeNull();
+    expect(downHist as number).toBeLessThan(0);
+    const lastHist = histArr[histArr.length - 1];
+    expect(lastHist).not.toBeNull();
+    expect(lastHist as number).toBeGreaterThan(0);
+  });
+
+  test("cycling sine series → macd takes both positive and negative values", () => {
+    const closes = Array.from({ length: 400 }, (_, i) => 100 + Math.sin(i / 10) * 5);
+    const candles = fromCloses(closes);
+    const raw = macdPlugin.computeSeries(candles);
+    if (raw.kind !== "lines") throw new Error("expected lines kind");
+    const macdArr = raw.series.macd;
+    let posCount = 0;
+    let negCount = 0;
+    for (const v of macdArr) {
+      if (v == null) continue;
+      if (v > 0.01) posCount++;
+      else if (v < -0.01) negCount++;
+    }
+    expect(posCount).toBeGreaterThan(20);
+    expect(negCount).toBeGreaterThan(20);
+  });
+});
