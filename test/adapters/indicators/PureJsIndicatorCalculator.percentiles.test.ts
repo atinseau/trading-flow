@@ -162,11 +162,11 @@ describe("PureJsIndicatorCalculator — topEqualHighs / topEqualLows", () => {
     for (const i of [216, 236]) setPeak(i, 140);
 
     const ind = await calc.compute(candles, allPlugins) as TestInd;
-    expect(ind.topEqualHighs.length).toBe(3);
+    expect(ind.topEqualHighs!.length).toBe(3);
     // Descending by touches.
-    expect(ind.topEqualHighs[0]?.touches).toBe(4);
-    expect(ind.topEqualHighs[1]?.touches).toBe(3);
-    expect(ind.topEqualHighs[2]?.touches).toBe(2);
+    expect(ind.topEqualHighs![0]?.touches).toBe(4);
+    expect(ind.topEqualHighs![1]?.touches).toBe(3);
+    expect(ind.topEqualHighs![2]?.touches).toBe(2);
   });
 
   test("more than 3 clusters → only top 3 (by touches) returned", async () => {
@@ -192,9 +192,9 @@ describe("PureJsIndicatorCalculator — topEqualHighs / topEqualLows", () => {
     for (const i of [240, 243]) setPeak(i, 160); // 2
 
     const ind = await calc.compute(candles, allPlugins) as TestInd;
-    expect(ind.topEqualHighs.length).toBe(3);
+    expect(ind.topEqualHighs!.length).toBe(3);
     // Cluster with 2 touches should be dropped; remaining are 5, 4, 3.
-    expect(ind.topEqualHighs.map((c) => c.touches)).toEqual([5, 4, 3]);
+    expect(ind.topEqualHighs!.map((c) => c.touches)).toEqual([5, 4, 3]);
   });
 
   test("no clusters (no equal pivots) → empty array", async () => {
@@ -235,8 +235,8 @@ describe("PureJsIndicatorCalculator — topEqualHighs / topEqualLows", () => {
       volume: 100,
     };
     const ind = await calc.compute(candles, allPlugins) as TestInd;
-    expect(ind.topEqualHighs.length).toBe(1);
-    const cluster = ind.topEqualHighs[0];
+    expect(ind.topEqualHighs!.length).toBe(1);
+    const cluster = ind.topEqualHighs![0];
     if (!cluster) throw new Error("expected cluster");
     expect(cluster.touches).toBe(2);
     expect(cluster.price).toBeCloseTo((130 + 130.1) / 2, 5);
@@ -272,16 +272,16 @@ describe("PureJsIndicatorCalculator — topEqualHighs / topEqualLows", () => {
     cIdx.forEach((i, k) => setTrough(i, cPrices[k] as number));
 
     const ind = await calc.compute(candles, allPlugins) as TestInd;
-    expect(ind.topEqualLows.length).toBe(3);
+    expect(ind.topEqualLows!.length).toBe(3);
     // Descending touches.
-    expect(ind.topEqualLows.map((c) => c.touches)).toEqual([4, 3, 2]);
+    expect(ind.topEqualLows!.map((c) => c.touches)).toEqual([4, 3, 2]);
     // Cluster prices = mean of member prices.
     const meanA = aPrices.reduce((s, p) => s + p, 0) / aPrices.length;
     const meanB = bPrices.reduce((s, p) => s + p, 0) / bPrices.length;
     const meanC = cPrices.reduce((s, p) => s + p, 0) / cPrices.length;
-    expect(ind.topEqualLows[0]?.price).toBeCloseTo(meanA, 5);
-    expect(ind.topEqualLows[1]?.price).toBeCloseTo(meanB, 5);
-    expect(ind.topEqualLows[2]?.price).toBeCloseTo(meanC, 5);
+    expect(ind.topEqualLows![0]?.price).toBeCloseTo(meanA, 5);
+    expect(ind.topEqualLows![1]?.price).toBeCloseTo(meanB, 5);
+    expect(ind.topEqualLows![2]?.price).toBeCloseTo(meanC, 5);
   });
 
   test("equalPivots tolerance boundary: spread > EQUAL_PIVOT_TOLERANCE_PCT (0.1%) → no cluster", async () => {

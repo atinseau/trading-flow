@@ -53,8 +53,8 @@ describe("Bollinger Bands — deeper coverage", () => {
     const candles = fromCloses(closes);
     const ind = await calc.compute(candles, allPlugins) as Record<string, unknown>;
     expect(ind.bbMiddle).toBeCloseTo(100, 5);
-    expect(ind.bbUpper - ind.bbMiddle).toBeCloseTo(2 * std, 4);
-    expect(ind.bbMiddle - ind.bbLower).toBeCloseTo(2 * std, 4);
+    expect((ind.bbUpper as number) - (ind.bbMiddle as number)).toBeCloseTo(2 * std, 4);
+    expect((ind.bbMiddle as number) - (ind.bbLower as number)).toBeCloseTo(2 * std, 4);
   });
 
   test("bbBandwidthPct equals (upper-lower)/middle*100", async () => {
@@ -63,15 +63,15 @@ describe("Bollinger Bands — deeper coverage", () => {
     ];
     const candles = fromCloses(padTo(last20, 220));
     const ind = await calc.compute(candles, allPlugins) as Record<string, unknown>;
-    const expected = ((ind.bbUpper - ind.bbLower) / ind.bbMiddle) * 100;
+    const expected = (((ind.bbUpper as number) - (ind.bbLower as number)) / (ind.bbMiddle as number)) * 100;
     expect(ind.bbBandwidthPct).toBeCloseTo(expected, 4);
   });
 
   test("constant series → upper === middle === lower, bandwidth = 0", async () => {
     const candles = fromCloses(Array(220).fill(100));
     const ind = await calc.compute(candles, allPlugins) as Record<string, unknown>;
-    expect(ind.bbUpper).toBeCloseTo(ind.bbMiddle, 8);
-    expect(ind.bbLower).toBeCloseTo(ind.bbMiddle, 8);
+    expect(ind.bbUpper).toBeCloseTo(ind.bbMiddle as number, 8);
+    expect(ind.bbLower).toBeCloseTo(ind.bbMiddle as number, 8);
     expect(ind.bbBandwidthPct).toBeCloseTo(0, 8);
   });
 
@@ -103,7 +103,7 @@ describe("Bollinger Bands — deeper coverage", () => {
     // The high-vol series must produce a meaningfully larger bandwidth.
     // With amplitudes 0.2 vs 10 (50x), the ratio in bandwidth should be very
     // large; we conservatively require at least 10x.
-    expect(indHigh.bbBandwidthPct).toBeGreaterThan(indLow.bbBandwidthPct * 10);
+    expect(indHigh.bbBandwidthPct).toBeGreaterThan((indLow.bbBandwidthPct as number) * 10);
   });
 });
 
@@ -125,7 +125,7 @@ describe("MACD — deeper coverage", () => {
     const ind = await calc.compute(candles, allPlugins) as Record<string, unknown>;
     expect(ind.macd).toBeLessThan(0);
     expect(ind.macdSignal).toBeLessThan(0);
-    expect(ind.macd).toBeLessThan(ind.macdSignal); // macd more negative than its smoothing
+    expect(ind.macd).toBeLessThan(ind.macdSignal as number); // macd more negative than its smoothing
     expect(ind.macdHist).toBeLessThan(0);
   });
 });

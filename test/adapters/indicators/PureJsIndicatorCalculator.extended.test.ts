@@ -65,8 +65,8 @@ describe("PureJsIndicatorCalculator — extended indicators", () => {
     const closes = candles.slice(-20).map((c) => c.close);
     const sma20 = closes.reduce((a, b) => a + b, 0) / 20;
     expect(ind.bbMiddle).toBeCloseTo(sma20, 5);
-    expect(ind.bbUpper).toBeGreaterThan(ind.bbMiddle);
-    expect(ind.bbLower).toBeLessThan(ind.bbMiddle);
+    expect(ind.bbUpper).toBeGreaterThan(ind.bbMiddle as number);
+    expect(ind.bbLower).toBeLessThan(ind.bbMiddle as number);
     expect(ind.bbBandwidthPct).toBeGreaterThan(0);
   });
 
