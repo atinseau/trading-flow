@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { IndicatorPlugin } from "@domain/services/IndicatorPlugin";
 import { swingsBosMetadata } from "./metadata";
 import { computeScalars, computeMarkers } from "./compute";
-import { detectorFragment, reviewerFragment } from "./promptFragments";
+import { detectorFragment, reviewerFragment, featuredFewShotExample } from "./promptFragments";
 import { CHART_SCRIPT } from "./chartScript";
 
 export const swingsBosPlugin: IndicatorPlugin = {
@@ -32,5 +32,6 @@ export const swingsBosPlugin: IndicatorPlugin = {
   chartScript: CHART_SCRIPT, chartPane: "price_overlay",
   detectorPromptFragment: detectorFragment,
   reviewerPromptFragment: reviewerFragment,
+  featuredFewShotExample,
   breakdownAxes: ["structure"],
 };

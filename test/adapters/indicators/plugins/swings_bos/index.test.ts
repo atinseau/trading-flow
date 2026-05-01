@@ -58,4 +58,11 @@ describe("swingsBosPlugin", () => {
   test("chartScript contains registerPlugin swings_bos", () => {
     expect(swingsBosPlugin.chartScript).toContain('__registerPlugin("swings_bos"');
   });
+
+  test("featuredFewShotExample contains BOS reaction pattern", () => {
+    const ex = swingsBosPlugin.featuredFewShotExample?.();
+    expect(ex).toBeTruthy();
+    expect(ex!).toContain("bos_reaction");
+    expect(ex!).toContain("BOS state");
+  });
 });
