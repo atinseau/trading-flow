@@ -62,4 +62,31 @@ describe("bollingerPlugin", () => {
     expect(ex!).toContain("BB bandwidth");
     expect(ex!).toContain("confidence_breakdown");
   });
+
+  test("computeScalars uses default params when no params", () => {
+    const s = bollingerPlugin.computeScalars(sampleCandles);
+    expect(s.bbUpper).toBeDefined();
+    expect(s.bbMiddle).toBeDefined();
+    expect(s.bbLower).toBeDefined();
+  });
+
+  test("computeScalars accepts custom params", () => {
+    const sDefault = bollingerPlugin.computeScalars(sampleCandles);
+    const sCustom = bollingerPlugin.computeScalars(sampleCandles, { period: 10, std_mul: 1.5 });
+    expect(typeof sCustom.bbUpper).toBe("number");
+    // Different period/std_mul should produce different band values
+    expect(sDefault.bbUpper).not.toBe(sCustom.bbUpper);
+  });
+
+  test("paramsSchema validates ranges", () => {
+    expect(() => bollingerPlugin.paramsSchema!.parse({ period: 4, std_mul: 2 })).toThrow(); // period below min
+    expect(() => bollingerPlugin.paramsSchema!.parse({ period: 101, std_mul: 2 })).toThrow(); // period above max
+    expect(() => bollingerPlugin.paramsSchema!.parse({ period: 20, std_mul: 0.4 })).toThrow(); // std_mul below min
+    expect(() => bollingerPlugin.paramsSchema!.parse({ period: 20, std_mul: 5 })).toThrow(); // std_mul above max
+    expect(bollingerPlugin.paramsSchema!.parse({ period: 20, std_mul: 2 })).toEqual({ period: 20, std_mul: 2 });
+  });
+
+  test("defaultParams matches schema", () => {
+    expect(bollingerPlugin.paramsSchema!.parse(bollingerPlugin.defaultParams!)).toEqual(bollingerPlugin.defaultParams!);
+  });
 });
