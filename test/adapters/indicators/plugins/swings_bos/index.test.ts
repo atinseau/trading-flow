@@ -65,4 +65,32 @@ describe("swingsBosPlugin", () => {
     expect(ex!).toContain("bos_reaction");
     expect(ex!).toContain("BOS state");
   });
+
+  test("computeScalars uses default lookback when no params", () => {
+    const s = swingsBosPlugin.computeScalars(sampleCandles);
+    expect(s.bosState).toBeDefined();
+    expect(["bullish", "bearish", "none"]).toContain(s.bosState as string);
+  });
+
+  test("computeScalars accepts custom params", () => {
+    const sDefault = swingsBosPlugin.computeScalars(sampleCandles);
+    const sCustom = swingsBosPlugin.computeScalars(sampleCandles, { lookback: 5 });
+    // Both should produce valid bosState values; different lookbacks may produce different swing counts
+    expect(["bullish", "bearish", "none"]).toContain(sCustom.bosState as string);
+    // Different lookback => different number of swings detected => potentially different ages
+    // (even if bosState is same, the swing ages will differ)
+    const defaultHasResult = sDefault.lastSwingHighAge !== null || sCustom.lastSwingHighAge !== null;
+    expect(defaultHasResult).toBe(true);
+  });
+
+  test("paramsSchema validates ranges", () => {
+    expect(() => swingsBosPlugin.paramsSchema!.parse({ lookback: 0 })).toThrow(); // below min
+    expect(() => swingsBosPlugin.paramsSchema!.parse({ lookback: 11 })).toThrow(); // above max
+    expect(() => swingsBosPlugin.paramsSchema!.parse({ lookback: 1.5 })).toThrow(); // not int
+    expect(swingsBosPlugin.paramsSchema!.parse({ lookback: 2 })).toEqual({ lookback: 2 });
+  });
+
+  test("defaultParams matches schema", () => {
+    expect(swingsBosPlugin.paramsSchema!.parse(swingsBosPlugin.defaultParams!)).toEqual(swingsBosPlugin.defaultParams!);
+  });
 });

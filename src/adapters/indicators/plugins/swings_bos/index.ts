@@ -5,11 +5,15 @@ import { computeScalars, computeMarkers } from "./compute";
 import { detectorFragment, reviewerFragment, featuredFewShotExample } from "./promptFragments";
 import { CHART_SCRIPT } from "./chartScript";
 
+const SWINGS_BOS_PARAMS_SCHEMA = z.object({
+  lookback: z.number().int().min(1).max(10),
+}).strict();
+
 export const swingsBosPlugin: IndicatorPlugin = {
   ...swingsBosMetadata,
-  computeScalars,
-  computeSeries: (c) => {
-    const m = computeMarkers(c);
+  computeScalars: (candles, params) => computeScalars(candles, params),
+  computeSeries: (candles, params) => {
+    const m = computeMarkers(candles, params);
     const markers = [
       ...m.swingHighs.map((s) => ({
         index: s.index, position: "above" as const, color: "#ef5350",
@@ -34,4 +38,5 @@ export const swingsBosPlugin: IndicatorPlugin = {
   reviewerPromptFragment: reviewerFragment,
   featuredFewShotExample,
   breakdownAxes: ["structure"],
+  paramsSchema: SWINGS_BOS_PARAMS_SCHEMA,
 };
