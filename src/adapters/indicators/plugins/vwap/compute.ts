@@ -8,6 +8,18 @@ export function computeScalars(candles: Candle[]) {
   const priceVsVwapPct = vwap === 0 ? 0 : ((lastClose - vwap) / vwap) * 100;
   return { vwapSession: vwap, priceVsVwapPct };
 }
+
 export function computeSeries(candles: Candle[]) {
-  return { vwap: vwapSeriesAligned(candles) };
+  const raw = vwapSeriesAligned(candles);
+  // Gap the line at each session boundary to avoid horizontal jumps.
+  const gapped: (number | null)[] = raw.map((v, i) => {
+    if (i === 0) return v;
+    const cur = candles[i];
+    const prev = candles[i - 1];
+    if (!cur || !prev) return v;
+    const curDay = Math.floor(cur.timestamp.getTime() / 86_400_000);
+    const prevDay = Math.floor(prev.timestamp.getTime() / 86_400_000);
+    return curDay !== prevDay ? null : v;
+  });
+  return { vwap: gapped };
 }
