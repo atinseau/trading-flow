@@ -10,7 +10,7 @@ export const CHART_SCRIPT = `
       return {
         emaShort: mk("#42a5f5", 1, "EMA Short"),
         emaMid: mk("#ffa726", 1, "EMA Mid"),
-        emaLong: mk("#ef5350", 2, "EMA Long"),
+        emaLong: mk("#7e57c2", 2, "EMA Long"),
       };
     },
     setData(handles, contribution, candles) {
