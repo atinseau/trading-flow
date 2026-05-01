@@ -54,4 +54,12 @@ describe("bollingerPlugin", () => {
   test("chartScript contains registerPlugin bollinger", () => {
     expect(bollingerPlugin.chartScript).toContain('__registerPlugin("bollinger"');
   });
+
+  test("featuredFewShotExample contains BB squeeze breakout pattern", () => {
+    const ex = bollingerPlugin.featuredFewShotExample?.();
+    expect(ex).toBeTruthy();
+    expect(ex!).toContain("bb_squeeze_breakout");
+    expect(ex!).toContain("BB bandwidth");
+    expect(ex!).toContain("confidence_breakdown");
+  });
 });

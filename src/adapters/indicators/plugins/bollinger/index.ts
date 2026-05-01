@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { IndicatorPlugin } from "@domain/services/IndicatorPlugin";
 import { bollingerMetadata } from "./metadata";
 import { computeScalars, computeSeries } from "./compute";
-import { detectorFragment, reviewerFragment } from "./promptFragments";
+import { detectorFragment, reviewerFragment, featuredFewShotExample } from "./promptFragments";
 import { CHART_SCRIPT } from "./chartScript";
 
 export const bollingerPlugin: IndicatorPlugin = {
@@ -20,4 +20,5 @@ export const bollingerPlugin: IndicatorPlugin = {
   chartScript: CHART_SCRIPT, chartPane: "price_overlay",
   detectorPromptFragment: detectorFragment,
   reviewerPromptFragment: reviewerFragment,
+  featuredFewShotExample,
 };
