@@ -32,7 +32,7 @@ export const KNOWN_ASSET_SOURCES = ["binance", "yahoo"] as const;
 // chartScript, promptFragments), and the tf-web wizard pickers — by design.
 export const KNOWN_INDICATOR_IDS = [
   "ema_stack", "vwap", "bollinger", "rsi", "macd", "atr", "volume",
-  "swings_bos", "recent_range", "liquidity_pools", "fvg", "poc",
+  "swings_bos", "structure_levels", "liquidity_pools",
 ] as const;
 export type IndicatorId = (typeof KNOWN_INDICATOR_IDS)[number];
 

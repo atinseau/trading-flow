@@ -8,14 +8,15 @@ import { macdPlugin } from "./plugins/macd";
 import { atrPlugin } from "./plugins/atr";
 import { volumePlugin } from "./plugins/volume";
 import { swingsBosPlugin } from "./plugins/swings_bos";
-import { recentRangePlugin } from "./plugins/recent_range";
+import { structureLevelsPlugin } from "./plugins/structure_levels";
 import { liquidityPoolsPlugin } from "./plugins/liquidity_pools";
-import { fvgPlugin } from "./plugins/fvg";
-import { pocPlugin } from "./plugins/poc";
 
-// Plugins are registered here as they get implemented (Tasks 5-16 of the
-// indicators modularization plan).
-export const REGISTRY: ReadonlyArray<IndicatorPlugin> = [emaStackPlugin, vwapPlugin, bollingerPlugin, rsiPlugin, macdPlugin, atrPlugin, volumePlugin, swingsBosPlugin, recentRangePlugin, liquidityPoolsPlugin, fvgPlugin, pocPlugin] as const;
+export const REGISTRY: ReadonlyArray<IndicatorPlugin> = [
+  emaStackPlugin, vwapPlugin, bollingerPlugin,
+  rsiPlugin, macdPlugin, atrPlugin,
+  volumePlugin,
+  swingsBosPlugin, structureLevelsPlugin, liquidityPoolsPlugin,
+] as const;
 
 export class IndicatorRegistry {
   constructor(private plugins: ReadonlyArray<IndicatorPlugin> = REGISTRY) {}
