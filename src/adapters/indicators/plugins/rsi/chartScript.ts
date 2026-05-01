@@ -16,9 +16,9 @@ export const CHART_SCRIPT = `
         scaleMargins: { top: 0.05, bottom: 0.05 },
       });
       // Visible reference lines at overbought/oversold levels (upgraded visibility)
-      rsi.createPriceLine({ price: 70, color: "#888", lineWidth: 1, lineStyle: 1,
+      rsi.createPriceLine({ price: 70, color: "#aaa", lineWidth: 2, lineStyle: 1,
                             axisLabelVisible: false, title: "" });
-      rsi.createPriceLine({ price: 30, color: "#888", lineWidth: 1, lineStyle: 1,
+      rsi.createPriceLine({ price: 30, color: "#aaa", lineWidth: 2, lineStyle: 1,
                             axisLabelVisible: false, title: "" });
       // Invisible anchor lines at 0 and 100 to bound the autoscale range
       rsi.createPriceLine({ price: 100, color: "rgba(0,0,0,0)", lineWidth: 1, lineStyle: 0,
