@@ -2,6 +2,8 @@ import { createHash } from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import type { IndicatorSeriesContribution } from "@adapters/indicators/plugins/base/types";
+import { IndicatorRegistry } from "@adapters/indicators/IndicatorRegistry";
 import type { ChartRenderer, ChartRenderResult } from "@domain/ports/ChartRenderer";
 import type { Candle } from "@domain/schemas/Candle";
 import { type Browser, chromium, type Page } from "playwright";
@@ -21,7 +23,10 @@ export class PlaywrightChartRenderer implements ChartRenderer {
   private pagesInUse = 0;
   private pagePromiseQueue: Array<(page: Page) => void> = [];
 
-  constructor(private opts: { poolSize?: number; templatePath?: string } = {}) {}
+  constructor(
+    private registry: IndicatorRegistry,
+    private opts: { poolSize?: number; templatePath?: string } = {},
+  ) {}
 
   async warmUp(): Promise<void> {
     if (this.browser) return;
@@ -40,14 +45,24 @@ export class PlaywrightChartRenderer implements ChartRenderer {
       "lightweight-charts.standalone.production.js",
     );
     const libSource = await Bun.file(libPath).text();
-    this.templateHtml = rawTemplate.replace(
-      "<!-- {{LIGHTWEIGHT_CHARTS_INLINE}} - replaced by PlaywrightChartRenderer at warmUp -->",
-      `<script>${libSource}</script>`,
-    );
+
+    // Inline both the lightweight-charts bundle AND the indicator plugin scripts.
+    const pluginScripts = this.registry.allChartScripts();
+    this.templateHtml = rawTemplate
+      .replace(
+        "<!-- {{LIGHTWEIGHT_CHARTS_INLINE}} -->",
+        `<script>${libSource}</script>`,
+      )
+      .replace(
+        "<!-- {{INDICATOR_PLUGIN_SCRIPTS}} -->",
+        `<script>${pluginScripts}</script>`,
+      );
+
     for (let i = 0; i < size; i++) {
       const page = await this.browser.newPage({
         viewport: { width: 1280, height: 720 },
         locale: "en-US",
+        deviceScaleFactor: 2,  // higher pixel density → sharper screenshots after resize cap
       });
       await page.setContent(this.templateHtml);
       this.pagePool.push(page);
@@ -56,7 +71,8 @@ export class PlaywrightChartRenderer implements ChartRenderer {
 
   async render(args: {
     candles: Candle[];
-    indicators?: import("@domain/ports/IndicatorCalculator").IndicatorSeries;
+    series: Record<string, IndicatorSeriesContribution>;
+    enabledIndicatorIds: ReadonlyArray<string>;
     width: number;
     height: number;
     outputUri: string;
@@ -75,7 +91,8 @@ export class PlaywrightChartRenderer implements ChartRenderer {
           close: c.close,
           volume: c.volume,
         })),
-        indicators: args.indicators ?? null,
+        indicators: args.series,
+        enabledIndicatorIds: args.enabledIndicatorIds,
       };
       await page.evaluate((data) => {
         (window as unknown as { __renderCandles: (c: unknown) => void }).__renderCandles(data);
@@ -85,10 +102,6 @@ export class PlaywrightChartRenderer implements ChartRenderer {
         { timeout: 5000 },
       );
       const png = await page.screenshot({ type: "png", omitBackground: false });
-      // Resize-to-cap + WebP encode in one pipeline. `fit: "inside"` preserves
-      // aspect ratio; `withoutEnlargement` no-ops if the source is already
-      // smaller than the cap. WebP @ q85 is visually indistinguishable from
-      // PNG for line/candle charts and ~5× smaller bytes.
       const buffer = await sharp(png)
         .resize(MAX_LLM_DIMENSION, MAX_LLM_DIMENSION, {
           fit: "inside",
@@ -98,7 +111,7 @@ export class PlaywrightChartRenderer implements ChartRenderer {
         .toBuffer();
       const sha256 = createHash("sha256").update(buffer).digest("hex");
       // Swap the .png suffix from the caller's outputUri to .webp so the
-      // file extension matches the bytes.
+      // stored artifact matches the actual format.
       const webpUri = args.outputUri.replace(/\.png$/i, ".webp");
       const path = webpUri.replace(/^file:\/\//, "");
       await mkdir(dirname(path), { recursive: true });
@@ -140,7 +153,11 @@ export class PlaywrightChartRenderer implements ChartRenderer {
     const fromPool = this.pagePool.pop();
     if (fromPool) return fromPool;
     if (!this.browser) throw new Error("Browser not initialized");
-    return this.browser.newPage({ viewport: { width: 1280, height: 720 }, locale: "en-US" });
+    return this.browser.newPage({
+      viewport: { width: 1280, height: 720 },
+      locale: "en-US",
+      deviceScaleFactor: 2,  // higher pixel density → sharper screenshots after resize cap
+    });
   }
 
   private releasePage(page: Page): void {

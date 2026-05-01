@@ -1,5 +1,5 @@
 import type { EventPayload } from "@domain/events/schemas";
-import type { Indicators } from "@domain/schemas/Indicators";
+import type { IndicatorScalars } from "@domain/schemas/Indicators";
 import { sql } from "drizzle-orm";
 import {
   boolean,
@@ -20,6 +20,12 @@ export const watchStates = pgTable("watch_states", {
   enabled: boolean("enabled").notNull().default(true),
   lastTickAt: timestamp("last_tick_at", { withTimezone: true }),
   lastTickStatus: text("last_tick_status"),
+  totalCostUsdMtd: numeric("total_cost_usd_mtd", { precision: 10, scale: 4 })
+    .notNull()
+    .default("0"),
+  totalCostUsdAllTime: numeric("total_cost_usd_all_time", { precision: 12, scale: 4 })
+    .notNull()
+    .default("0"),
   setupsCreatedMtd: integer("setups_created_mtd").notNull().default(0),
   setupsConfirmedMtd: integer("setups_confirmed_mtd").notNull().default(0),
   deletedAt: timestamp("deleted_at", { withTimezone: true }),
@@ -132,7 +138,7 @@ export const tickSnapshots = pgTable(
     timeframe: text("timeframe").notNull(),
     ohlcvUri: text("ohlcv_uri").notNull(),
     chartUri: text("chart_uri").notNull(),
-    indicators: jsonb("indicators").$type<Indicators>().notNull(),
+    indicators: jsonb("indicators").$type<IndicatorScalars>().notNull(),
     /** Last candle close at snapshot time. Source of truth for "live price"
         used by HTF positioning and finalizer regime — replaces the buggy
         proxies (recentHigh / invalidationLevel). Nullable for legacy rows. */

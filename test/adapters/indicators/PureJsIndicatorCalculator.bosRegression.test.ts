@@ -1,8 +1,18 @@
 import { describe, expect, test } from "bun:test";
+import { IndicatorRegistry } from "@adapters/indicators/IndicatorRegistry";
 import { PureJsIndicatorCalculator } from "@adapters/indicators/PureJsIndicatorCalculator";
 import type { Candle } from "@domain/schemas/Candle";
 
 const calc = new PureJsIndicatorCalculator();
+const registry = new IndicatorRegistry();
+// Use swings_bos plugin for BOS-related scalar tests
+const swingsBosPlugin = registry.resolveActive({ swings_bos: { enabled: true } });
+
+type BosInd = {
+  bosState?: string;
+  topEqualHighs?: Array<{ price: number; touches: number }>;
+  topEqualLows?: Array<{ price: number; touches: number }>;
+};
 
 /**
  * Build a flat candle (used as the "background" of a synthetic series).
@@ -93,7 +103,7 @@ describe("PureJsIndicatorCalculator — detectBosState (max-index across all swi
     for (let k = 0; k < 145; k++) {
       candles[100 + k] = breachCandle(100 + k, 105 + k);
     }
-    const ind = await calc.compute(candles);
+    const ind = await calc.compute(candles, swingsBosPlugin) as BosInd;
     expect(ind.bosState).toBe("bullish");
   });
 
@@ -104,7 +114,7 @@ describe("PureJsIndicatorCalculator — detectBosState (max-index across all swi
     for (let k = 0; k < 145; k++) {
       candles[100 + k] = breachCandle(100 + k, 95 - k * 0.3);
     }
-    const ind = await calc.compute(candles);
+    const ind = await calc.compute(candles, swingsBosPlugin) as BosInd;
     expect(ind.bosState).toBe("bearish");
   });
 
@@ -117,7 +127,7 @@ describe("PureJsIndicatorCalculator — detectBosState (max-index across all swi
     // (trough 99). No subsequent close ever exceeds 101 or drops below 99.
     candles[60] = peakCandle(60, 101);
     candles[120] = troughCandle(120, 99);
-    const ind = await calc.compute(candles);
+    const ind = await calc.compute(candles, swingsBosPlugin) as BosInd;
     expect(ind.bosState).toBe("none");
   });
 
@@ -159,7 +169,7 @@ describe("PureJsIndicatorCalculator — detectBosState (max-index across all swi
     candles[200] = breachCandle(200, 89);
     candles[201] = breachCandle(201, 89);
     candles[202] = breachCandle(202, 89);
-    const ind = await calc.compute(candles);
+    const ind = await calc.compute(candles, swingsBosPlugin) as BosInd;
     expect(ind.bosState).toBe("bearish");
   });
 
@@ -210,8 +220,8 @@ describe("PureJsIndicatorCalculator — equalPivots (anchored cluster reference)
     const seriesA = seriesWithHighs([110.0, 110.1, 110.2], [210, 225, 240]);
     const seriesB = seriesWithHighs([110.0, 110.2, 110.1], [210, 225, 240]);
 
-    const indA = await calc.compute(seriesA);
-    const indB = await calc.compute(seriesB);
+    const indA = await calc.compute(seriesA, swingsBosPlugin) as BosInd;
+    const indB = await calc.compute(seriesB, swingsBosPlugin) as BosInd;
 
     // Anchored implementation: both A and B form ONE cluster of 3 pivots
     // (each pivot is within 0.1%×110 ≈ 0.11 of the anchor at 110.00 — wait,
@@ -220,13 +230,13 @@ describe("PureJsIndicatorCalculator — equalPivots (anchored cluster reference)
     // claim is that the SAME split happens regardless of which order the
     // 110.10 / 110.20 pivots are seen — both A and B should produce the
     // same cluster structure.
-    expect(indA.topEqualHighs.length).toBe(indB.topEqualHighs.length);
-    expect(indA.equalHighsCount).toBe(indB.equalHighsCount);
+    expect(indA.topEqualHighs?.length).toBe(indB.topEqualHighs?.length);
+    expect((indA as Record<string, unknown>).equalHighsCount).toBe((indB as Record<string, unknown>).equalHighsCount);
     // The reported cluster price (mean of members) must also be identical
     // across orderings — the anchored impl computes it from the same set of
     // member prices regardless of insertion order.
-    const priceA = indA.topEqualHighs[0]?.price;
-    const priceB = indB.topEqualHighs[0]?.price;
+    const priceA = indA.topEqualHighs?.[0]?.price;
+    const priceB = indB.topEqualHighs?.[0]?.price;
     expect(priceA).toBeDefined();
     expect(priceB).toBeDefined();
     if (priceA !== undefined && priceB !== undefined) {
@@ -240,9 +250,9 @@ describe("PureJsIndicatorCalculator — equalPivots (anchored cluster reference)
     // the reported `price` is the mean = (110.00 + 110.05 + 110.10) / 3
     // ≈ 110.05.
     const candles = seriesWithHighs([110.0, 110.05, 110.1], [210, 225, 240]);
-    const ind = await calc.compute(candles);
-    expect(ind.topEqualHighs.length).toBeGreaterThanOrEqual(1);
-    const cluster = ind.topEqualHighs[0];
+    const ind = await calc.compute(candles, swingsBosPlugin) as BosInd;
+    expect(ind.topEqualHighs?.length).toBeGreaterThanOrEqual(1);
+    const cluster = ind.topEqualHighs?.[0];
     expect(cluster).toBeDefined();
     if (!cluster) return;
     expect(cluster.touches).toBe(3);
@@ -253,23 +263,23 @@ describe("PureJsIndicatorCalculator — equalPivots (anchored cluster reference)
     // Within tolerance: 110.00 and 110.10 are 0.0909...% apart (< 0.1%) →
     // single cluster of 2.
     const within = seriesWithHighs([110.0, 110.1], [220, 240]);
-    const indWithin = await calc.compute(within);
-    expect(indWithin.topEqualHighs.length).toBe(1);
-    expect(indWithin.topEqualHighs[0]?.touches).toBe(2);
+    const indWithin = await calc.compute(within, swingsBosPlugin) as BosInd;
+    expect(indWithin.topEqualHighs?.length).toBe(1);
+    expect(indWithin.topEqualHighs?.[0]?.touches).toBe(2);
 
     // Outside tolerance: 110.00 and 110.165 are 0.15% apart → two singletons,
     // neither of which qualifies as a cluster (need ≥2 hits).
     const outside = seriesWithHighs([110.0, 110.165], [220, 240]);
-    const indOutside = await calc.compute(outside);
-    expect(indOutside.topEqualHighs.length).toBe(0);
+    const indOutside = await calc.compute(outside, swingsBosPlugin) as BosInd;
+    expect(indOutside.topEqualHighs?.length).toBe(0);
   });
 
   test("Single pivot does not form a cluster (need ≥2 hits)", async () => {
     // One swing high at idx 230 — no second pivot within tolerance, so
     // topEqualHighs is empty.
     const candles = seriesWithHighs([110.0], [230]);
-    const ind = await calc.compute(candles);
-    expect(ind.topEqualHighs.length).toBe(0);
+    const ind = await calc.compute(candles, swingsBosPlugin) as BosInd;
+    expect(ind.topEqualHighs?.length).toBe(0);
     expect(ind.equalHighsCount).toBe(0);
   });
 });

@@ -14,7 +14,7 @@ import type { WatchConfig } from "@domain/schemas/WatchesConfig";
 import { TestWorkflowEnvironment } from "@temporalio/testing";
 import { Worker } from "@temporalio/worker";
 import { FakeChartRenderer } from "@test-fakes/FakeChartRenderer";
-import { FakeIndicatorCalculator, NEUTRAL_INDICATORS } from "@test-fakes/FakeIndicatorCalculator";
+import { FakeIndicatorCalculator } from "@test-fakes/FakeIndicatorCalculator";
 import { FakeLLMCallStore } from "@test-fakes/FakeLLMCallStore";
 import { FakeLLMProvider } from "@test-fakes/FakeLLMProvider";
 import { FakeMarketDataFetcher } from "@test-fakes/FakeMarketDataFetcher";
@@ -128,7 +128,18 @@ describe("SetupWorkflow integration (real Postgres + real activities)", () => {
       timeframe: "1h",
       ohlcvUri: ohlcvArtifact.uri,
       chartUri: chartArtifact.uri,
-      indicators: NEUTRAL_INDICATORS,
+      indicators: {
+        rsi: 50,
+        emaShort: 100,
+        emaMid: 100,
+        emaLong: 100,
+        atr: 1,
+        atrMa20: 1,
+        volumeMa20: 100,
+        lastVolume: 100,
+        recentHigh: 110,
+        recentLow: 90,
+      },
       lastClose: null,
       preFilterPass: true,
     });
@@ -205,6 +216,8 @@ describe("SetupWorkflow integration (real Postgres + real activities)", () => {
       marketDataFetchers: new Map([["binance", new FakeMarketDataFetcher()]]),
       chartRenderer: new FakeChartRenderer(),
       indicatorCalculator: new FakeIndicatorCalculator(),
+      indicatorRegistry: null as unknown as ActivityDeps["indicatorRegistry"],
+      promptBuilder: null as unknown as ActivityDeps["promptBuilder"],
       llmProviders,
       llmCallStore: new FakeLLMCallStore(),
       fundingRateProviders: new Map(),

@@ -1,8 +1,8 @@
 {{!--
-  version: detector_v4
-  description: Free-form pattern detection with corroboration. v4 = adds the
-               activeLessons head block (feedback loop integration). v3 was full
-               English translation for optimal LLM performance.
+  version: detector_v5
+  description: Modular indicators. Skeleton template — Indicators block,
+               classification block, few-shot, and output schema are
+               composed by PromptBuilder from active plugins.
 --}}
 
 # Free-form pattern detection on a chart
@@ -17,9 +17,8 @@
 
 These principles emerged from retrospective analysis of past failed trades on
 this watch. Apply them when they fit the current data. **However**: if a
-lesson contradicts strong evidence in the current tick (a clear indicator
-reading, an obvious structural break, etc.), override the lesson and cite
-your reasoning. Lessons inform; current evidence wins ties.
+lesson contradicts strong evidence in the current tick, override the lesson
+and cite your reasoning. Lessons inform; current evidence wins ties.
 
 {{#each activeLessons}}
 ### {{{this.title}}}
@@ -30,42 +29,27 @@ your reasoning. Lessons inform; current evidence wins ties.
 {{/each}}
 
 {{/if}}
+{{#if hasIndicators}}
 ## Indicators (fresh data on {{timeframe}})
 
-### Momentum & trend
-- RSI (14): `{{indicators.rsi}}` (extreme < 30 or > 70; mid-range = neutral)
-- EMA stack: 20=`{{indicators.ema20}}` / 50=`{{indicators.ema50}}` / 200=`{{indicators.ema200}}` — alignment = trend regime
-- MACD: macd=`{{indicators.macd}}` signal=`{{indicators.macdSignal}}` hist=`{{indicators.macdHist}}` (hist sign change = momentum shift)
+{{{indicatorFragments}}}
 
-### Volatility regime (per-asset calibrated, not magic-number thresholds)
-- ATR (14): `{{indicators.atr}}` | ATR z-score (200p): `{{indicators.atrZScore200}}` (< -1 compression, > +1.5 exhaustion territory — but in trending regimes high ATR = continuation, not reversal)
-- BB bandwidth: `{{indicators.bbBandwidthPct}}%`, **percentile vs last 200 candles: `{{indicators.bbBandwidthPercentile200}}`** (< 15 = squeeze for THIS asset; the % itself is asset-dependent)
+{{else}}
+## Mode
 
-### Volume (pattern-conditional — see matrix below)
-- Last/MA20: `{{indicators.lastVolume}}` / `{{indicators.volumeMa20}}` | **percentile (200p): `{{indicators.volumePercentile200}}`** (> 80 = spike for this asset, < 20 = anemic)
-
-### Structure & liquidity
-- Recent High / Low (50p): `{{indicators.recentHigh}}` / `{{indicators.recentLow}}`
-- Last swing high: `{{indicators.lastSwingHigh}}` ({{indicators.lastSwingHighAge}} candles ago)
-- Last swing low: `{{indicators.lastSwingLow}}` ({{indicators.lastSwingLowAge}} candles ago)
-- **BOS state**: `{{indicators.bosState}}` (bullish/bearish = last structural break, 'none' = ranging)
-- POC (point of control, last 50p): `{{indicators.pocPrice}}` — magnet / mean-reversion anchor (a setup with price stretched ≥1.5 ATR away from POC = mean-reversion candidate; near POC = compression / accumulation context)
-- **Liquidity pools** (top equal-pivot clusters; high-touch = strong pool):
-  - Above:{{#each indicators.topEqualHighs}} `{{this.price}}` ×{{this.touches}}{{/each}}{{#unless indicators.topEqualHighs.length}} (none){{/unless}}
-  - Below:{{#each indicators.topEqualLows}} `{{this.price}}` ×{{this.touches}}{{/each}}{{#unless indicators.topEqualLows.length}} (none){{/unless}}
-
-  Use these as concrete sweep targets / invalidation anchors in your proposals.
-
-### VWAP
-- Session VWAP: `{{indicators.vwapSession}}`, **price vs VWAP: `{{indicators.priceVsVwapPct}}%`**
-  (above = institutional bias long; far above = stretched / mean-reversion candidate)
+Naked-mode analysis: chart only, no computed indicators. Use pure visual
+pattern recognition (price action, candle structures, geometric shapes).
+The chart attached is your single source of truth. Be creative.
+{{/if}}
 
 {{#if htf}}
-### Higher timeframe regime
+## Higher timeframe regime
 
 - **Daily trend**: `{{htf.dailyTrend}}`
 
-→ A {{timeframe}} setup aligned with the daily regime deserves a higher `initial_score` (+5 to +10). One fighting the daily regime should either be ignored or proposed with a lower score and a tighter invalidation. Detailed daily/weekly history is the Reviewer's job — at the detector stage you only need the regime label to bias conviction.
+→ A {{timeframe}} setup aligned with the daily regime deserves a higher
+`initial_score`. One fighting the daily regime should either be ignored or
+proposed with a lower score and tighter invalidation.
 {{/if}}
 
 ## Alive setups on {{asset}} {{timeframe}}
@@ -80,188 +64,41 @@ your reasoning. Lessons inform; current evidence wins ties.
 
 ## Chart image
 
-See attached image (Japanese candlestick chart).
+See attached image (Japanese candlestick chart{{#unless hasIndicators}} — no overlays, candles only{{/unless}}).
 
 ## Setup classification (REQUIRED on every new_setup)
 
-Every proposed setup MUST declare:
-
-- **`pattern_category`**: `event` (single trigger — breakout, sweep, reclaim, fvg_retest, gap_fill, bb_squeeze_break, bos_reaction) or `accumulation` (multi-touch — double_top/bottom, divergence, prolonged_compression, triple_top/bottom). Analytic label, used by the feedback loop.
-- **`expected_maturation_ticks`** (1-6): your estimate of how many reviewer ticks this setup needs to reach finalizer-ready conviction. **This drives the finalizer's maturation rule.** Examples:
-  - `1` = trigger fully formed RIGHT NOW (clean sweep+reclaim, BOS with volume, FVG retest with rejection candle). Will route to finalizer fast-path same tick if `initial_score ≥ 80`.
-  - `2` = needs 1 retest / follow-through candle (BB squeeze break needing retest hold).
-  - `3-4` = accumulation building (double bottom forming, divergence developing).
-  - `5-6` = slow conviction build (multi-day compression).
-- **`confidence_breakdown`** (each 0-25): four orthogonal scores you sum for `initial_score`. **`initial_score` MUST equal `trigger + structure + htf + volume`** (or within ±2). This forces auditable reasoning instead of a vibe-based number.
-  - `trigger`: how clean is the triggering event (decisive close? candle quality? confirmation?). Event patterns earn here; accumulation patterns score 0-10 unless there's an active trigger candle.
-  - `structure`: are key levels respected? swings clean? BOS confirmed? Liquidity targets identified?
-  - `htf`: alignment with daily regime; position in weekly range; HTF level confluence.
-  - `volume`: does the volume profile FIT the pattern type per the matrix below? (Not "is volume high"; "is volume right".)
-
-### Initial-score targets by pattern type (sum of breakdown)
-
-| Pattern profile | Score range |
-|---|---|
-| Event, trigger fully formed, full alignment | **65-80** (fast-path eligible) |
-| Event, trigger formed, partial alignment | 50-60 |
-| Event, trigger forming, weak | 35-45 |
-| Accumulation, 3+ signals + favorable context | 30-40 |
-| Accumulation, 2 concordant signals (default) | 25 |
-| Speculative, 1 signal, high-quality location | 15-20 |
-
-Corroboration `confidence_delta_suggested`: `+5` light, `+10` clear, `+15` strong confluence, `+20` exceptional.
+{{{classificationBlock}}}
 
 ## Few-shot examples
 
-### Example 1 — EVENT pattern: BB squeeze breakout (high initial score)
+{{{fewShotExamples}}}
 
-Indicators: BB bandwidth 1.4% (squeeze), ATR z-score -1.2 (compression), MACD hist crossing positive (+12 from -3), VWAP=75600 with price at 76050 (+0.6% above), BOS state `bullish` (price closed above last swing high 75900). Daily regime `uptrend`. Top equal-highs liquidity pool at 76470 ×3, 76250 ×2. Top equal-lows at 75300 ×4. Volume on the breakout candle: 1.8× MA20.
-
-The trigger is fully formed: BB squeeze + decisive close above resistance with volume + alignment with daily uptrend. Liquidity above (EQH cluster at 76470) is the natural target; recent swing low 75900 is the invalidation.
-
-→ Output:
-```
-{
-  "corroborations": [],
-  "new_setups": [
-    {
-      "type": "bb_squeeze_breakout",
-      "direction": "LONG",
-      "pattern_category": "event",
-      "expected_maturation_ticks": 2,
-      "confidence_breakdown": { "trigger": 18, "structure": 15, "htf": 12, "volume": 12 },
-      "key_levels": { "entry": 76050, "invalidation": 75880, "target": 76470 },
-      "initial_score": 57,
-      "raw_observation": "BB bandwidth percentile 8 (squeeze for THIS asset) resolves bullish on volume percentile 88. BOS confirmed (close 76050 > prior swing high 75900). Aligned with daily uptrend. Target EQH 76470 (×3). Trigger candle clean but expecting 1 retest tick to confirm (maturation=2)."
-    }
-  ],
-  "ignore_reason": null
-}
-```
-
-### Example 2 — EVENT pattern: liquidity sweep + reclaim (SHORT)
-
-Daily regime `downtrend`. Indicators: RSI 62 (recovering from oversold), price 76200 just wicked above EQH cluster 76250 ×3 (sweep), then closed back below at 76200. Funding avg7d +0.12% (crowded long). MACD hist still positive but flattening. EMA50 76050 acted as ceiling on retest. Volume on the wick candle: 2.1× MA20 (absorbing the sweep), follow-through candle volume 1.4×.
-
-This is a classic stop-hunt: price taken liquidity above EQH then reclaimed. Funding crowded long = squeeze fuel for the short. Daily regime aligns. Invalidation = a clean close back above the swept high.
-
-→ Output:
-```
-{
-  "corroborations": [],
-  "new_setups": [
-    {
-      "type": "liquidity_sweep",
-      "direction": "SHORT",
-      "pattern_category": "event",
-      "expected_maturation_ticks": 1,
-      "confidence_breakdown": { "trigger": 22, "structure": 18, "htf": 18, "volume": 22 },
-      "key_levels": { "entry": 76200, "invalidation": 76310, "target": 75300 },
-      "initial_score": 80,
-      "raw_observation": "Textbook sweep+reclaim: wick took EQH 76250×3 then closed back below at 76200. Volume percentile 96 on sweep (absorption). Daily downtrend + funding crowded long = full squeeze setup. Target EQL 75300×4. Trigger fully formed THIS candle — ready for finalizer same-tick (maturation=1, score 80 = fast-path)."
-    }
-  ],
-  "ignore_reason": null
-}
-```
-
-### Example 3 — ACCUMULATION pattern: double bottom on RSI divergence
-
-Indicators: 2 lows printed at 75320 (separated 8 candles), second low with RSI 28 vs first at 24 (bullish divergence). MACD hist negative but rising (-12 → -4). EMA20 75600, price 75450 (below). Volume on second low: 1.3× MA20 (light, but in line with the compression context). Daily regime `sideways`, weekly position 0.18 (near weekly low). EQH cluster above at 75900 ×2.
-
-Multi-touch + divergence = accumulation. Volume light is OK in compression context (per volume matrix). 2 concordant signals (double bottom + RSI div), no event trigger, no daily regime tailwind → moderate score.
-
-→ Output:
-```
-{
-  "corroborations": [],
-  "new_setups": [
-    {
-      "type": "double_bottom_rsi_div",
-      "direction": "LONG",
-      "pattern_category": "accumulation",
-      "expected_maturation_ticks": 4,
-      "confidence_breakdown": { "trigger": 5, "structure": 12, "htf": 8, "volume": 5 },
-      "key_levels": { "entry": 75500, "invalidation": 75250, "target": 75900 },
-      "initial_score": 30,
-      "raw_observation": "Double bottom at 75320 (8c apart) + RSI bullish div (28>24). MACD hist rising. Light volume OK in compression. No active trigger candle = trigger score low (5). Structure clean, HTF sideways (no boost), volume not pattern-confirmatory (5). Needs 4 ticks to mature: re-test of low + STRENGTHEN on volume confirm."
-    }
-  ],
-  "ignore_reason": null
-}
-```
-
-### Example 4 — Corroboration of an alive setup
-
-Setup `#abc7` is `bb_squeeze_breakout` LONG (event), score 55, created 2 candles ago. Fresh data: BOS confirmed on next candle close, MACD hist accelerating (+12 → +28), price now at 76200 (mid-trend toward 76470 target).
-
-→ Output:
-```
-{
-  "corroborations": [
-    {
-      "setup_id": "abc7",
-      "evidence": ["BOS confirmation candle closed", "MACD hist accelerating +12→+28", "Price at 76200, halfway to target 76470"],
-      "confidence_delta_suggested": 15
-    }
-  ],
-  "new_setups": [],
-  "ignore_reason": null
-}
-```
-
-### Example 5 — Nothing to signal
-
-Sideways market, RSI 52, BB bandwidth 5.8% (no squeeze), ATR z-score 0.1 (normal vol), MACD hist near zero, no recent BOS, price at VWAP, no clean swing structure. Daily regime `sideways`.
-
-→ Output:
-```
-{
-  "corroborations": [],
-  "new_setups": [],
-  "ignore_reason": "Mid-range chop. BB bandwidth 5.8% (no squeeze), ATR z-score 0.1 (normal), MACD hist neutral, BOS state none, price at VWAP. No event trigger, no accumulation pattern, no exceptional context."
-}
-```
-
-## Fail-closed rules
-
-**When in doubt, propose NOTHING.** Better to miss an opportunity than generate a false signal that pollutes the pipeline. Specifically:
-
-- If you cannot fix a clear invalidation level → do not propose the setup
-- If a pattern has no confirmation AND no exceptional context (e.g., HTF level confluence, BB squeeze about to expand, sweep + reclaim) → `ignore_reason`
-
-### Volume — context-dependent, NOT absolute
+{{#if isVolumeActive}}
+## Volume rules
 
 Volume signals are pattern-conditional. Apply this matrix:
 
 | Pattern type | Volume should be... | Reason |
 |---|---|---|
 | Breakout / range expansion | High (≥ 1.2× MA20) | Confirms participation |
-| Reversal / climax (double_top, double_bottom, exhaustion) | High on the climax candle | Capitulation signal |
-| Compression / coiling / BB squeeze | **LOW is bullish** (poudre sèche before expansion) | Low vol = energy stored |
-| Pullback inside trend (continuation) | Lower than impulse | Healthy correction |
-| Liquidity sweep / stop hunt | Spike then reclaim | Order absorption |
+| Reversal / climax | High on the climax candle | Capitulation signal |
+| Compression / coiling / BB squeeze | **LOW is bullish** | Energy stored |
+| Pullback inside trend | Lower than impulse | Healthy correction |
+| Liquidity sweep | Spike then reclaim | Order absorption |
 
-→ **DO NOT reject a setup solely because volume is low.** Ask: does the volume profile *fit* this pattern type? If yes, the setup stands.
+→ DO NOT reject a setup solely because volume is low. Ask: does the volume
+profile *fit* this pattern type?
+
+{{/if}}
+## Fail-closed rules
+
+**When in doubt, propose NOTHING.** Better to miss an opportunity than
+generate a false signal that pollutes the pipeline.
+
+- If you cannot fix a clear invalidation level → do not propose the setup.
+- If a pattern has no confirmation AND no exceptional context → `ignore_reason`.
 
 ## Output format
 
-Respond with a strict JSON object (validated by Zod). All named fields below are REQUIRED. If no corroborations, use `[]`. If no new setups, use `[]`. If both are empty, AND ONLY in that case, `ignore_reason` must contain an explanatory string.
-
-Expected response schema:
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `corroborations` | array | Alive setups reinforced this tick |
-| `corroborations[i].setup_id` | string | ID of an alive setup listed above |
-| `corroborations[i].evidence` | array<string> | List of quantified observations that reinforce |
-| `corroborations[i].confidence_delta_suggested` | number between 0 and 20 | See calibration above |
-| `new_setups` | array | New setups proposed |
-| `new_setups[i].type` | string | Free-form label (e.g. "double_bottom", "compression", "breakout") |
-| `new_setups[i].direction` | string | "LONG" or "SHORT" |
-| `new_setups[i].key_levels.entry` | number optional | Envisioned entry price |
-| `new_setups[i].key_levels.invalidation` | number REQUIRED | Level that invalidates the setup |
-| `new_setups[i].key_levels.target` | number optional | Price target |
-| `new_setups[i].initial_score` | number between 0 and 100 | See calibration |
-| `new_setups[i].raw_observation` | string | Concise explanation of what you see |
-| `ignore_reason` | string or null | If nothing to signal, the reason; otherwise null |
+{{{outputFormatTable}}}

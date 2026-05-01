@@ -18,7 +18,7 @@ import type { FeedbackOutput } from "@domain/schemas/FeedbackOutput";
 import type { WatchConfig, WatchesConfig } from "@domain/schemas/WatchesConfig";
 import { FakeChartRenderer } from "@test-fakes/FakeChartRenderer";
 import { FakeFeedbackContextProvider } from "@test-fakes/FakeFeedbackContextProvider";
-import { FakeIndicatorCalculator, NEUTRAL_INDICATORS } from "@test-fakes/FakeIndicatorCalculator";
+import { FakeIndicatorCalculator } from "@test-fakes/FakeIndicatorCalculator";
 import { FakeLLMCallStore } from "@test-fakes/FakeLLMCallStore";
 import { FakeLLMProvider } from "@test-fakes/FakeLLMProvider";
 import { FakeMarketDataFetcher } from "@test-fakes/FakeMarketDataFetcher";
@@ -159,6 +159,8 @@ function buildDeps(args: {
     marketDataFetchers: new Map([["binance", new FakeMarketDataFetcher()]]),
     chartRenderer: new FakeChartRenderer(),
     indicatorCalculator: new FakeIndicatorCalculator(),
+    indicatorRegistry: null as unknown as ActivityDeps["indicatorRegistry"],
+    promptBuilder: null as unknown as ActivityDeps["promptBuilder"],
     llmProviders,
     llmCallStore: new FakeLLMCallStore(),
     fundingRateProviders: new Map(),
@@ -428,7 +430,18 @@ describe("feedback loop integration (full pipeline, real Postgres, fake LLM)", (
           mimeType: "image/png",
         })
       ).uri,
-      indicators: NEUTRAL_INDICATORS,
+      indicators: {
+        rsi: 50,
+        emaShort: 100,
+        emaMid: 100,
+        emaLong: 100,
+        atr: 1,
+        atrMa20: 1,
+        volumeMa20: 100,
+        lastVolume: 100,
+        recentHigh: 110,
+        recentLow: 90,
+      },
       lastClose: null,
       preFilterPass: true,
     });

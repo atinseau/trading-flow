@@ -1,8 +1,22 @@
 import { describe, expect, test } from "bun:test";
+import { IndicatorRegistry } from "@adapters/indicators/IndicatorRegistry";
 import { PureJsIndicatorCalculator } from "@adapters/indicators/PureJsIndicatorCalculator";
 import type { Candle } from "@domain/schemas/Candle";
 
 const calc = new PureJsIndicatorCalculator();
+const registry = new IndicatorRegistry();
+// Use all available plugins with defaults for percentile + pivot tests
+const allPlugins = registry.resolveActive(
+  Object.fromEntries(registry.all().map((p) => [p.id, { enabled: true }])),
+);
+
+type EqualPivotCluster = { price: number; touches: number };
+type TestInd = Record<string, unknown> & {
+  bbBandwidthPercentile200?: number;
+  volumePercentile200?: number;
+  topEqualHighs?: EqualPivotCluster[];
+  topEqualLows?: EqualPivotCluster[];
+};
 
 /**
  * Deterministic synthetic-candle generator. Mirrors the helper in the
@@ -66,7 +80,7 @@ describe("PureJsIndicatorCalculator — bbBandwidthPercentile200", () => {
       noiseSeed: 99,
       noiseAmp: 20,
     });
-    const ind = await calc.compute([...calm, ...wild]);
+    const ind = await calc.compute([...calm, ...wild], allPlugins) as TestInd;
     expect(ind.bbBandwidthPercentile200).toBeGreaterThan(80);
   });
 
@@ -78,7 +92,7 @@ describe("PureJsIndicatorCalculator — bbBandwidthPercentile200", () => {
       noiseSeed: 99,
       noiseAmp: 0.02,
     });
-    const ind = await calc.compute([...wild, ...calm]);
+    const ind = await calc.compute([...wild, ...calm], allPlugins) as TestInd;
     expect(ind.bbBandwidthPercentile200).toBeLessThan(20);
   });
 
@@ -88,7 +102,7 @@ describe("PureJsIndicatorCalculator — bbBandwidthPercentile200", () => {
     // slice(-201, -1) on a 181-element array yields 180 points (still enough
     // to produce a valid 0..100 percentile).
     const candles = syntheticCandles(200, { noiseSeed: 7 });
-    const ind = await calc.compute(candles);
+    const ind = await calc.compute(candles, allPlugins) as TestInd;
     expect(typeof ind.bbBandwidthPercentile200).toBe("number");
     expect(ind.bbBandwidthPercentile200).toBeGreaterThanOrEqual(0);
     expect(ind.bbBandwidthPercentile200).toBeLessThanOrEqual(100);
@@ -101,7 +115,7 @@ describe("PureJsIndicatorCalculator — volumePercentile200", () => {
     const last = candles[candles.length - 1];
     if (!last) throw new Error("expected candle");
     candles[candles.length - 1] = { ...last, volume: 100_000 };
-    const ind = await calc.compute(candles);
+    const ind = await calc.compute(candles, allPlugins) as TestInd;
     // Spike is far above every sample; percentileOf returns ~100.
     expect(ind.volumePercentile200).toBeGreaterThan(95);
   });
@@ -111,7 +125,7 @@ describe("PureJsIndicatorCalculator — volumePercentile200", () => {
     const last = candles[candles.length - 1];
     if (!last) throw new Error("expected candle");
     candles[candles.length - 1] = { ...last, volume: 1 };
-    const ind = await calc.compute(candles);
+    const ind = await calc.compute(candles, allPlugins) as TestInd;
     expect(ind.volumePercentile200).toBeLessThan(5);
   });
 
@@ -119,7 +133,7 @@ describe("PureJsIndicatorCalculator — volumePercentile200", () => {
     // When every value in the sample equals `value`, percentileOf reports
     // exactly equal/2 = 50 (half-below tie-handling).
     const candles: Candle[] = Array.from({ length: 250 }, (_, i) => flatCandle(i, 100, 500));
-    const ind = await calc.compute(candles);
+    const ind = await calc.compute(candles, allPlugins) as TestInd;
     expect(ind.volumePercentile200).toBeCloseTo(50, 5);
   });
 });
@@ -147,7 +161,7 @@ describe("PureJsIndicatorCalculator — topEqualHighs / topEqualLows", () => {
     // Cluster C near 140 (2 touches).
     for (const i of [216, 236]) setPeak(i, 140);
 
-    const ind = await calc.compute(candles);
+    const ind = await calc.compute(candles, allPlugins) as TestInd;
     expect(ind.topEqualHighs.length).toBe(3);
     // Descending by touches.
     expect(ind.topEqualHighs[0]?.touches).toBe(4);
@@ -177,7 +191,7 @@ describe("PureJsIndicatorCalculator — topEqualHighs / topEqualLows", () => {
     for (const i of [230, 233, 236]) setPeak(i, 150); // 3
     for (const i of [240, 243]) setPeak(i, 160); // 2
 
-    const ind = await calc.compute(candles);
+    const ind = await calc.compute(candles, allPlugins) as TestInd;
     expect(ind.topEqualHighs.length).toBe(3);
     // Cluster with 2 touches should be dropped; remaining are 5, 4, 3.
     expect(ind.topEqualHighs.map((c) => c.touches)).toEqual([5, 4, 3]);
@@ -195,7 +209,7 @@ describe("PureJsIndicatorCalculator — topEqualHighs / topEqualLows", () => {
       close: 100 + i,
       volume: 100,
     }));
-    const ind = await calc.compute(candles);
+    const ind = await calc.compute(candles, allPlugins) as TestInd;
     expect(ind.topEqualHighs).toEqual([]);
     expect(ind.topEqualLows).toEqual([]);
   });
@@ -220,7 +234,7 @@ describe("PureJsIndicatorCalculator — topEqualHighs / topEqualLows", () => {
       close: 100,
       volume: 100,
     };
-    const ind = await calc.compute(candles);
+    const ind = await calc.compute(candles, allPlugins) as TestInd;
     expect(ind.topEqualHighs.length).toBe(1);
     const cluster = ind.topEqualHighs[0];
     if (!cluster) throw new Error("expected cluster");
@@ -257,7 +271,7 @@ describe("PureJsIndicatorCalculator — topEqualHighs / topEqualLows", () => {
     const cPrices = [60, 60.05];
     cIdx.forEach((i, k) => setTrough(i, cPrices[k] as number));
 
-    const ind = await calc.compute(candles);
+    const ind = await calc.compute(candles, allPlugins) as TestInd;
     expect(ind.topEqualLows.length).toBe(3);
     // Descending touches.
     expect(ind.topEqualLows.map((c) => c.touches)).toEqual([4, 3, 2]);
@@ -293,7 +307,7 @@ describe("PureJsIndicatorCalculator — topEqualHighs / topEqualLows", () => {
     setPeak(210, 100);
     setPeak(230, 100.11); // ~0.11% above anchor — just outside the 0.1% tolerance.
 
-    const ind = await calc.compute(candles);
+    const ind = await calc.compute(candles, allPlugins) as TestInd;
     expect(ind.topEqualHighs).toEqual([]);
   });
 });
@@ -317,7 +331,7 @@ describe("PureJsIndicatorCalculator — lastSwingHigh / lastSwingLow age", () =>
         volume: 100,
       };
     }
-    const ind = await calc.compute(candles);
+    const ind = await calc.compute(candles, allPlugins) as TestInd;
     expect(ind.lastSwingHigh).toBe(110);
     // n-1 = 249; lastSwingHighIdx = 150 → age = 99.
     expect(ind.lastSwingHighAge).toBe(99);
@@ -339,7 +353,7 @@ describe("PureJsIndicatorCalculator — lastSwingHigh / lastSwingLow age", () =>
         volume: 100,
       };
     }
-    const ind = await calc.compute(candles);
+    const ind = await calc.compute(candles, allPlugins) as TestInd;
     expect(ind.lastSwingLow).toBe(90);
     // n-1 = 249; lastSwingLowIdx = 150 → age = 99.
     expect(ind.lastSwingLowAge).toBe(99);
@@ -349,7 +363,7 @@ describe("PureJsIndicatorCalculator — lastSwingHigh / lastSwingLow age", () =>
     // Perfectly flat: no bar is strictly greater than both neighbours, so no
     // swing is ever detected.
     const candles: Candle[] = Array.from({ length: 250 }, (_, i) => flatCandle(i, 100, 100));
-    const ind = await calc.compute(candles);
+    const ind = await calc.compute(candles, allPlugins) as TestInd;
     expect(ind.lastSwingHigh).toBeNull();
     expect(ind.lastSwingHighAge).toBeNull();
     expect(ind.lastSwingLow).toBeNull();

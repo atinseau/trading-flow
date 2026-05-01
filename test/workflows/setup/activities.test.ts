@@ -66,6 +66,7 @@ const nasdaqWatch: WatchConfig = {
     injection: { detector: false, reviewer: false, finalizer: false },
     context_providers_disabled: [],
   },
+  indicators: {},
 };
 
 /**
@@ -114,6 +115,7 @@ const binanceWatch: WatchConfig = {
     injection: { detector: false, reviewer: false, finalizer: false },
     context_providers_disabled: [],
   },
+  indicators: {},
 };
 
 // A Saturday 12:00 UTC — NASDAQ is always closed on Saturday.
@@ -165,6 +167,8 @@ function makeDeps(
     marketDataFetchers: new Map(),
     chartRenderer: null as never,
     indicatorCalculator: null as never,
+    indicatorRegistry: null as never,
+    promptBuilder: null as never,
     priceFeeds: new Map(),
     notifier: null as never,
     watchRepo: null as never,
@@ -252,6 +256,7 @@ describe("runReviewer — market-hours guard", () => {
         injection: { detector: false, reviewer: false, finalizer: false },
         context_providers_disabled: [],
       },
+      indicators: {},
     };
 
     const clock = new FakeClock(SATURDAY_UTC);

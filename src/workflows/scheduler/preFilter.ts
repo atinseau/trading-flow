@@ -1,39 +1,66 @@
 import type { Candle } from "@domain/schemas/Candle";
-import type { Indicators } from "@domain/schemas/Indicators";
 import type { WatchConfig } from "@domain/schemas/WatchesConfig";
+import type { IndicatorPlugin } from "@domain/services/IndicatorPlugin";
 
 export type PreFilterResult = { passed: boolean; reasons: string[] };
 
 export function evaluatePreFilter(
   candles: Candle[],
-  indicators: Indicators,
+  scalars: Record<string, unknown>,
   config: WatchConfig["pre_filter"],
+  plugins: ReadonlyArray<IndicatorPlugin>,
 ): PreFilterResult {
   if (!config.enabled || config.mode === "off") {
     return { passed: true, reasons: ["disabled"] };
   }
 
-  const t = config.thresholds;
+  const criteria = new Set(
+    plugins
+      .map((p) => p.preFilterCriterion)
+      .filter((c): c is NonNullable<typeof c> => c != null),
+  );
+  if (criteria.size === 0) {
+    return { passed: true, reasons: ["no_active_criteria"] };
+  }
+
   const reasons: string[] = [];
+  const t = config.thresholds;
+  const num = (k: string) => {
+    const v = scalars[k];
+    return typeof v === "number" ? v : undefined;
+  };
 
-  if (indicators.atrMa20 > 0 && indicators.atr / indicators.atrMa20 > t.atr_ratio_min) {
-    reasons.push(`atr_ratio=${(indicators.atr / indicators.atrMa20).toFixed(2)}`);
+  if (criteria.has("atr_ratio_min")) {
+    const atr = num("atr"), atrMa = num("atrMa20");
+    if (atr !== undefined && atrMa !== undefined && atrMa > 0 && atr / atrMa > t.atr_ratio_min) {
+      reasons.push(`atr_ratio=${(atr / atrMa).toFixed(2)}`);
+    }
   }
-  if (
-    indicators.volumeMa20 > 0 &&
-    indicators.lastVolume / indicators.volumeMa20 > t.volume_spike_min
-  ) {
-    reasons.push(`volume_spike=${(indicators.lastVolume / indicators.volumeMa20).toFixed(2)}`);
+  if (criteria.has("volume_spike_min")) {
+    const last = num("lastVolume"), ma = num("volumeMa20");
+    if (last !== undefined && ma !== undefined && ma > 0 && last / ma > t.volume_spike_min) {
+      reasons.push(`volume_spike=${(last / ma).toFixed(2)}`);
+    }
   }
-  if (Math.abs(indicators.rsi - 50) > t.rsi_extreme_distance) {
-    reasons.push(`rsi_extreme=${indicators.rsi.toFixed(1)}`);
+  if (criteria.has("rsi_extreme_distance")) {
+    const rsi = num("rsi");
+    if (rsi !== undefined && Math.abs(rsi - 50) > t.rsi_extreme_distance) {
+      reasons.push(`rsi_extreme=${rsi.toFixed(1)}`);
+    }
   }
-  const last = candles[candles.length - 1]?.close;
-  if (last != null) {
-    const distHigh = Math.abs(indicators.recentHigh - last) / last;
-    const distLow = Math.abs(indicators.recentLow - last) / last;
-    if (Math.min(distHigh, distLow) < 0.003) reasons.push("near_pivot");
+  if (criteria.has("near_pivot")) {
+    const high = num("recentHigh"), low = num("recentLow");
+    const last = candles[candles.length - 1]?.close;
+    if (high !== undefined && low !== undefined && last != null) {
+      const distHigh = Math.abs(high - last) / last;
+      const distLow = Math.abs(low - last) / last;
+      if (Math.min(distHigh, distLow) < 0.003) reasons.push("near_pivot");
+    }
   }
 
-  return { passed: reasons.length > 0, reasons };
+  if (config.mode === "lenient") {
+    return { passed: reasons.length > 0, reasons };
+  }
+  // strict mode: must hit every active criterion
+  return { passed: reasons.length === criteria.size, reasons };
 }

@@ -1,6 +1,7 @@
 import { resolveAndCall } from "@adapters/llm/resolveAndCall";
 import { loadPrompt } from "@adapters/prompts/loadPrompt";
 import { InvalidConfigError } from "@domain/errors";
+// loadPrompt is still used for finalizer (not managed by PromptBuilder)
 import type { EventPayload } from "@domain/events/schemas";
 import type { NewEvent, SetupStateUpdate } from "@domain/ports/EventStore";
 import type { ReviewerLlmOutput } from "@domain/schemas/ReviewerOutput";
@@ -129,8 +130,8 @@ export function buildSetupActivities(deps: ActivityDeps) {
       if (!snap) throw new Error(`TickSnapshot ${input.tickSnapshotId} not found`);
 
       const ohlcvBuf = await deps.artifactStore.get(snap.ohlcvUri);
-      const reviewerPrompt = await loadPrompt("reviewer");
-      const promptVersion = reviewerPrompt.version;
+      await deps.promptBuilder.warmUp();
+      const promptVersion = deps.promptBuilder.reviewerVersion;
 
       const activeLessons = watch.feedback.injection.reviewer
         ? await deps.lessonStore.listActive({
@@ -143,12 +144,19 @@ export function buildSetupActivities(deps: ActivityDeps) {
         await deps.lessonStore.incrementUsage(activeLessons.map((l) => l.id));
       }
 
+      const indicatorParams: Record<string, Record<string, unknown>> = {};
+      for (const [id, cfg] of Object.entries(watch.indicators)) {
+        if (cfg?.enabled && cfg.params) {
+          indicatorParams[id] = cfg.params as Record<string, unknown>;
+        }
+      }
       const inputHash = computeInputHash({
         setupId: input.setupId,
         promptVersion,
         ohlcvSnapshot: ohlcvBuf.toString("hex").slice(0, 64),
         chartUri: snap.chartUri,
         indicators: snap.indicators as unknown as Record<string, number>,
+        indicatorParams,
         activeLessonIds: activeLessons.map((l) => l.id).sort(),
       });
 
@@ -169,14 +177,12 @@ export function buildSetupActivities(deps: ActivityDeps) {
 
       const history = await deps.eventStore.listForSetup(input.setupId);
 
-      // Reviewer gets the HTF text context (the detector now skips this — it
-      // only needs the regime label). Source-of-truth for "is this setup
-      // aligned with the macro?" lives at this stage.
+      // Reviewer gets the HTF text context + funding rate context.
       // Live price = the snapshot's actual lastClose (set at creation from the
       // last OHLCV candle). The previous proxy `recentHigh` was the 50-period
       // high — biased toward 1.0 in `positionInWeeklyRange` and just wrong.
       const fetcher = deps.marketDataFetchers.get(watch.asset.source);
-      const livePrice = snap.lastClose ?? snap.indicators.recentHigh;
+      const livePrice = snap.lastClose ?? ((snap.indicators as Record<string, unknown>).recentHigh as number | undefined) ?? 0;
       const htf = fetcher
         ? await computeHtfContext({
             marketDataFetcher: fetcher,
@@ -194,7 +200,8 @@ export function buildSetupActivities(deps: ActivityDeps) {
         ? await fundingProvider.fetchSnapshot(watch.asset.symbol)
         : null;
 
-      const userPrompt = reviewerPrompt.render({
+      const scalars = (snap.indicators ?? {}) as Record<string, unknown>;
+      const userPrompt = await deps.promptBuilder.buildReviewerPrompt({
         setup: {
           id: setup.id,
           patternHint: setup.patternHint,
@@ -211,11 +218,11 @@ export function buildSetupActivities(deps: ActivityDeps) {
           observations: extractObservations(e.payload),
           reasoning: extractReasoning(e.payload),
         })),
-        tick: { tickAt: snap.tickAt.toISOString() },
-        fresh: { lastClose: 0, indicators: snap.indicators },
+        fresh: { lastClose: snap.lastClose ?? 0, scalars, tickAt: snap.tickAt },
         htf,
         funding,
         activeLessons: activeLessons.map((l) => ({ title: l.title, body: l.body })),
+        indicatorsMatrix: watch.indicators,
       });
 
       // Round 1: tick chart only.
@@ -225,7 +232,7 @@ export function buildSetupActivities(deps: ActivityDeps) {
       const round1 = await resolveAndCall(
         watch.analyzers.reviewer.provider,
         {
-          systemPrompt: reviewerPrompt.systemPrompt,
+          systemPrompt: deps.promptBuilder.reviewerSystemPrompt,
           userPrompt,
           images: round1Images,
           model: watch.analyzers.reviewer.model,
@@ -268,6 +275,7 @@ export function buildSetupActivities(deps: ActivityDeps) {
           const htfChartUri = await renderHtfChart({
             chartRenderer: deps.chartRenderer,
             indicatorCalculator: deps.indicatorCalculator,
+            indicatorRegistry: deps.indicatorRegistry,
             artifactStore: deps.artifactStore,
             fetcher,
             asset: watch.asset.symbol,
@@ -279,7 +287,7 @@ export function buildSetupActivities(deps: ActivityDeps) {
           const round2 = await resolveAndCall(
             watch.analyzers.reviewer.provider,
             {
-              systemPrompt: reviewerPrompt.systemPrompt,
+              systemPrompt: deps.promptBuilder.reviewerSystemPrompt,
               userPrompt: `${userPrompt}\n\n## Additional context: HTF (daily) chart attached as 2nd image\n\nThe daily chart you requested is now attached. Update your verdict with this extra structural context. Do NOT request additional artifacts in this round — answer with a final verdict.`,
               images: round2Images,
               model: watch.analyzers.reviewer.model,

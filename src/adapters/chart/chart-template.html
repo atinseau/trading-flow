@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <!-- {{LIGHTWEIGHT_CHARTS_INLINE}} - replaced by PlaywrightChartRenderer at warmUp -->
+  <!-- {{LIGHTWEIGHT_CHARTS_INLINE}} -->
   <style>
     html, body { margin: 0; padding: 0; background: #131722; height: 100%; color: #d1d4dc; font-family: -apple-system, system-ui, sans-serif; }
     #chart { width: 100vw; height: 100vh; }
@@ -11,225 +11,62 @@
 <body>
   <div id="chart"></div>
   <script>
-    // IIFE scopes locals — Playwright's setContent uses document.write, which
-    // preserves the JS realm between calls; top-level `const` declarations
-    // would collide on the 2nd setContent (page pool reuse) and silently leave
-    // the canvas blank.
+    (() => {
+      window.__chartPlugins = {};
+      window.__registerPlugin = (id, plugin) => { window.__chartPlugins[id] = plugin; };
+    })();
+  </script>
+  <!-- {{INDICATOR_PLUGIN_SCRIPTS}} -->
+  <script>
     (() => {
       const LC = LightweightCharts;
-      const PRICE_PANE = 0;
-      const VOLUME_PANE = 1;
-      const RSI_PANE = 2;
-      const MACD_PANE = 3;
-      const ATR_PANE = 4;
-
-      const chart = LC.createChart(document.getElementById("chart"), {
-        layout: {
-          background: { color: "#131722" },
-          textColor: "#d1d4dc",
-          panes: { separatorColor: "#2a2e39", separatorHoverColor: "#363a45" },
-        },
-        grid: { vertLines: { color: "#2a2e39" }, horzLines: { color: "#2a2e39" } },
-        timeScale: { timeVisible: true, secondsVisible: false, borderColor: "#485158" },
-        rightPriceScale: { borderColor: "#485158" },
-        crosshair: { mode: 0 },
-      });
-
-      // Main pane — candles + EMAs + Bollinger Bands + VWAP.
-      const candleSeries = chart.addSeries(LC.CandlestickSeries, {
-        upColor: "#26a69a", downColor: "#ef5350",
-        borderVisible: false,
-        wickUpColor: "#26a69a", wickDownColor: "#ef5350",
-      }, PRICE_PANE);
-
-      const ema20Series = chart.addSeries(LC.LineSeries, {
-        color: "#42a5f5", lineWidth: 1, priceLineVisible: false, lastValueVisible: false,
-        title: "EMA20",
-      }, PRICE_PANE);
-      const ema50Series = chart.addSeries(LC.LineSeries, {
-        color: "#ffa726", lineWidth: 1, priceLineVisible: false, lastValueVisible: false,
-        title: "EMA50",
-      }, PRICE_PANE);
-      const ema200Series = chart.addSeries(LC.LineSeries, {
-        color: "#ef5350", lineWidth: 2, priceLineVisible: false, lastValueVisible: false,
-        title: "EMA200",
-      }, PRICE_PANE);
-
-      const vwapSeries = chart.addSeries(LC.LineSeries, {
-        color: "#ffeb3b", lineWidth: 2, priceLineVisible: false, lastValueVisible: true,
-        lineStyle: 0, title: "VWAP",
-      }, PRICE_PANE);
-
-      const bbUpperSeries = chart.addSeries(LC.LineSeries, {
-        color: "rgba(156, 156, 156, 0.6)", lineWidth: 1, lineStyle: 2,
-        priceLineVisible: false, lastValueVisible: false, title: "BB Up",
-      }, PRICE_PANE);
-      const bbLowerSeries = chart.addSeries(LC.LineSeries, {
-        color: "rgba(156, 156, 156, 0.6)", lineWidth: 1, lineStyle: 2,
-        priceLineVisible: false, lastValueVisible: false, title: "BB Lo",
-      }, PRICE_PANE);
-
-      // Volume pane — colored histogram + MA20 line overlay.
-      const volumeSeries = chart.addSeries(LC.HistogramSeries, {
-        priceFormat: { type: "volume" },
-        priceLineVisible: false, lastValueVisible: false,
-      }, VOLUME_PANE);
-      const volumeMa20Series = chart.addSeries(LC.LineSeries, {
-        color: "#ab47bc", lineWidth: 1, priceLineVisible: false, lastValueVisible: false,
-        title: "Vol MA20",
-      }, VOLUME_PANE);
-
-      // RSI pane — line + 30/70 reference lines.
-      const rsiSeries = chart.addSeries(LC.LineSeries, {
-        color: "#ce93d8", lineWidth: 1, priceLineVisible: false, lastValueVisible: true,
-        title: "RSI(14)",
-      }, RSI_PANE);
-      rsiSeries.createPriceLine({
-        price: 70, color: "#666", lineWidth: 1, lineStyle: 2, axisLabelVisible: false, title: "",
-      });
-      rsiSeries.createPriceLine({
-        price: 30, color: "#666", lineWidth: 1, lineStyle: 2, axisLabelVisible: false, title: "",
-      });
-
-      // MACD pane — line + signal + histogram.
-      const macdSeries = chart.addSeries(LC.LineSeries, {
-        color: "#42a5f5", lineWidth: 1, priceLineVisible: false, lastValueVisible: true,
-        title: "MACD",
-      }, MACD_PANE);
-      const macdSignalSeries = chart.addSeries(LC.LineSeries, {
-        color: "#ffa726", lineWidth: 1, priceLineVisible: false, lastValueVisible: false,
-        title: "Signal",
-      }, MACD_PANE);
-      const macdHistSeries = chart.addSeries(LC.HistogramSeries, {
-        priceLineVisible: false, lastValueVisible: false,
-      }, MACD_PANE);
-
-      // ATR pane — ATR + ATR MA20.
-      const atrSeries = chart.addSeries(LC.LineSeries, {
-        color: "#ffca28", lineWidth: 1, priceLineVisible: false, lastValueVisible: true,
-        title: "ATR(14)",
-      }, ATR_PANE);
-      const atrMa20Series = chart.addSeries(LC.LineSeries, {
-        color: "#888", lineWidth: 1, priceLineVisible: false, lastValueVisible: false,
-        title: "ATR MA20",
-      }, ATR_PANE);
-
-      // Pane stretch factors. Price dominates; sub-panes large enough to read.
-      const panes = chart.panes();
-      if (panes[PRICE_PANE]) panes[PRICE_PANE].setStretchFactor(50);
-      if (panes[VOLUME_PANE]) panes[VOLUME_PANE].setStretchFactor(13);
-      if (panes[RSI_PANE]) panes[RSI_PANE].setStretchFactor(13);
-      if (panes[MACD_PANE]) panes[MACD_PANE].setStretchFactor(13);
-      if (panes[ATR_PANE]) panes[ATR_PANE].setStretchFactor(11);
-
       window.__renderCandles = (payload) => {
-        const { candles, indicators } = payload;
+        const { candles, indicators, enabledIndicatorIds } = payload;
+        const naked = enabledIndicatorIds.length === 0;
+        const chart = LC.createChart(document.getElementById("chart"), {
+          layout: {
+            background: { color: "#131722" },
+            textColor: "#d1d4dc",
+            panes: { separatorColor: "#2a2e39", separatorHoverColor: "#363a45" },
+          },
+          grid: {
+            vertLines: { color: naked ? "#1f2330" : "#2a2e39" },
+            horzLines: { color: "#2a2e39" },
+          },
+          timeScale: { timeVisible: true, secondsVisible: false, borderColor: "#485158" },
+          rightPriceScale: { borderColor: "#485158" },
+          crosshair: { mode: 0 },
+        });
+
+        const candleSeries = chart.addSeries(LC.CandlestickSeries, {
+          upColor: "#26a69a", downColor: "#ef5350",
+          borderVisible: naked,
+          wickUpColor: "#26a69a", wickDownColor: "#ef5350",
+          lastValueVisible: naked,
+        }, 0);
         candleSeries.setData(candles);
 
-        const lineFromSeries = (arr) =>
-          arr.map((v, i) => v == null ? null : { time: candles[i].time, value: v }).filter(Boolean);
-
-        if (indicators) {
-          ema20Series.setData(lineFromSeries(indicators.ema20));
-          ema50Series.setData(lineFromSeries(indicators.ema50));
-          ema200Series.setData(lineFromSeries(indicators.ema200));
-          vwapSeries.setData(lineFromSeries(indicators.vwap));
-          bbUpperSeries.setData(lineFromSeries(indicators.bbUpper));
-          bbLowerSeries.setData(lineFromSeries(indicators.bbLower));
-          rsiSeries.setData(lineFromSeries(indicators.rsi));
-          atrSeries.setData(lineFromSeries(indicators.atr));
-          atrMa20Series.setData(lineFromSeries(indicators.atrMa20));
-          volumeMa20Series.setData(lineFromSeries(indicators.volumeMa20));
-          macdSeries.setData(lineFromSeries(indicators.macd));
-          macdSignalSeries.setData(lineFromSeries(indicators.macdSignal));
-          macdHistSeries.setData(
-            indicators.macdHist
-              .map((v, i) => v == null
-                ? null
-                : { time: candles[i].time, value: v, color: v >= 0 ? "rgba(38, 166, 154, 0.6)" : "rgba(239, 83, 80, 0.6)" })
-              .filter(Boolean),
-          );
-
-          // Swing markers (price markers attached to candle series).
-          const markers = [];
-          for (const s of indicators.swingHighs ?? []) {
-            const c = candles[s.index];
-            if (!c) continue;
-            markers.push({
-              time: c.time, position: "aboveBar", color: "#ef5350", shape: "arrowDown",
-              text: "H",
-            });
-          }
-          for (const s of indicators.swingLows ?? []) {
-            const c = candles[s.index];
-            if (!c) continue;
-            markers.push({
-              time: c.time, position: "belowBar", color: "#26a69a", shape: "arrowUp",
-              text: "L",
-            });
-          }
-          markers.sort((a, b) => a.time - b.time);
-          if (LC.createSeriesMarkers && markers.length > 0) {
-            LC.createSeriesMarkers(candleSeries, markers);
-          }
-
-          // FVG zones — render as horizontal price lines at top + bottom of each gap.
-          // (lightweight-charts has no native rectangle primitive; lines are the
-          // cheapest visual proxy without a custom drawing primitive.)
-          for (const fvg of (indicators.fvgs ?? []).slice(-10)) {
-            const color = fvg.direction === "bullish"
-              ? "rgba(38, 166, 154, 0.35)"
-              : "rgba(239, 83, 80, 0.35)";
-            candleSeries.createPriceLine({
-              price: fvg.top, color, lineWidth: 1, lineStyle: 0,
-              axisLabelVisible: false, title: "",
-            });
-            candleSeries.createPriceLine({
-              price: fvg.bottom, color, lineWidth: 1, lineStyle: 0,
-              axisLabelVisible: false, title: "",
-            });
-          }
-
-          // Equal-highs / equal-lows liquidity lines.
-          for (const eq of (indicators.equalHighs ?? []).slice(-5)) {
-            candleSeries.createPriceLine({
-              price: eq.price, color: "rgba(255, 235, 59, 0.6)", lineWidth: 1, lineStyle: 1,
-              axisLabelVisible: true, title: "EQH×" + eq.indices.length,
-            });
-          }
-          for (const eq of (indicators.equalLows ?? []).slice(-5)) {
-            candleSeries.createPriceLine({
-              price: eq.price, color: "rgba(255, 235, 59, 0.6)", lineWidth: 1, lineStyle: 1,
-              axisLabelVisible: true, title: "EQL×" + eq.indices.length,
-            });
+        let nextPane = 1;
+        const stretchByPaneIndex = new Map();
+        for (const id of enabledIndicatorIds) {
+          const plugin = window.__chartPlugins[id];
+          if (!plugin) continue;
+          const paneIndex = plugin.chartPane === "price_overlay" ? 0 : nextPane++;
+          const handles = plugin.addToChart(chart, paneIndex, { candleSeries });
+          plugin.setData(handles, indicators[id], candles);
+          if (paneIndex > 0) {
+            stretchByPaneIndex.set(paneIndex, plugin.secondaryPaneStretch ?? 13);
           }
         }
 
-        const volumeData = candles.map((c) => ({
-          time: c.time,
-          value: c.volume,
-          color: c.close >= c.open ? "rgba(38, 166, 154, 0.6)" : "rgba(239, 83, 80, 0.6)",
-        }));
-        volumeSeries.setData(volumeData);
-
-        const tail = candles.slice(-50);
-        const recentHigh = Math.max(...tail.map((c) => c.high));
-        const recentLow = Math.min(...tail.map((c) => c.low));
-        candleSeries.createPriceLine({
-          price: recentHigh, color: "#888", lineWidth: 1, lineStyle: 2,
-          axisLabelVisible: true, title: "HH",
-        });
-        candleSeries.createPriceLine({
-          price: recentLow, color: "#888", lineWidth: 1, lineStyle: 2,
-          axisLabelVisible: true, title: "LL",
-        });
+        const panes = chart.panes();
+        if (panes[0]) panes[0].setStretchFactor(50);
+        for (const [idx, stretch] of stretchByPaneIndex) {
+          if (panes[idx]) panes[idx].setStretchFactor(stretch);
+        }
 
         chart.timeScale().fitContent();
-        // Two rAFs — first lets the layout settle (panes, scales), second
-        // ensures the canvas has actually painted before we screenshot.
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => { window.__chartReady = true; });
-        });
+        requestAnimationFrame(() => requestAnimationFrame(() => { window.__chartReady = true; }));
       };
     })();
   </script>

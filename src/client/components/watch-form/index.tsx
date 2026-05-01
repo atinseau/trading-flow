@@ -3,6 +3,7 @@ import { WatchEditTabs } from "@client/components/watch-form/edit-tabs";
 import { SectionAdvanced } from "@client/components/watch-form/section-advanced";
 import { SectionAnalyzers } from "@client/components/watch-form/section-analyzers";
 import { SectionAsset } from "@client/components/watch-form/section-asset";
+import { SectionIndicators } from "@client/components/watch-form/section-indicators";
 import { SectionBudget } from "@client/components/watch-form/section-budget";
 import { SectionLifecycle } from "@client/components/watch-form/section-lifecycle";
 import { SectionNotifications } from "@client/components/watch-form/section-notifications";
@@ -49,6 +50,7 @@ const SENSIBLE_DEFAULTS = {
     mode: "lenient" as const,
     thresholds: { atr_ratio_min: 1.3, volume_spike_min: 1.5, rsi_extreme_distance: 25 },
   },
+  indicators: {},
 };
 
 /** Loose partial — caller passes whatever subset of the shape they have. */
@@ -74,6 +76,14 @@ const WIZARD_STEPS: WizardStep[] = [
       "Quel marché tu veux surveiller, et avec quelle granularité de temps. Le timeframe principal détermine la fréquence par défaut des analyses.",
     fields: ["id", "asset.symbol", "asset.source", "timeframes.primary"],
     render: () => <SectionAsset />,
+  },
+  {
+    id: "indicators",
+    title: "Indicateurs",
+    description:
+      "Choisis quels indicateurs techniques le bot utilise pour analyser cette watch. Aucun indicateur = analyse purement visuelle (mode naked).",
+    fields: ["indicators"],
+    render: () => <SectionIndicators />,
   },
   {
     id: "schedule",

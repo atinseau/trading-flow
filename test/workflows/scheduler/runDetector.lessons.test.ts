@@ -1,9 +1,11 @@
 import { beforeEach, describe, expect, test } from "bun:test";
+import { IndicatorRegistry } from "@adapters/indicators/IndicatorRegistry";
 import { clearPromptCache } from "@adapters/prompts/loadPrompt";
 import type { TickSnapshot } from "@domain/entities/TickSnapshot";
 import type { LLMProvider } from "@domain/ports/LLMProvider";
 import type { WatchConfig, WatchesConfig } from "@domain/schemas/WatchesConfig";
-import { NEUTRAL_INDICATORS } from "@test-fakes/FakeIndicatorCalculator";
+import { FewShotEngine } from "@domain/services/FewShotEngine";
+import { PromptBuilder } from "@domain/services/PromptBuilder";
 import { FakeLLMCallStore } from "@test-fakes/FakeLLMCallStore";
 import { FakeLLMProvider } from "@test-fakes/FakeLLMProvider";
 import { InMemoryArtifactStore } from "@test-fakes/InMemoryArtifactStore";
@@ -55,6 +57,7 @@ function makeWatch(injectionDetector: boolean): WatchConfig {
       injection: { detector: injectionDetector, reviewer: true, finalizer: true },
       context_providers_disabled: [],
     },
+    indicators: {},
   };
   return cfg as WatchConfig;
 }
@@ -84,7 +87,18 @@ async function buildHarness(injectionDetector: boolean): Promise<Harness> {
     timeframe: "1h",
     ohlcvUri: "mem://ohlcv",
     chartUri: chart.uri,
-    indicators: NEUTRAL_INDICATORS,
+    indicators: {
+      rsi: 50,
+      emaShort: 100,
+      emaMid: 100,
+      emaLong: 100,
+      atr: 1,
+      atrMa20: 1,
+      volumeMa20: 100,
+      lastVolume: 100,
+      recentHigh: 110,
+      recentLow: 90,
+    },
     lastClose: null,
     preFilterPass: true,
   });
@@ -103,10 +117,16 @@ async function buildHarness(injectionDetector: boolean): Promise<Harness> {
   });
   const llmProviders = new Map<string, LLMProvider>([["fake", llm]]);
 
+  const indicatorRegistry = new IndicatorRegistry();
+  const promptBuilder = new PromptBuilder(indicatorRegistry, new FewShotEngine());
+  await promptBuilder.warmUp();
+
   const deps = {
     marketDataFetchers: new Map(),
     chartRenderer: null,
     indicatorCalculator: null,
+    indicatorRegistry,
+    promptBuilder,
     llmProviders,
     llmCallStore: new FakeLLMCallStore(),
     priceFeeds: new Map(),

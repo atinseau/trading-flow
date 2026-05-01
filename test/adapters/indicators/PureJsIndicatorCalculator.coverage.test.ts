@@ -1,8 +1,13 @@
 import { describe, expect, test } from "bun:test";
+import { IndicatorRegistry } from "@adapters/indicators/IndicatorRegistry";
 import { PureJsIndicatorCalculator } from "@adapters/indicators/PureJsIndicatorCalculator";
 import type { Candle } from "@domain/schemas/Candle";
 
 const calc = new PureJsIndicatorCalculator();
+const registry = new IndicatorRegistry();
+const allPlugins = registry.resolveActive(
+  Object.fromEntries(registry.all().map((p) => [p.id, { enabled: true }])),
+);
 
 /**
  * Build candles whose closes match the given array. OHLV is deterministic.
@@ -46,7 +51,7 @@ describe("Bollinger Bands — deeper coverage", () => {
     const std = Math.sqrt(2);
     const closes = padTo(last20, 220);
     const candles = fromCloses(closes);
-    const ind = await calc.compute(candles);
+    const ind = await calc.compute(candles, allPlugins) as Record<string, unknown>;
     expect(ind.bbMiddle).toBeCloseTo(100, 5);
     expect(ind.bbUpper - ind.bbMiddle).toBeCloseTo(2 * std, 4);
     expect(ind.bbMiddle - ind.bbLower).toBeCloseTo(2 * std, 4);
@@ -57,14 +62,14 @@ describe("Bollinger Bands — deeper coverage", () => {
       98, 99, 100, 101, 102, 98, 99, 100, 101, 102, 98, 99, 100, 101, 102, 98, 99, 100, 101, 102,
     ];
     const candles = fromCloses(padTo(last20, 220));
-    const ind = await calc.compute(candles);
+    const ind = await calc.compute(candles, allPlugins) as Record<string, unknown>;
     const expected = ((ind.bbUpper - ind.bbLower) / ind.bbMiddle) * 100;
     expect(ind.bbBandwidthPct).toBeCloseTo(expected, 4);
   });
 
   test("constant series → upper === middle === lower, bandwidth = 0", async () => {
     const candles = fromCloses(Array(220).fill(100));
-    const ind = await calc.compute(candles);
+    const ind = await calc.compute(candles, allPlugins) as Record<string, unknown>;
     expect(ind.bbUpper).toBeCloseTo(ind.bbMiddle, 8);
     expect(ind.bbLower).toBeCloseTo(ind.bbMiddle, 8);
     expect(ind.bbBandwidthPct).toBeCloseTo(0, 8);
@@ -85,12 +90,12 @@ describe("Bollinger Bands — deeper coverage", () => {
     // of the series to sit in the relevant regime.
     const randLow = makeRand(7);
     const lowClosesAll = Array.from({ length: 250 }, () => 100 + (randLow() - 0.5) * 0.2);
-    const indLow = await calc.compute(fromCloses(lowClosesAll));
+    const indLow = await calc.compute(fromCloses(lowClosesAll), allPlugins) as Record<string, unknown>;
 
     // High-vol regime: ±5 around 100, same length.
     const randHigh = makeRand(7);
     const highClosesAll = Array.from({ length: 250 }, () => 100 + (randHigh() - 0.5) * 10);
-    const indHigh = await calc.compute(fromCloses(highClosesAll));
+    const indHigh = await calc.compute(fromCloses(highClosesAll), allPlugins) as Record<string, unknown>;
 
     // Sanity: both bandwidths are well-defined and non-negative.
     expect(indLow.bbBandwidthPct).toBeGreaterThanOrEqual(0);
@@ -108,7 +113,7 @@ describe("MACD — deeper coverage", () => {
   test("histogram === macd - signal across many indices", async () => {
     const closes = Array.from({ length: 250 }, (_, i) => 100 + Math.sin(i / 7) * 10 + i * 0.05);
     const candles = fromCloses(closes);
-    const series = await calc.computeSeries(candles);
+    const series = await calc.computeSeries(candles, allPlugins);
     let checked = 0;
     for (let i = 0; i < series.macd.length; i++) {
       const m = series.macd[i];
@@ -127,7 +132,7 @@ describe("MACD — deeper coverage", () => {
     for (let i = 0; i < 150; i++) closes.push(200 - i * 0.5);
     for (let i = 0; i < 100; i++) closes.push(125 + i * 0.8);
     const candles = fromCloses(closes);
-    const series = await calc.computeSeries(candles);
+    const series = await calc.computeSeries(candles, allPlugins);
     // Find a point well into the downtrend where hist is negative.
     const downIdx = 130;
     const downHist = series.macdHist[downIdx];
@@ -149,7 +154,7 @@ describe("MACD — deeper coverage", () => {
     // a quadratic acceleration to get the strict inequality.
     const closes = Array.from({ length: 250 }, (_, i) => 200 - 0.005 * i * i);
     const candles = fromCloses(closes);
-    const ind = await calc.compute(candles);
+    const ind = await calc.compute(candles, allPlugins) as Record<string, unknown>;
     expect(ind.macd).toBeLessThan(0);
     expect(ind.macdSignal).toBeLessThan(0);
     expect(ind.macd).toBeLessThan(ind.macdSignal); // macd more negative than its smoothing
@@ -159,7 +164,7 @@ describe("MACD — deeper coverage", () => {
   test("cycling sine series → macd takes both positive and negative values", async () => {
     const closes = Array.from({ length: 400 }, (_, i) => 100 + Math.sin(i / 10) * 5);
     const candles = fromCloses(closes);
-    const series = await calc.computeSeries(candles);
+    const series = await calc.computeSeries(candles, allPlugins);
     let posCount = 0;
     let negCount = 0;
     for (const v of series.macd) {
@@ -190,7 +195,7 @@ describe("ATR Z-score (200) — deeper coverage", () => {
         volume: 100,
       });
     }
-    const ind = await calc.compute(candles);
+    const ind = await calc.compute(candles, allPlugins) as Record<string, unknown>;
     expect(ind.atrZScore200).toBeLessThan(-1);
   });
 
@@ -208,7 +213,7 @@ describe("ATR Z-score (200) — deeper coverage", () => {
         volume: 100,
       });
     }
-    const ind = await calc.compute(candles);
+    const ind = await calc.compute(candles, allPlugins) as Record<string, unknown>;
     expect(ind.atrZScore200).toBeGreaterThan(1);
   });
 
@@ -241,7 +246,7 @@ describe("ATR Z-score (200) — deeper coverage", () => {
         volume: 100,
       });
     }
-    const ind = await calc.compute(candles);
+    const ind = await calc.compute(candles, allPlugins) as Record<string, unknown>;
     // Reproduce the calculator's ATR series by hand (Wilder smoothing on TRs).
     // TR[i] = high - low for all i (close stays at 100, so no gap). For our
     // construction TR is 2 for i<218 and 6 for i>=218.
@@ -309,7 +314,7 @@ describe("VWAP (session) — deeper coverage", () => {
     expect(Math.floor(lastCandle.timestamp.getTime() / ms)).toBe(5);
     expect(Math.floor(prevCandle.timestamp.getTime() / ms)).toBe(4);
 
-    const series = await calc.computeSeries(candles);
+    const series = await calc.computeSeries(candles, allPlugins);
     const lastVwap = series.vwap[series.vwap.length - 1];
     const prevVwap = series.vwap[series.vwap.length - 2];
     expect(lastVwap).not.toBeNull();
@@ -348,7 +353,7 @@ describe("VWAP (session) — deeper coverage", () => {
     // Verify all inside day 0.
     expect(Math.floor(candles[candles.length - 1]!.timestamp.getTime() / ms)).toBe(0);
 
-    const ind = await calc.compute(candles);
+    const ind = await calc.compute(candles, allPlugins) as Record<string, unknown>;
     // Hand math: 249 normal bars (typical=100, vol=100) + 1 heavy bar
     // (typical=50, vol=10_000).
     //   PV = 249 * 100 * 100 + 50 * 10_000 = 2_490_000 + 500_000 = 2_990_000
@@ -396,7 +401,7 @@ describe("VWAP (session) — deeper coverage", () => {
         volume: 100,
       });
     }
-    const series = await calc.computeSeries(candles);
+    const series = await calc.computeSeries(candles, allPlugins);
     const v4 = series.vwap[4];
     expect(v4).not.toBeNull();
     expect(v4 as number).toBeCloseTo(expectedVwap, 6);
@@ -445,7 +450,7 @@ describe("POC — deeper coverage", () => {
         volume: 250,
       });
     }
-    const ind = await calc.compute(candles);
+    const ind = await calc.compute(candles, allPlugins) as Record<string, unknown>;
     expect(ind.pocPrice).toBeGreaterThanOrEqual(99);
     expect(ind.pocPrice).toBeLessThanOrEqual(101);
   });
@@ -486,7 +491,7 @@ describe("POC — deeper coverage", () => {
         volume: 1000,
       });
     }
-    const ind = await calc.compute(candles);
+    const ind = await calc.compute(candles, allPlugins) as Record<string, unknown>;
     // Expect POC clearly in the upper node.
     expect(ind.pocPrice).toBeGreaterThan(108);
     expect(ind.pocPrice).toBeLessThanOrEqual(111);
@@ -503,7 +508,7 @@ describe("POC — deeper coverage", () => {
       close: 100,
       volume: 100,
     }));
-    const ind = await calc.compute(candles);
+    const ind = await calc.compute(candles, allPlugins) as Record<string, unknown>;
     expect(ind.pocPrice).toBeGreaterThanOrEqual(99.5);
     expect(ind.pocPrice).toBeLessThanOrEqual(100.5);
   });
@@ -551,7 +556,7 @@ describe("FVG — deeper coverage", () => {
       volume: 100,
     };
 
-    const series = await calc.computeSeries(candles);
+    const series = await calc.computeSeries(candles, allPlugins);
     const bearish = series.fvgs.find((f) => f.direction === "bearish" && f.index === 101);
     expect(bearish).toBeDefined();
     if (bearish) {
@@ -570,7 +575,7 @@ describe("FVG — deeper coverage", () => {
       close: 100,
       volume: 100,
     }));
-    const series = await calc.computeSeries(candles);
+    const series = await calc.computeSeries(candles, allPlugins);
     expect(series.fvgs.length).toBe(0);
   });
 
@@ -608,7 +613,7 @@ describe("FVG — deeper coverage", () => {
     candles[152] = { ...candles[152]!, open: 98, high: 98, low: 97, close: 97.5 };
     candles[154] = { ...candles[154]!, open: 98, high: 99, low: 98, close: 98.5 };
 
-    const series = await calc.computeSeries(candles);
+    const series = await calc.computeSeries(candles, allPlugins);
     // Enforce the "exactly two" claim made by the test name.
     expect(series.fvgs.length).toBe(2);
     const bullish = series.fvgs.find((f) => f.direction === "bullish" && f.index === 51);
@@ -635,7 +640,7 @@ describe("FVG — deeper coverage", () => {
     candles[100] = { ...candles[100]!, high: 101, low: 99, close: 100 };
     candles[101] = { ...candles[101]!, high: 105, low: 101, close: 104 };
     candles[102] = { ...candles[102]!, high: 106, low: 101, close: 105 };
-    const series = await calc.computeSeries(candles);
+    const series = await calc.computeSeries(candles, allPlugins);
     const fvg = series.fvgs.find((f) => f.index === 101);
     expect(fvg).toBeUndefined();
   });

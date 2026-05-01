@@ -124,6 +124,8 @@ async function buildDeps(
     marketDataFetchers: new Map([["binance", marketData]]),
     chartRenderer: new FakeChartRenderer(),
     indicatorCalculator: indicators,
+    indicatorRegistry: null as unknown as ActivityDeps["indicatorRegistry"],
+    promptBuilder: null as unknown as ActivityDeps["promptBuilder"],
     llmProviders,
     llmCallStore: new FakeLLMCallStore(),
     fundingRateProviders: new Map(),

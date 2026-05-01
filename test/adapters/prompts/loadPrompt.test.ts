@@ -7,15 +7,20 @@ afterEach(() => {
 
 test("loadPrompt('detector') returns rendered template + version", async () => {
   const result = await loadPrompt("detector");
-  expect(result.version).toBe("detector_v4");
+  expect(result.version).toBe("detector_v5");
   expect(typeof result.render).toBe("function");
 
-  // Render with sample context
+  // Render with sample context — uses new template variables from PromptBuilder
   const text = result.render({
     asset: "BTCUSDT",
     timeframe: "1h",
     tickAt: "2026-04-28T14:00:00Z",
-    indicators: { rsi: 50, ema20: 100 },
+    hasIndicators: false,
+    isVolumeActive: false,
+    indicatorFragments: "",
+    classificationBlock: "",
+    fewShotExamples: "",
+    outputFormatTable: "",
     aliveSetups: [],
   });
   expect(text).toContain("BTCUSDT");
@@ -25,7 +30,7 @@ test("loadPrompt('detector') returns rendered template + version", async () => {
 
 test("loadPrompt('reviewer') extracts version", async () => {
   const result = await loadPrompt("reviewer");
-  expect(result.version).toBe("reviewer_v4");
+  expect(result.version).toBe("reviewer_v5");
 });
 
 test("loadPrompt('finalizer') extracts version", async () => {
@@ -45,31 +50,29 @@ test("activeLessons block renders when non-empty and disappears when empty", asy
     },
   ];
 
-  // Detector — non-empty: block renders
-  const detectorWith = detector.render({
+  const detectorBase = {
     asset: "BTCUSDT",
     timeframe: "1h",
     tickAt: "2026-04-28T14:00:00Z",
-    indicators: { rsi: 50 },
+    hasIndicators: false,
+    isVolumeActive: false,
+    indicatorFragments: "",
+    classificationBlock: "",
+    fewShotExamples: "",
+    outputFormatTable: "",
     aliveSetups: [],
-    activeLessons: lessons,
-  });
+  };
+
+  // Detector — non-empty: block renders
+  const detectorWith = detector.render({ ...detectorBase, activeLessons: lessons });
   expect(detectorWith).toContain("Active guidelines (learned from previous trades)");
   expect(detectorWith).toContain("Avoid breakouts on thin volume");
 
   // Detector — empty/omitted: block disappears (no leaked placeholder)
-  const detectorWithout = detector.render({
-    asset: "BTCUSDT",
-    timeframe: "1h",
-    tickAt: "2026-04-28T14:00:00Z",
-    indicators: { rsi: 50 },
-    aliveSetups: [],
-    activeLessons: [],
-  });
+  const detectorWithout = detector.render({ ...detectorBase, activeLessons: [] });
   expect(detectorWithout).not.toContain("Active guidelines");
 
-  // Reviewer — non-empty + empty
-  const reviewerWith = reviewer.render({
+  const reviewerBase = {
     setup: {
       id: "abc",
       patternHint: "double_bottom",
@@ -80,25 +83,16 @@ test("activeLessons block renders when non-empty and disappears when empty", asy
     },
     history: [],
     tick: { tickAt: "2026-04-28T14:00:00Z" },
-    fresh: { lastClose: 101, indicators: { rsi: 40, atr: 1 } },
-    activeLessons: lessons,
-  });
+    fresh: { lastClose: 101 },
+    hasIndicators: false,
+    reviewerIndicatorFragments: "",
+  };
+
+  // Reviewer — non-empty + empty
+  const reviewerWith = reviewer.render({ ...reviewerBase, activeLessons: lessons });
   expect(reviewerWith).toContain("Active guidelines (learned from previous trades)");
 
-  const reviewerWithout = reviewer.render({
-    setup: {
-      id: "abc",
-      patternHint: "double_bottom",
-      direction: "LONG",
-      currentScore: 50,
-      invalidationLevel: 100,
-      ageInCandles: 4,
-    },
-    history: [],
-    tick: { tickAt: "2026-04-28T14:00:00Z" },
-    fresh: { lastClose: 101, indicators: { rsi: 40, atr: 1 } },
-    activeLessons: [],
-  });
+  const reviewerWithout = reviewer.render({ ...reviewerBase, activeLessons: [] });
   expect(reviewerWithout).not.toContain("Active guidelines");
 
   // Finalizer — non-empty + empty
@@ -151,7 +145,12 @@ test("activeLessons title/body are NOT HTML-escaped (triple-stache)", async () =
     asset: "BTCUSDT",
     timeframe: "1h",
     tickAt: "2026-04-28T14:00:00Z",
-    indicators: { rsi: 50 },
+    hasIndicators: false,
+    isVolumeActive: false,
+    indicatorFragments: "",
+    classificationBlock: "",
+    fewShotExamples: "",
+    outputFormatTable: "",
     aliveSetups: [],
     activeLessons: lessons,
   });
@@ -173,7 +172,9 @@ test("activeLessons title/body are NOT HTML-escaped (triple-stache)", async () =
     },
     history: [],
     tick: { tickAt: "2026-04-28T14:00:00Z" },
-    fresh: { lastClose: 101, indicators: { rsi: 40, atr: 1 } },
+    fresh: { lastClose: 101 },
+    hasIndicators: false,
+    reviewerIndicatorFragments: "",
     activeLessons: lessons,
   });
   expect(reviewerOut).toContain("When RSI < 30 & EMA200 > price, don't fade");

@@ -1,20 +1,23 @@
 import { describe, expect, test } from "bun:test";
 import { PureJsIndicatorCalculator } from "@adapters/indicators/PureJsIndicatorCalculator";
+import { IndicatorRegistry } from "@adapters/indicators/IndicatorRegistry";
 import { FakeMarketDataFetcher } from "@test-fakes/FakeMarketDataFetcher";
 
 describe("PureJsIndicatorCalculator", () => {
   const calc = new PureJsIndicatorCalculator();
+  const allPlugins = new IndicatorRegistry().all();
 
   test("computes valid indicators on synthetic 250-candle series", async () => {
     const candles = FakeMarketDataFetcher.generateLinear(250, 100);
-    const ind = await calc.compute(candles);
-    expect(ind.rsi).toBeGreaterThanOrEqual(0);
-    expect(ind.rsi).toBeLessThanOrEqual(100);
-    expect(ind.ema20).toBeGreaterThan(0);
-    expect(ind.ema50).toBeGreaterThan(0);
-    expect(ind.ema200).toBeGreaterThan(0);
-    expect(ind.atr).toBeGreaterThan(0);
-    expect(ind.recentHigh).toBeGreaterThanOrEqual(ind.recentLow);
+    const ind = await calc.compute(candles, allPlugins);
+    expect(typeof (ind.rsi as number)).toBe("number");
+    expect(ind.rsi as number).toBeGreaterThanOrEqual(0);
+    expect(ind.rsi as number).toBeLessThanOrEqual(100);
+    expect(ind.emaShort as number).toBeGreaterThan(0);
+    expect(ind.emaMid as number).toBeGreaterThan(0);
+    expect(ind.emaLong as number).toBeGreaterThan(0);
+    expect(ind.atr as number).toBeGreaterThan(0);
+    expect(ind.recentHigh as number).toBeGreaterThanOrEqual(ind.recentLow as number);
   });
 
   test("RSI of strictly rising series equals 100 (Wilder's smoothed)", async () => {
@@ -27,8 +30,8 @@ describe("PureJsIndicatorCalculator", () => {
       close: 101 + i,
       volume: 100,
     }));
-    const ind = await calc.compute(candles);
-    expect(ind.rsi).toBeCloseTo(100, 5);
+    const ind = await calc.compute(candles, allPlugins);
+    expect(ind.rsi as number).toBeCloseTo(100, 5);
   });
 
   test("RSI of strictly falling series equals 0 (Wilder's smoothed)", async () => {
@@ -41,7 +44,7 @@ describe("PureJsIndicatorCalculator", () => {
       close: 499 - i,
       volume: 100,
     }));
-    const ind = await calc.compute(candles);
-    expect(ind.rsi).toBeCloseTo(0, 5);
+    const ind = await calc.compute(candles, allPlugins);
+    expect(ind.rsi as number).toBeCloseTo(0, 5);
   });
 });

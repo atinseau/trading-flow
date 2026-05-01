@@ -58,9 +58,9 @@ describe.skipIf(!runLlm)("LLM prompt smoke (real OpenRouter)", () => {
       tickAt: "2026-04-28T14:00:00Z",
       indicators: {
         rsi: 58.4,
-        ema20: 67234,
-        ema50: 66980,
-        ema200: 65000,
+        emaShort: 67234,
+        emaMid: 66980,
+        emaLong: 65000,
         atr: 412,
         atrMa20: 380,
         volumeMa20: 689,

@@ -1,4 +1,4 @@
-import type { Indicators } from "@domain/schemas/Indicators";
+import type { IndicatorScalars } from "@domain/schemas/Indicators";
 import type { HtfContext } from "@domain/services/htfContext";
 
 /**
@@ -18,9 +18,15 @@ export type MarketRegime = {
   rationale: string;
 };
 
-export function classifyRegime(indicators: Indicators, htf: HtfContext | null): MarketRegime {
-  const squeeze = indicators.bbBandwidthPct < 4 || indicators.atrZScore200 < -1;
-  const volatilityExpansion = indicators.atrZScore200 > 1.5;
+export function classifyRegime(indicators: IndicatorScalars, htf: HtfContext | null): MarketRegime {
+  const bbBandwidthPct = (indicators.bbBandwidthPct as number) ?? 0;
+  const atrZScore200 = (indicators.atrZScore200 as number) ?? 0;
+  const ema20 = (indicators.ema20 as number) ?? 0;
+  const ema50 = (indicators.ema50 as number) ?? 0;
+  const ema200 = (indicators.ema200 as number) ?? 0;
+
+  const squeeze = bbBandwidthPct < 4 || atrZScore200 < -1;
+  const volatilityExpansion = atrZScore200 > 1.5;
 
   // Primary trend axis: prefer HTF daily regime when available; fall back to
   // local EMA stack. The HTF call here is what makes ranging-vs-trending
@@ -33,7 +39,6 @@ export function classifyRegime(indicators: Indicators, htf: HtfContext | null): 
     rationale = `Daily HTF in ${htf.dailyTrend}`;
   } else {
     // Local EMA stack alignment.
-    const { ema20, ema50, ema200 } = indicators;
     if (ema20 > ema50 && ema50 > ema200) {
       label = "uptrend";
       rationale = "EMA20 > EMA50 > EMA200 (bullish stack)";
@@ -45,9 +50,9 @@ export function classifyRegime(indicators: Indicators, htf: HtfContext | null): 
     }
   }
   if (squeeze)
-    rationale += `; squeeze (BB ${indicators.bbBandwidthPct.toFixed(2)}%, ATR z=${indicators.atrZScore200.toFixed(2)})`;
+    rationale += `; squeeze (BB ${bbBandwidthPct.toFixed(2)}%, ATR z=${atrZScore200.toFixed(2)})`;
   if (volatilityExpansion)
-    rationale += `; vol expansion (ATR z=${indicators.atrZScore200.toFixed(2)})`;
+    rationale += `; vol expansion (ATR z=${atrZScore200.toFixed(2)})`;
 
   return { label, squeeze, volatilityExpansion, rationale };
 }

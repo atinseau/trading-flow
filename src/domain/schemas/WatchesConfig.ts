@@ -1,4 +1,5 @@
 import { isValidFiveFieldCron } from "@domain/services/cronForTimeframe";
+import { REGISTRY } from "@adapters/indicators/IndicatorRegistry";
 import { z } from "zod";
 
 const TimeframeSchema = z.enum(["1m", "5m", "15m", "30m", "1h", "2h", "4h", "1d", "1w"]);
@@ -24,6 +25,34 @@ const PreFilterSchema = z
 // registry/fetcher wiring, and the tf-web wizard pickers — by design.
 export const KNOWN_PROVIDERS = ["claude_max", "openrouter"] as const;
 export const KNOWN_ASSET_SOURCES = ["binance", "yahoo"] as const;
+
+// Indicator IDs that can appear in a watch must match what the runtime exposes:
+// - plugins: IndicatorRegistry in src/adapters/indicators/IndicatorRegistry.ts
+// Adding a new indicator requires touching this schema, registering a plugin
+// in src/adapters/indicators/IndicatorRegistry.ts (with metadata, compute,
+// chartScript, promptFragments), and the tf-web wizard pickers — by design.
+export const KNOWN_INDICATOR_IDS = [
+  "ema_stack", "vwap", "bollinger", "rsi", "macd", "atr", "volume",
+  "swings_bos", "structure_levels", "liquidity_pools",
+] as const;
+export type IndicatorId = (typeof KNOWN_INDICATOR_IDS)[number];
+
+const IndicatorConfigSchema = z.object({
+  enabled: z.boolean().default(false),
+  params: z.record(z.string(), z.unknown()).optional(),
+});
+
+// z.record(z.enum(...), ...) in Zod v4 requires ALL enum keys to be present.
+// Use a strict partial object so unknown keys are rejected and any subset is valid.
+const IndicatorsConfigSchema = z
+  .object(
+    Object.fromEntries(KNOWN_INDICATOR_IDS.map((id) => [id, IndicatorConfigSchema.optional()])) as {
+      [K in IndicatorId]: z.ZodOptional<typeof IndicatorConfigSchema>;
+    },
+  )
+  .strict()
+  .partial()
+  .default({});
 
 const AnalyzerSchema = z.object({
   provider: z.enum(KNOWN_PROVIDERS),
@@ -221,6 +250,7 @@ export const WatchSchema = z
       })
       .prefault({}),
     feedback: FeedbackConfigSchema.prefault({}),
+    indicators: IndicatorsConfigSchema,
   })
   .superRefine((watch, ctx) => {
     if (watch.feedback.enabled && !watch.feedback.analyzer && !watch.analyzers.feedback) {
@@ -229,6 +259,21 @@ export const WatchSchema = z
         path: ["feedback", "analyzer"],
         message: `watch '${watch.id}' has feedback.enabled: true but no LLM analyzer configured (set either feedback.analyzer or analyzers.feedback)`,
       });
+    }
+    for (const [id, cfg] of Object.entries(watch.indicators)) {
+      if (!cfg?.enabled || !cfg.params) continue;
+      const plugin = REGISTRY.find((p) => p.id === id);
+      if (!plugin?.paramsSchema) continue;
+      const result = plugin.paramsSchema.safeParse(cfg.params);
+      if (!result.success) {
+        for (const issue of result.error.issues) {
+          ctx.addIssue({
+            code: "custom",
+            path: ["indicators", id, "params", ...issue.path],
+            message: `${issue.message} (plugin '${id}')`,
+          });
+        }
+      }
     }
   });
 

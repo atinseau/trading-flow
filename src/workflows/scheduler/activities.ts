@@ -1,80 +1,18 @@
 import { resolveAndCall } from "@adapters/llm/resolveAndCall";
 import { watchStates } from "@adapters/persistence/schema";
-import { loadPrompt } from "@adapters/prompts/loadPrompt";
 import { loadWatchesFromDb } from "@config/loadWatchesFromDb";
 import { InvalidConfigError } from "@domain/errors";
 import { CandleSchema } from "@domain/schemas/Candle";
-import { computeHtfContext } from "@domain/services/htfContext";
-import { inferImageMimeType } from "@domain/services/imageMimeType";
+import { buildDetectorOutputSchema } from "@domain/schemas/DetectorOutput";
+import { buildIndicatorsSchema } from "@domain/schemas/Indicators";
 import { getLogger } from "@observability/logger";
 import type { ActivityDeps } from "@workflows/activityDependencies";
+import { sql } from "drizzle-orm";
 import { z } from "zod";
 import { dedupNewSetups, type ProposedSetup } from "./dedup";
 import { evaluatePreFilter } from "./preFilter";
 
 const log = getLogger({ component: "scheduler-activities" });
-
-const DetectorVerdictSchema = z.object({
-  corroborations: z.array(
-    z.object({
-      setup_id: z.string(),
-      evidence: z.array(z.string()),
-      confidence_delta_suggested: z.number(),
-    }),
-  ),
-  new_setups: z.array(
-    z
-      .object({
-        type: z.string(),
-        direction: z.enum(["LONG", "SHORT"]),
-        // Pattern classification — analytic label for the feedback loop.
-        pattern_category: z.enum(["event", "accumulation"]),
-        // Operational maturation estimate (drives finalizer rule).
-        expected_maturation_ticks: z.number().int().min(1).max(6),
-        // Auditable score breakdown — initial_score must approximately equal
-        // the sum (refine below). Forces the LLM to expose its reasoning.
-        confidence_breakdown: z.object({
-          trigger: z.number().min(0).max(25),
-          structure: z.number().min(0).max(25),
-          htf: z.number().min(0).max(25),
-          volume: z.number().min(0).max(25),
-        }),
-        key_levels: z.object({
-          entry: z.number().optional(),
-          invalidation: z.number(),
-          target: z.number().optional(),
-        }),
-        initial_score: z.number().min(0).max(100),
-        raw_observation: z.string(),
-      })
-      .refine(
-        (s) => {
-          // Enforce: |initial_score - sum(breakdown)| ≤ 2. Without this,
-          // the same-tick fast-path can fire on a hallucinated score with no
-          // backing breakdown, bypassing the only structural sanity check we
-          // have on detector output.
-          const sum =
-            s.confidence_breakdown.trigger +
-            s.confidence_breakdown.structure +
-            s.confidence_breakdown.htf +
-            s.confidence_breakdown.volume;
-          return Math.abs(s.initial_score - sum) <= 2;
-        },
-        { message: "initial_score must equal sum(confidence_breakdown) ±2" },
-      )
-      .refine(
-        (s) => {
-          // Sanity: event ⇒ matures fast; accumulation ⇒ matures slow.
-          // Without this, an LLM could declare event + maturation=5 (nonsense)
-          // and the finalizer's per-setup maturation rule loses its meaning.
-          if (s.pattern_category === "event") return s.expected_maturation_ticks <= 2;
-          return s.expected_maturation_ticks >= 3;
-        },
-        { message: "event ⇒ ticks ≤ 2; accumulation ⇒ ticks ≥ 3" },
-      ),
-  ),
-  ignore_reason: z.string().nullable(),
-});
 
 function dateReviver(_key: string, value: unknown): unknown {
   if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}T/.test(value)) {
@@ -106,54 +44,30 @@ export function buildSchedulerActivities(deps: ActivityDeps) {
       const watch = await deps.watchById(input.watchId);
       if (!watch) throw new InvalidConfigError(`Unknown watch: ${input.watchId}`);
       const candles = z.array(CandleSchema).parse(JSON.parse(input.ohlcvJson, dateReviver));
-      // Compute series on the FULL window (≥200 candles, needed for EMA200
-      // warm-up) then slice both candles AND series to the chart window so
-      // the EMA200 line is non-null on the visible portion.
-      const fullSeries = await deps.indicatorCalculator.computeSeries(candles);
-      const w = watch.candles.reviewer_chart_window;
-      const slice = candles.slice(-w);
-      const sliceLine = (arr: (number | null)[]) => arr.slice(-w);
-      const total = candles.length;
-      const offset = total - slice.length;
-      const sliceMarkers = <T extends { index: number }>(arr: T[]) =>
-        arr.filter((m) => m.index >= offset).map((m) => ({ ...m, index: m.index - offset }));
-      const series = {
-        ema20: sliceLine(fullSeries.ema20),
-        ema50: sliceLine(fullSeries.ema50),
-        ema200: sliceLine(fullSeries.ema200),
-        vwap: sliceLine(fullSeries.vwap),
-        bbUpper: sliceLine(fullSeries.bbUpper),
-        bbMiddle: sliceLine(fullSeries.bbMiddle),
-        bbLower: sliceLine(fullSeries.bbLower),
-        rsi: sliceLine(fullSeries.rsi),
-        atr: sliceLine(fullSeries.atr),
-        atrMa20: sliceLine(fullSeries.atrMa20),
-        volumeMa20: sliceLine(fullSeries.volumeMa20),
-        macd: sliceLine(fullSeries.macd),
-        macdSignal: sliceLine(fullSeries.macdSignal),
-        macdHist: sliceLine(fullSeries.macdHist),
-        swingHighs: sliceMarkers(fullSeries.swingHighs),
-        swingLows: sliceMarkers(fullSeries.swingLows),
-        fvgs: sliceMarkers(fullSeries.fvgs),
-        equalHighs: fullSeries.equalHighs
-          .map((g) => ({
-            price: g.price,
-            indices: g.indices.filter((i) => i >= offset).map((i) => i - offset),
-          }))
-          .filter((g) => g.indices.length >= 2),
-        equalLows: fullSeries.equalLows
-          .map((g) => ({
-            price: g.price,
-            indices: g.indices.filter((i) => i >= offset).map((i) => i - offset),
-          }))
-          .filter((g) => g.indices.length >= 2),
-      };
+      const slice = candles.slice(-watch.candles.reviewer_chart_window);
+      const plugins = deps.indicatorRegistry.resolveActive(watch.indicators);
+      const paramsByPlugin: Record<string, Record<string, unknown>> = {};
+      for (const p of plugins) {
+        const cfg = watch.indicators[p.id];
+        paramsByPlugin[p.id] = (cfg?.params as Record<string, unknown>) ?? (p.defaultParams as Record<string, unknown> ?? {});
+      }
+      const series = await deps.indicatorCalculator.computeSeries(slice, plugins, paramsByPlugin);
+      const enabledIds = plugins.map((p) => p.id);
+      const naked = enabledIds.length === 0;
+      // Count secondary panes to avoid compressing the price pane when 3+ panes are active.
+      const secondaryPaneCount = plugins.filter((p) => p.chartPane === "secondary").length;
+      const height =
+        naked ? 900 :
+        secondaryPaneCount >= 3 ? 1080 :
+        secondaryPaneCount >= 1 ? 720 :
+        900; // overlay-only setups (e.g. ema_stack + vwap) get the same airy 900 as naked
       const tempUri = `file:///tmp/temp-chart-${crypto.randomUUID()}.png`;
       const result = await deps.chartRenderer.render({
         candles: slice,
-        indicators: series,
-        width: 1600,
-        height: 1000,
+        series,
+        enabledIndicatorIds: enabledIds,
+        width: 1280,
+        height,
         outputUri: tempUri,
       });
       const stored = await deps.artifactStore.put({
@@ -164,10 +78,22 @@ export function buildSchedulerActivities(deps: ActivityDeps) {
       return { artifactUri: stored.uri, sha256: stored.sha256 };
     },
 
-    async computeIndicators(input: { ohlcvJson: string }): Promise<{ indicatorsJson: string }> {
+    async computeIndicators(input: {
+      ohlcvJson: string;
+      watchId: string;
+    }): Promise<{ indicatorsJson: string }> {
+      const watch = await deps.watchById(input.watchId);
+      if (!watch) throw new InvalidConfigError(`Unknown watch: ${input.watchId}`);
       const candles = z.array(CandleSchema).parse(JSON.parse(input.ohlcvJson, dateReviver));
-      const ind = await deps.indicatorCalculator.compute(candles);
-      return { indicatorsJson: JSON.stringify(ind) };
+      const plugins = deps.indicatorRegistry.resolveActive(watch.indicators);
+      const paramsByPlugin: Record<string, Record<string, unknown>> = {};
+      for (const p of plugins) {
+        const cfg = watch.indicators[p.id];
+        paramsByPlugin[p.id] = (cfg?.params as Record<string, unknown>) ?? (p.defaultParams as Record<string, unknown> ?? {});
+      }
+      const scalars = await deps.indicatorCalculator.compute(candles, plugins, paramsByPlugin);
+      const validated = buildIndicatorsSchema(plugins).parse(scalars);
+      return { indicatorsJson: JSON.stringify(validated) };
     },
 
     async evaluatePreFilter(input: {
@@ -179,7 +105,8 @@ export function buildSchedulerActivities(deps: ActivityDeps) {
       if (!watch) throw new InvalidConfigError(`Unknown watch: ${input.watchId}`);
       const candles = z.array(CandleSchema).parse(JSON.parse(input.ohlcvJson, dateReviver));
       const ind = JSON.parse(input.indicatorsJson);
-      return evaluatePreFilter(candles, ind, watch.pre_filter);
+      const plugins = deps.indicatorRegistry.resolveActive(watch.indicators);
+      return evaluatePreFilter(candles, ind, watch.pre_filter, plugins);
     },
 
     async createTickSnapshot(input: {
@@ -245,38 +172,29 @@ export function buildSchedulerActivities(deps: ActivityDeps) {
         await deps.lessonStore.incrementUsage(activeLessons.map((l) => l.id));
       }
 
-      // HTF context: fetch a daily window for the same asset to give the
-      // detector structural awareness (weekly H/L, daily trend regime,
-      // position in weekly range). Adds ~1 cheap API call per tick.
-      const fetcher = deps.marketDataFetchers.get(watch.asset.source);
-      const livePrice = snap.indicators.recentHigh; // best proxy from snapshot
-      const htf = fetcher
-        ? await computeHtfContext({
-            marketDataFetcher: fetcher,
-            asset: watch.asset.symbol,
-            livePrice,
-          })
-        : null;
-
-      const detectorPrompt = await loadPrompt("detector");
-      const userPrompt = detectorPrompt.render({
+      await deps.promptBuilder.warmUp();
+      const plugins = deps.indicatorRegistry.resolveActive(watch.indicators);
+      const htfEnabled = watch.timeframes.higher.length > 0;
+      const detectorOutputSchema = buildDetectorOutputSchema(plugins, htfEnabled);
+      const scalars = (snap.indicators ?? {}) as Record<string, unknown>;
+      const userPrompt = await deps.promptBuilder.buildDetectorPrompt({
         asset: snap.asset,
         timeframe: snap.timeframe,
-        tickAt: snap.tickAt.toISOString(),
-        indicators: snap.indicators,
-        htf,
-        aliveSetups: input.aliveSetups,
+        tickAt: snap.tickAt,
+        scalars,
+        aliveSetups: Array.isArray(input.aliveSetups) ? input.aliveSetups : [],
         activeLessons: activeLessons.map((l) => ({ title: l.title, body: l.body })),
+        indicatorsMatrix: watch.indicators,
       });
       const result = await resolveAndCall(
         watch.analyzers.detector.provider,
         {
-          systemPrompt: detectorPrompt.systemPrompt,
+          systemPrompt: deps.promptBuilder.detectorSystemPrompt,
           userPrompt,
-          images: [{ sourceUri: snap.chartUri, mimeType: inferImageMimeType(snap.chartUri) }],
+          images: [{ sourceUri: snap.chartUri, mimeType: "image/png" }],
           model: watch.analyzers.detector.model,
           maxTokens: watch.analyzers.detector.max_tokens,
-          responseSchema: DetectorVerdictSchema,
+          responseSchema: detectorOutputSchema,
         },
         deps.llmProviders,
       );
@@ -304,7 +222,7 @@ export function buildSchedulerActivities(deps: ActivityDeps) {
       return {
         verdictJson: JSON.stringify(result.output.parsed),
         costUsd: result.output.costUsd,
-        promptVersion: detectorPrompt.version,
+        promptVersion: deps.promptBuilder.detectorVersion,
       };
     },
 
@@ -353,21 +271,23 @@ export function buildSchedulerActivities(deps: ActivityDeps) {
       const childLog = log.child({ watchId: input.watchId });
       childLog.info({ status: input.status, costUsd: input.costUsd }, "tick recorded");
       const now = deps.clock.now();
-      // Cost is no longer cached on watch_states — `llm_calls` is the source of
-      // truth, aggregated on read by the API. We still touch the row to keep
-      // lastTickAt / lastTickStatus fresh for the "dernier tick il y a X" UI.
+      const costStr = String(input.costUsd);
       await deps.db
         .insert(watchStates)
         .values({
           watchId: input.watchId,
           lastTickAt: now,
           lastTickStatus: input.status,
+          totalCostUsdMtd: costStr,
+          totalCostUsdAllTime: costStr,
         })
         .onConflictDoUpdate({
           target: watchStates.watchId,
           set: {
             lastTickAt: now,
             lastTickStatus: input.status,
+            totalCostUsdMtd: sql`${watchStates.totalCostUsdMtd} + ${costStr}`,
+            totalCostUsdAllTime: sql`${watchStates.totalCostUsdAllTime} + ${costStr}`,
           },
         });
     },
