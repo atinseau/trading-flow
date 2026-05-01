@@ -81,4 +81,10 @@ describe("inputHash params sensitivity", () => {
     });
     expect(a).toBe(b);
   });
+
+  test("indicatorParams in HashInput affects hash", () => {
+    const h1 = computeInputHash({ ...BASE, indicatorParams: { rsi: { period: 14 } } });
+    const h2 = computeInputHash({ ...BASE, indicatorParams: { rsi: { period: 21 } } });
+    expect(h1).not.toBe(h2);
+  });
 });

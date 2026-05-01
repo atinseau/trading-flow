@@ -133,12 +133,19 @@ export function buildSetupActivities(deps: ActivityDeps) {
         await deps.lessonStore.incrementUsage(activeLessons.map((l) => l.id));
       }
 
+      const indicatorParams: Record<string, Record<string, unknown>> = {};
+      for (const [id, cfg] of Object.entries(watch.indicators)) {
+        if (cfg?.enabled && cfg.params) {
+          indicatorParams[id] = cfg.params as Record<string, unknown>;
+        }
+      }
       const inputHash = computeInputHash({
         setupId: input.setupId,
         promptVersion,
         ohlcvSnapshot: ohlcvBuf.toString("hex").slice(0, 64),
         chartUri: snap.chartUri,
         indicators: snap.indicators as unknown as Record<string, number>,
+        indicatorParams,
         activeLessonIds: activeLessons.map((l) => l.id).sort(),
       });
 
