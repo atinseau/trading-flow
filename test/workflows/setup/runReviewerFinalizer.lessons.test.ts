@@ -101,9 +101,9 @@ async function buildHarness(injection: {
     chartUri: chart.uri,
     indicators: {
       rsi: 50,
-      ema20: 100,
-      ema50: 100,
-      ema200: 100,
+      emaShort: 100,
+      emaMid: 100,
+      emaLong: 100,
       atr: 1,
       atrMa20: 1,
       volumeMa20: 100,

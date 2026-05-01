@@ -16,9 +16,9 @@ const scope: FeedbackContextScope = {
 
 const baseIndicators = {
   rsi: 42.5,
-  ema20: 42100,
-  ema50: 42050,
-  ema200: 41800,
+  emaShort: 42100,
+  emaMid: 42050,
+  emaLong: 41800,
   atr: 250,
   atrMa20: 240,
   volumeMa20: 1000,

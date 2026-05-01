@@ -74,9 +74,9 @@ describe("PureJsIndicatorCalculator reference values", () => {
 
     const ind = await calc.compute(candles, allPlugins);
 
-    expect(ind.ema20 as number).toBeCloseTo(50, 5);
-    expect(ind.ema50 as number).toBeCloseTo(50, 5);
-    expect(ind.ema200 as number).toBeCloseTo(50, 5);
+    expect(ind.emaShort as number).toBeCloseTo(50, 5);
+    expect(ind.emaMid as number).toBeCloseTo(50, 5);
+    expect(ind.emaLong as number).toBeCloseTo(50, 5);
   });
 
   test("EMA(20) lags moving averages on rising series", async () => {
@@ -89,11 +89,11 @@ describe("PureJsIndicatorCalculator reference values", () => {
     const lastClose = closes[closes.length - 1] ?? 0;
 
     // EMA20 should be below lastClose (lagging) but above lastClose - 20.
-    expect(ind.ema20 as number).toBeLessThan(lastClose);
-    expect(ind.ema20 as number).toBeGreaterThan(lastClose - 20);
+    expect(ind.emaShort as number).toBeLessThan(lastClose);
+    expect(ind.emaShort as number).toBeGreaterThan(lastClose - 20);
     // Longer-period EMAs lag more than shorter-period EMAs on a rising series.
-    expect(ind.ema200 as number).toBeLessThan(ind.ema50 as number);
-    expect(ind.ema50 as number).toBeLessThan(ind.ema20 as number);
+    expect(ind.emaLong as number).toBeLessThan(ind.emaMid as number);
+    expect(ind.emaMid as number).toBeLessThan(ind.emaShort as number);
   });
 
   test("ATR(14) on constant range equals that range", async () => {

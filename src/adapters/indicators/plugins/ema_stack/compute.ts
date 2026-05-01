@@ -23,9 +23,9 @@ export function computeScalars(candles: Candle[], params?: Record<string, unknow
   const closes = candles.map((c) => c.close);
   const { period_short, period_mid, period_long } = readPeriods(params);
   return {
-    ema20: ema(closes, period_short),
-    ema50: ema(closes, period_mid),
-    ema200: ema(closes, period_long),
+    emaShort: ema(closes, period_short),
+    emaMid: ema(closes, period_mid),
+    emaLong: ema(closes, period_long),
   };
 }
 export function computeSeries(candles: Candle[], params?: Record<string, unknown>) {
@@ -33,8 +33,8 @@ export function computeSeries(candles: Candle[], params?: Record<string, unknown
   const n = candles.length;
   const { period_short, period_mid, period_long } = readPeriods(params);
   return {
-    ema20: emaSeriesAligned(closes, period_short, n),
-    ema50: emaSeriesAligned(closes, period_mid, n),
-    ema200: emaSeriesAligned(closes, period_long, n),
+    emaShort: emaSeriesAligned(closes, period_short, n),
+    emaMid: emaSeriesAligned(closes, period_mid, n),
+    emaLong: emaSeriesAligned(closes, period_long, n),
   };
 }

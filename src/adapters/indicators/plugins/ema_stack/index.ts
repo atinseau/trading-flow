@@ -18,7 +18,7 @@ export const emaStackPlugin: IndicatorPlugin = {
   computeScalars: (candles, params) => computeScalars(candles, params),
   computeSeries: (candles, params) => ({ kind: "lines", series: computeSeries(candles, params) }),
   scalarSchemaFragment: () => ({
-    ema20: z.number(), ema50: z.number(), ema200: z.number(),
+    emaShort: z.number(), emaMid: z.number(), emaLong: z.number(),
   }),
   chartScript: CHART_SCRIPT,
   chartPane: "price_overlay",

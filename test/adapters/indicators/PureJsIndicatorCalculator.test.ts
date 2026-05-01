@@ -13,9 +13,9 @@ describe("PureJsIndicatorCalculator", () => {
     expect(typeof (ind.rsi as number)).toBe("number");
     expect(ind.rsi as number).toBeGreaterThanOrEqual(0);
     expect(ind.rsi as number).toBeLessThanOrEqual(100);
-    expect(ind.ema20 as number).toBeGreaterThan(0);
-    expect(ind.ema50 as number).toBeGreaterThan(0);
-    expect(ind.ema200 as number).toBeGreaterThan(0);
+    expect(ind.emaShort as number).toBeGreaterThan(0);
+    expect(ind.emaMid as number).toBeGreaterThan(0);
+    expect(ind.emaLong as number).toBeGreaterThan(0);
     expect(ind.atr as number).toBeGreaterThan(0);
     expect(ind.recentHigh as number).toBeGreaterThanOrEqual(ind.recentLow as number);
   });

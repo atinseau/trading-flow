@@ -13,28 +13,28 @@ describe("emaStackPlugin", () => {
     expect(emaStackPlugin.chartPane).toBe("price_overlay");
   });
 
-  test("computeScalars returns ema20/50/200", () => {
+  test("computeScalars returns emaShort/emaMid/emaLong", () => {
     const s = emaStackPlugin.computeScalars(sampleCandles);
-    expect(s.ema20).toBeDefined();
-    expect(s.ema50).toBeDefined();
-    expect(s.ema200).toBeDefined();
-    expect(typeof s.ema20).toBe("number");
-    expect(typeof s.ema50).toBe("number");
-    expect(typeof s.ema200).toBe("number");
+    expect(s.emaShort).toBeDefined();
+    expect(s.emaMid).toBeDefined();
+    expect(s.emaLong).toBeDefined();
+    expect(typeof s.emaShort).toBe("number");
+    expect(typeof s.emaMid).toBe("number");
+    expect(typeof s.emaLong).toBe("number");
   });
 
   test("computeSeries returns 3 line series", () => {
     const series = emaStackPlugin.computeSeries(sampleCandles);
     if (series.kind !== "lines") throw new Error("expected lines kind");
-    expect(Object.keys(series.series).sort()).toEqual(["ema20", "ema200", "ema50"]);
+    expect(Object.keys(series.series).sort()).toEqual(["emaLong", "emaMid", "emaShort"]);
   });
 
   test("computeSeries series have length equal to candle count", () => {
     const series = emaStackPlugin.computeSeries(sampleCandles);
     if (series.kind !== "lines") throw new Error();
-    expect(series.series.ema20.length).toBe(250);
-    expect(series.series.ema50.length).toBe(250);
-    expect(series.series.ema200.length).toBe(250);
+    expect(series.series.emaShort.length).toBe(250);
+    expect(series.series.emaMid.length).toBe(250);
+    expect(series.series.emaLong.length).toBe(250);
   });
 
   test("detectorPromptFragment includes EMA stack label and values", () => {
@@ -51,9 +51,9 @@ describe("emaStackPlugin", () => {
 
   test("computeScalars uses default periods when no params", () => {
     const s = emaStackPlugin.computeScalars(sampleCandles);
-    expect(s.ema20).toBeDefined();
-    expect(s.ema50).toBeDefined();
-    expect(s.ema200).toBeDefined();
+    expect(s.emaShort).toBeDefined();
+    expect(s.emaMid).toBeDefined();
+    expect(s.emaLong).toBeDefined();
   });
 
   test("computeScalars accepts custom params", () => {
@@ -61,9 +61,9 @@ describe("emaStackPlugin", () => {
     const sCustom = emaStackPlugin.computeScalars(sampleCandles, {
       period_short: 10, period_mid: 30, period_long: 100,
     });
-    expect(typeof sCustom.ema20).toBe("number");
+    expect(typeof sCustom.emaShort).toBe("number");
     // Different periods should produce different EMA values
-    expect(sDefault.ema20).not.toBe(sCustom.ema20);
+    expect(sDefault.emaShort).not.toBe(sCustom.emaShort);
   });
 
   test("paramsSchema validates ranges", () => {

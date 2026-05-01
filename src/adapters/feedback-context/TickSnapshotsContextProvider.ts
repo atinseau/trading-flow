@@ -21,12 +21,12 @@ export class TickSnapshotsContextProvider implements FeedbackContextProvider {
     });
     const lines: string[] = [];
     lines.push(`### Indicator snapshots (${ticks.length} ticks)\n`);
-    lines.push("| tickAt | rsi | ema20 | ema50 | ema200 | atr |");
+    lines.push("| tickAt | rsi | emaShort | emaMid | emaLong | atr |");
     lines.push("|---|---|---|---|---|---|");
     for (const t of ticks) {
       const i = t.indicators;
       lines.push(
-        `| ${t.tickAt.toISOString()} | ${i.rsi} | ${i.ema20} | ${i.ema50} | ${i.ema200} | ${i.atr} |`,
+        `| ${t.tickAt.toISOString()} | ${i.rsi} | ${i.emaShort} | ${i.emaMid} | ${i.emaLong} | ${i.atr} |`,
       );
     }
     return [
