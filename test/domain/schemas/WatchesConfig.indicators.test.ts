@@ -48,4 +48,20 @@ describe("WatchSchema.indicators", () => {
     });
     expect(result.success).toBe(false);
   });
+
+  test("indicators entry accepts a params object", () => {
+    const parsed = WatchSchema.parse({
+      ...baseWatch,
+      indicators: { rsi: { enabled: true, params: { period: 21 } } },
+    });
+    expect(parsed.indicators.rsi?.params).toEqual({ period: 21 });
+  });
+
+  test("params is optional", () => {
+    const parsed = WatchSchema.parse({
+      ...baseWatch,
+      indicators: { rsi: { enabled: true } },
+    });
+    expect(parsed.indicators.rsi?.params).toBeUndefined();
+  });
 });

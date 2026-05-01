@@ -38,6 +38,7 @@ export type IndicatorId = (typeof KNOWN_INDICATOR_IDS)[number];
 
 const IndicatorConfigSchema = z.object({
   enabled: z.boolean().default(false),
+  params: z.record(z.string(), z.unknown()).optional(),
 });
 
 // z.record(z.enum(...), ...) in Zod v4 requires ALL enum keys to be present.
