@@ -36,7 +36,7 @@ describe("PlaywrightChartRenderer visual regression", () => {
     await rm(outDir, { recursive: true, force: true });
   });
 
-  test("naked render — no indicators, produces valid PNG", async () => {
+  test("naked render — no indicators, produces valid WebP", async () => {
     const result = await renderer.render({
       candles,
       series: {},
@@ -49,15 +49,20 @@ describe("PlaywrightChartRenderer visual regression", () => {
     expect(result.bytes).toBeGreaterThan(2000);
     expect(result.bytes).toBeLessThan(200_000);
     expect(result.sha256).toMatch(/^[a-f0-9]{64}$/);
-    expect(result.mimeType).toBe("image/png");
+    expect(result.mimeType).toBe("image/webp");
+    expect(result.uri).toMatch(/\.webp$/);
 
     const buffer = await Bun.file(result.uri.replace(/^file:\/\//, "")).bytes();
     expect(buffer.length).toBe(result.bytes);
-    // PNG magic bytes (89 50 4E 47)
-    expect(buffer[0]).toBe(0x89);
-    expect(buffer[1]).toBe(0x50);
-    expect(buffer[2]).toBe(0x4e);
-    expect(buffer[3]).toBe(0x47);
+    // WebP magic bytes: RIFF (52 49 46 46) ... WEBP (57 45 42 50)
+    expect(buffer[0]).toBe(0x52); // R
+    expect(buffer[1]).toBe(0x49); // I
+    expect(buffer[2]).toBe(0x46); // F
+    expect(buffer[3]).toBe(0x46); // F
+    expect(buffer[8]).toBe(0x57);  // W
+    expect(buffer[9]).toBe(0x45);  // E
+    expect(buffer[10]).toBe(0x42); // B
+    expect(buffer[11]).toBe(0x50); // P
   }, 30_000);
 
   test("recommended render — RSI, EMA stack, Volume, Swings/BOS", async () => {
@@ -80,7 +85,7 @@ describe("PlaywrightChartRenderer visual regression", () => {
     expect(result.bytes).toBeGreaterThan(2000);
     expect(result.bytes).toBeLessThan(300_000);
     expect(result.sha256).toMatch(/^[a-f0-9]{64}$/);
-    expect(result.mimeType).toBe("image/png");
+    expect(result.mimeType).toBe("image/webp");
   }, 30_000);
 
   test("full render — all 12 plugins active", async () => {
@@ -100,7 +105,7 @@ describe("PlaywrightChartRenderer visual regression", () => {
     expect(result.bytes).toBeGreaterThan(2000);
     expect(result.bytes).toBeLessThan(500_000);
     expect(result.sha256).toMatch(/^[a-f0-9]{64}$/);
-    expect(result.mimeType).toBe("image/png");
+    expect(result.mimeType).toBe("image/webp");
   }, 30_000);
 
   test("rendering same candles twice produces ~identical sizes (within 5%)", async () => {

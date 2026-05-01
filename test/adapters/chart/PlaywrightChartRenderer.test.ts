@@ -21,7 +21,7 @@ describe("PlaywrightChartRenderer", () => {
     await rm(outDir, { recursive: true, force: true });
   });
 
-  test("renders 100 candles to PNG with valid sha256", async () => {
+  test("renders 100 candles to WebP with valid sha256", async () => {
     const candles = FakeMarketDataFetcher.generateLinear(100, 100);
     const out = `file://${join(outDir, "test.png")}`;
     const result = await renderer.render({
@@ -32,10 +32,11 @@ describe("PlaywrightChartRenderer", () => {
       height: 720,
       outputUri: out,
     });
-    expect(result.mimeType).toBe("image/png");
+    expect(result.mimeType).toBe("image/webp");
+    expect(result.uri).toBe(out.replace(/\.png$/i, ".webp"));
     expect(result.sha256).toMatch(/^[a-f0-9]{64}$/);
     expect(result.bytes).toBeGreaterThan(1000);
-    expect(Bun.file(out.replace(/^file:\/\//, "")).size).toBe(result.bytes);
+    expect(Bun.file(result.uri.replace(/^file:\/\//, "")).size).toBe(result.bytes);
   }, 30_000);
 
   test("rendering twice produces consistent output sizes", async () => {

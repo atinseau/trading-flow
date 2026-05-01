@@ -60,10 +60,11 @@
     "typescript": "^5"
   },
   "trustedDependencies": [
-    "@temporalio/core-bridge",
     "@biomejs/biome",
+    "@temporalio/core-bridge",
     "playwright",
-    "playwright-core"
+    "playwright-core",
+    "sharp"
   ],
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.119",
@@ -106,6 +107,7 @@
     "react-hook-form": "^7.74.0",
     "react-router-dom": "^7",
     "recharts": "2.15.4",
+    "sharp": "^0.34.5",
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.5.0",
     "tailwindcss": "^4",

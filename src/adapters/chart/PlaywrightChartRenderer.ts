@@ -7,6 +7,14 @@ import { IndicatorRegistry } from "@adapters/indicators/IndicatorRegistry";
 import type { ChartRenderer, ChartRenderResult } from "@domain/ports/ChartRenderer";
 import type { Candle } from "@domain/schemas/Candle";
 import { type Browser, chromium, type Page } from "playwright";
+import sharp from "sharp";
+
+// Claude Vision auto-resizes images to 1568px max on the long side before
+// tokenization (`tokens = (W × H) / 750`). Rendering above this is wasted
+// bytes; rendering at exactly this cap matches Claude's billing without
+// degrading detail. Capping is the only way to *reduce* image tokens; format
+// (WebP vs PNG) only affects bytes/transfer, not tokens.
+const MAX_LLM_DIMENSION = 1568;
 
 export class PlaywrightChartRenderer implements ChartRenderer {
   private browser: Browser | null = null;
@@ -92,16 +100,26 @@ export class PlaywrightChartRenderer implements ChartRenderer {
         () => (window as unknown as { __chartReady?: boolean }).__chartReady === true,
         { timeout: 5000 },
       );
-      const buffer = await page.screenshot({ type: "png", omitBackground: false });
+      const png = await page.screenshot({ type: "png", omitBackground: false });
+      const buffer = await sharp(png)
+        .resize(MAX_LLM_DIMENSION, MAX_LLM_DIMENSION, {
+          fit: "inside",
+          withoutEnlargement: true,
+        })
+        .webp({ quality: 85 })
+        .toBuffer();
       const sha256 = createHash("sha256").update(buffer).digest("hex");
-      const path = args.outputUri.replace(/^file:\/\//, "");
+      // Swap the .png suffix from the caller's outputUri to .webp so the
+      // stored artifact matches the actual format.
+      const webpUri = args.outputUri.replace(/\.png$/i, ".webp");
+      const path = webpUri.replace(/^file:\/\//, "");
       await mkdir(dirname(path), { recursive: true });
       await Bun.write(path, buffer);
       return {
-        uri: args.outputUri,
+        uri: webpUri,
         sha256,
         bytes: buffer.length,
-        mimeType: "image/png",
+        mimeType: "image/webp",
         content: buffer,
       };
     } finally {
