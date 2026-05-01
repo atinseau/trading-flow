@@ -50,4 +50,30 @@ describe("rsiPlugin", () => {
     expect(txt).toBeTruthy();
     expect(txt!.length).toBeLessThan(60);
   });
+
+  test("computeScalars uses default period when no params", () => {
+    const s = rsiPlugin.computeScalars(candles(50));
+    expect(s.rsi).toBeDefined();
+    expect(typeof s.rsi).toBe("number");
+  });
+
+  test("computeScalars accepts custom params", () => {
+    const sDefault = rsiPlugin.computeScalars(candles(50));
+    const sCustom = rsiPlugin.computeScalars(candles(50), { period: 21 });
+    // RSI with different periods should produce different values
+    expect(typeof sCustom.rsi).toBe("number");
+    expect(sDefault.rsi).not.toBe(sCustom.rsi);
+  });
+
+  test("paramsSchema validates ranges", () => {
+    expect(() => rsiPlugin.paramsSchema!.parse({ period: 1 })).toThrow(); // below min
+    expect(() => rsiPlugin.paramsSchema!.parse({ period: 51 })).toThrow(); // above max
+    expect(() => rsiPlugin.paramsSchema!.parse({ period: 14.5 })).toThrow(); // not int
+    expect(() => rsiPlugin.paramsSchema!.parse({ period: 14, extra: 1 })).toThrow(); // extra key
+    expect(rsiPlugin.paramsSchema!.parse({ period: 14 })).toEqual({ period: 14 });
+  });
+
+  test("defaultParams matches schema", () => {
+    expect(rsiPlugin.paramsSchema!.parse(rsiPlugin.defaultParams!)).toEqual(rsiPlugin.defaultParams!);
+  });
 });
