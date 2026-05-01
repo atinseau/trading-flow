@@ -52,4 +52,30 @@ describe("macdPlugin", () => {
   test("chartScript contains registerPlugin macd", () => {
     expect(macdPlugin.chartScript).toContain('__registerPlugin("macd"');
   });
+
+  test("computeScalars uses default params when no params", () => {
+    const s = macdPlugin.computeScalars(sampleCandles);
+    expect(s.macd).toBeDefined();
+    expect(s.macdSignal).toBeDefined();
+    expect(s.macdHist).toBeDefined();
+  });
+
+  test("computeScalars accepts custom params", () => {
+    const sDefault = macdPlugin.computeScalars(sampleCandles);
+    const sCustom = macdPlugin.computeScalars(sampleCandles, { fast: 5, slow: 15, signal: 5 });
+    expect(typeof sCustom.macd).toBe("number");
+    // Different periods should produce different MACD values
+    expect(sDefault.macd).not.toBe(sCustom.macd);
+  });
+
+  test("paramsSchema validates ranges", () => {
+    expect(() => macdPlugin.paramsSchema!.parse({ fast: 1, slow: 26, signal: 9 })).toThrow(); // fast below min
+    expect(() => macdPlugin.paramsSchema!.parse({ fast: 12, slow: 51, signal: 9 })).toThrow(); // slow above max
+    expect(() => macdPlugin.paramsSchema!.parse({ fast: 26, slow: 12, signal: 9 })).toThrow(); // fast >= slow
+    expect(macdPlugin.paramsSchema!.parse({ fast: 12, slow: 26, signal: 9 })).toEqual({ fast: 12, slow: 26, signal: 9 });
+  });
+
+  test("defaultParams matches schema", () => {
+    expect(macdPlugin.paramsSchema!.parse(macdPlugin.defaultParams!)).toEqual(macdPlugin.defaultParams!);
+  });
 });
