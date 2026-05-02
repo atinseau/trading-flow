@@ -137,8 +137,13 @@ services:
       # `bun compose:dev`) and stored in `.env`. Empty in production unless
       # the deployer wants OAuth instead of an API key.
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
+    # Prompts ship baked into the image via `COPY prompts ./prompts` in the
+    # worker Dockerfile — no bind-mount in prod (Coolify can't resolve the
+    # `./` source against the host fs from inside the build helper, so a
+    # bind-mount silently shadows /app/prompts with an empty directory and
+    # workers crash with `ENOENT detector.md.hbs`). The dev overlay re-adds
+    # the bind for hot prompt editing.
     volumes: &worker_volumes
-      - ./prompts:/app/prompts:ro
       - artifacts_data:/data/artifacts
       - claude_workspace:/data/claude-workspace
     command: bun run src/cli/bootstrap-schedules.ts
@@ -246,7 +251,6 @@ services:
       TF_WEB_POLL_BATCH_SIZE: "200"
       ARTIFACTS_BASE_DIR: "/data/artifacts"
     volumes:
-      - ./prompts:/app/prompts:ro
       - artifacts_data:/data/artifacts:ro
     command: bun run src/client/server.ts
     expose:
