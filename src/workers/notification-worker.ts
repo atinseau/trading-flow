@@ -45,9 +45,24 @@ const allowlistedChatId = infra.notifications.telegram.chat_id;
 const bot = new Bot(infra.notifications.telegram.bot_token);
 // Workflow client used to deliver kill signals. Separate from the worker's
 // NativeConnection — `Client` requires a regular grpc Connection.
-const workflowClientConnection = await Connection.connect({
-  address: infra.temporal.address,
-});
+//
+// Boot-time failure handling: a Temporal outage at startup should not crash
+// the process with an unhelpful stack trace. Surface a structured error
+// (with the address that was attempted) and exit cleanly so the orchestrator
+// (docker-compose / k8s) can surface a coherent restart loop instead.
+let workflowClientConnection: Connection;
+try {
+  workflowClientConnection = await Connection.connect({
+    address: infra.temporal.address,
+  });
+} catch (err) {
+  log.error(
+    { err: (err as Error).message, address: infra.temporal.address },
+    "failed to connect to Temporal — notification worker cannot start",
+  );
+  await health.stop().catch(() => {});
+  process.exit(1);
+}
 const workflowClient = new Client({
   connection: workflowClientConnection,
   namespace: infra.temporal.namespace,
@@ -168,14 +183,42 @@ const healthTick = setInterval(() => {
   health.setActivity();
 }, 5_000);
 
+// Shutdown ordering matters:
+//   1. Stop bot polling so no new callbacks land mid-shutdown.
+//   2. worker.shutdown() initiates graceful drain; `worker.run()` (awaited
+//      below at module bottom) resolves once draining completes.
+//   3. Only AFTER worker.run() resolves do we close the workflow-client
+//      connection and shut down the container — closing them earlier would
+//      yank shared resources out from under in-flight activities. We use
+//      a `shuttingDown` flag to coordinate the two halves: SIGTERM kicks
+//      off the drain, the awaited worker.run() handles the post-drain
+//      cleanup sequentially.
+let shuttingDown = false;
 process.on("SIGTERM", async () => {
+  if (shuttingDown) return;
+  shuttingDown = true;
   log.info("shutting down");
   clearInterval(healthTick);
   health.setStatus("down");
-  await health.stop();
-  if (bot) await bot.stop();
+  if (bot) {
+    try {
+      await bot.stop();
+    } catch (err) {
+      log.warn({ err }, "bot.stop failed during shutdown (non-fatal)");
+    }
+  }
   worker.shutdown();
-  await container.shutdown();
-  await workflowClientConnection.close();
 });
+
 await worker.run();
+// Post-drain cleanup runs after worker.run() resolves (either via SIGTERM-
+// triggered shutdown or natural worker exit). Order: workflow client first
+// (it's a sibling of the worker's NativeConnection), then container, then
+// the health server.
+try {
+  await workflowClientConnection.close();
+} catch (err) {
+  log.warn({ err }, "workflowClientConnection.close failed (non-fatal)");
+}
+await container.shutdown();
+await health.stop().catch(() => {});
