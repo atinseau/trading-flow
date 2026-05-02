@@ -1,4 +1,4 @@
-import { MarketStateBadge } from "@client/components/market-state-badge";
+import { MarketClosedBanner } from "@client/components/market-state-badge";
 import { ConfirmAction } from "@client/components/shared/confirm-action";
 import { RelativeTime } from "@client/components/shared/relative-time";
 import { Badge } from "@client/components/ui/badge";
@@ -40,7 +40,8 @@ export function WatchCard({ watch }: { watch: WatchListItem }) {
   });
 
   return (
-    <Card>
+    <Card className="overflow-hidden">
+      <MarketClosedBanner watch={{ asset: watch.config.asset }} />
       <CardHeader className="flex flex-row items-start justify-between gap-2 pb-2">
         <div>
           <Link to={`/watches/${watch.id}`} className="font-bold font-mono">
@@ -48,12 +49,9 @@ export function WatchCard({ watch }: { watch: WatchListItem }) {
           </Link>
           <div className="text-xs text-muted-foreground mt-1">{watch.id}</div>
         </div>
-        <div className="flex gap-1">
-          <Badge variant={watch.enabled ? "default" : "secondary"}>
-            {watch.enabled ? "Active" : "Pause"}
-          </Badge>
-          <MarketStateBadge watch={{ asset: watch.config.asset }} />
-        </div>
+        <Badge variant={watch.enabled ? "default" : "secondary"}>
+          {watch.enabled ? "Active" : "Pause"}
+        </Badge>
       </CardHeader>
       <CardContent className="text-xs space-y-1">
         <div>
