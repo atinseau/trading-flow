@@ -145,6 +145,82 @@ describe("PostgresSetupRepository", () => {
     expect(result.every((s) => s.asset === "BTCUSDT")).toBe(true);
   });
 
+  test("create() is idempotent — second call with same id returns existing row instead of throwing", async () => {
+    // Why: Temporal retries the createSetup activity on transient errors (network blip, pool drop
+    // after INSERT committed but before RETURNING returned to the worker). Without ON CONFLICT,
+    // the retry crashes on a unique-key violation and the workflow fails, leaving an orphan setup
+    // row with no SetupCreated event. We saw this in prod on 2026-05-02 (workflow setup-48cddad0…).
+    const id = crypto.randomUUID();
+    const wfId = `wf-${crypto.randomUUID()}`;
+    const input = {
+      id,
+      watchId,
+      asset: "AVAXUSDT",
+      timeframe: "1h",
+      status: "REVIEWING" as const,
+      currentScore: 30,
+      patternHint: "double_bottom",
+      patternCategory: "accumulation" as const,
+      expectedMaturationTicks: null,
+      invalidationLevel: 20,
+      direction: "LONG" as const,
+      ttlCandles: 50,
+      ttlExpiresAt: new Date(Date.now() + 86400_000),
+      workflowId: wfId,
+    };
+
+    const first = await repo.create(input);
+    const second = await repo.create(input);
+
+    expect(second.id).toBe(first.id);
+    expect(second.workflowId).toBe(wfId);
+    expect(second.createdAt.getTime()).toBe(first.createdAt.getTime());
+  });
+
+  test("create() with conflicting id but different payload returns the original row (first writer wins)", async () => {
+    // Defensive: if the second call passed a different score/level, we still want the original
+    // committed row — never overwrite. This mirrors how Temporal activity retries should behave.
+    const id = crypto.randomUUID();
+    const first = await repo.create({
+      id,
+      watchId,
+      asset: "DOGEUSDT",
+      timeframe: "1h",
+      status: "REVIEWING",
+      currentScore: 25,
+      patternHint: null,
+      patternCategory: null,
+      expectedMaturationTicks: null,
+      invalidationLevel: 0.1,
+      direction: "LONG",
+      ttlCandles: 50,
+      ttlExpiresAt: new Date(Date.now() + 86400_000),
+      workflowId: `wf-${crypto.randomUUID()}`,
+    });
+
+    const second = await repo.create({
+      id,
+      watchId,
+      asset: "DOGEUSDT",
+      timeframe: "1h",
+      status: "REVIEWING",
+      currentScore: 99, // different
+      patternHint: "flag", // different
+      patternCategory: "accumulation",
+      expectedMaturationTicks: null,
+      invalidationLevel: 0.5, // different
+      direction: "LONG",
+      ttlCandles: 50,
+      ttlExpiresAt: new Date(Date.now() + 86400_000),
+      workflowId: `wf-${crypto.randomUUID()}`, // different
+    });
+
+    expect(second.currentScore).toBe(first.currentScore);
+    expect(second.invalidationLevel).toBe(first.invalidationLevel);
+    expect(second.workflowId).toBe(first.workflowId);
+    expect(second.patternHint).toBe(first.patternHint);
+  });
+
   test("markClosed updates status + closedAt", async () => {
     const s = await repo.create({
       id: crypto.randomUUID(),

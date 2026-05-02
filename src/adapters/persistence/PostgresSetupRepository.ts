@@ -14,8 +14,11 @@ export class PostgresSetupRepository implements SetupRepository {
     private candleDurationMsResolver: (tf: string) => number,
   ) {}
 
+  // Idempotent against Temporal activity retries: if a previous attempt committed the row but the
+  // worker lost the RETURNING result (network blip, pool drop), the retry hits ON CONFLICT DO NOTHING
+  // and falls back to a SELECT so the workflow can continue rather than failing on a unique-key violation.
   async create(setup: Omit<Setup, "createdAt" | "updatedAt" | "closedAt">): Promise<Setup> {
-    const [row] = await this.db
+    const [inserted] = await this.db
       .insert(setups)
       .values({
         id: setup.id,
@@ -33,9 +36,13 @@ export class PostgresSetupRepository implements SetupRepository {
         ttlExpiresAt: setup.ttlExpiresAt,
         workflowId: setup.workflowId,
       })
+      .onConflictDoNothing({ target: setups.id })
       .returning();
-    if (!row) throw new Error("setup insert returned no row");
-    return mapSetup(row);
+    if (inserted) return mapSetup(inserted);
+
+    const existing = await this.get(setup.id);
+    if (!existing) throw new Error(`setup ${setup.id} insert conflicted but row not found`);
+    return existing;
   }
 
   async get(id: string): Promise<Setup | null> {
