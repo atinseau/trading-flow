@@ -1,12 +1,14 @@
 import type { WatchConfig } from "@domain/schemas/WatchesConfig";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
-import { WatchForm } from "../components/watch-form";
+import { WatchForm, type WatchFormPreset } from "../components/watch-form";
 import { api } from "../lib/api";
 
 const VALID_TIMEFRAMES = ["1m", "5m", "15m", "30m", "1h", "2h", "4h", "1d", "1w"] as const;
 const VALID_SOURCES = ["binance", "yahoo"] as const;
+
+type YahooMeta = { quoteType: string; exchange?: string };
 
 export function Component() {
   const qc = useQueryClient();
@@ -15,7 +17,7 @@ export function Component() {
 
   // Optional pre-fill from /assets/:source/:symbol "Create watch" button.
   // Only applies known-valid values; unknown source/timeframe is ignored.
-  const preset = (() => {
+  const preset: WatchFormPreset | undefined = (() => {
     const source = searchParams.get("source");
     const symbol = searchParams.get("symbol");
     const timeframe = searchParams.get("timeframe");
@@ -29,11 +31,37 @@ export function Component() {
         ? {
             asset: {
               ...(symbol ? { symbol } : {}),
-              ...(sourceOk ? { source } : {}),
-            } as { symbol?: string; source?: string },
+              ...(sourceOk ? { source: source ?? undefined } : {}),
+            },
           }
         : {}),
-      ...(tfOk ? { timeframes: { primary: timeframe } } : {}),
+      ...(tfOk && timeframe ? { timeframes: { primary: timeframe } } : {}),
+    };
+  })();
+
+  // Yahoo source requires quoteType (and sometimes exchange) — symmetric to
+  // the server-side enrichment in api/watches.ts. We resolve it client-side
+  // so the form's schema validation can pass on first submit attempt.
+  const needsYahooLookup = preset?.asset?.source === "yahoo" && !!preset.asset.symbol;
+  const yahooMeta = useQuery({
+    queryKey: ["yahoo-lookup", preset?.asset?.symbol],
+    queryFn: () =>
+      api<YahooMeta>(`/api/yahoo/lookup?symbol=${encodeURIComponent(preset!.asset!.symbol!)}`),
+    enabled: needsYahooLookup,
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+
+  const enrichedPreset: WatchFormPreset | undefined = (() => {
+    if (!preset) return undefined;
+    if (!needsYahooLookup || !yahooMeta.data) return preset;
+    return {
+      ...preset,
+      asset: {
+        ...preset.asset,
+        quoteType: yahooMeta.data.quoteType,
+        ...(yahooMeta.data.exchange ? { exchange: yahooMeta.data.exchange } : {}),
+      },
     };
   })();
 
@@ -48,10 +76,32 @@ export function Component() {
     onError: (err) => toast.error((err as Error).message),
   });
 
+  if (needsYahooLookup && yahooMeta.isLoading) {
+    return (
+      <div>
+        <h1 className="text-xl font-bold mb-6">Nouvelle watch</h1>
+        <div className="text-sm text-muted-foreground">
+          Recherche du symbole {preset?.asset?.symbol} sur Yahoo…
+        </div>
+      </div>
+    );
+  }
+  if (needsYahooLookup && yahooMeta.isError) {
+    return (
+      <div>
+        <h1 className="text-xl font-bold mb-6">Nouvelle watch</h1>
+        <div className="text-sm text-destructive">
+          Symbole {preset?.asset?.symbol} introuvable sur Yahoo. Vérifie le ticker ou choisis une
+          autre source.
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div>
       <h1 className="text-xl font-bold mb-6">Nouvelle watch</h1>
-      <WatchForm mode="create" preset={preset} onSubmit={(c) => create.mutate(c)} />
+      <WatchForm mode="create" preset={enrichedPreset} onSubmit={(c) => create.mutate(c)} />
     </div>
   );
 }

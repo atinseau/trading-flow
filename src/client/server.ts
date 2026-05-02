@@ -11,6 +11,7 @@ import { makeSetupsApi } from "@client/api/setups";
 import { makeStreamHandler } from "@client/api/stream";
 import { makeTicksApi } from "@client/api/ticks";
 import { makeWatchesApi } from "@client/api/watches";
+import { yahooLookup } from "@client/api/yahoo";
 import { broadcaster } from "@client/lib/broadcaster";
 import { db, pool } from "@client/lib/db";
 import { webLogger } from "@client/lib/logger";
@@ -137,6 +138,7 @@ const server = Bun.serve({
     "/api/stream": { GET: makeStreamHandler({ broadcaster }) },
     "/api/search": { GET: (req) => search(req) },
     "/api/assets/:source/:symbol/ohlcv": { GET: (req) => assetOhlcv(req) },
+    "/api/yahoo/lookup": { GET: (req) => yahooLookup(req) },
     // Unknown /api/* → 404 JSON (must come before the SPA catch-all so it
     // wins for paths starting with /api/).
     "/api/*": () => Response.json({ error: "not found" }, { status: 404 }),
