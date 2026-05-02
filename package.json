@@ -31,6 +31,7 @@
     "worker:notification": "bun run src/workers/notification-worker.ts",
     "worker:web": "bun run src/client/server.ts",
     "compose:up": "docker compose --env-file .env -f docker-compose.yml up -d --build",
+    "precompose:dev": "scripts/dev/extract-claude-creds.sh",
     "compose:dev": "docker compose --env-file .env -f docker-compose.yml -f docker-compose-dev.yaml up -d --build",
     "compose:down": "docker compose --env-file .env -f docker-compose.yml -f docker-compose-dev.yaml down",
     "compose:sync": "docker compose --env-file .env -f docker-compose.yml -f docker-compose-dev.yaml restart tf-web",
