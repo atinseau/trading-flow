@@ -2,6 +2,11 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { TestWorkflowEnvironment } from "@temporalio/testing";
 import { Worker } from "@temporalio/worker";
 import { getStateQuery, type InitialEvidence, setupWorkflow } from "@workflows/setup/setupWorkflow";
+import {
+  baseRunReviewerReturn,
+  defaultActivityStubs,
+  makePersistEvent,
+} from "./_setupTestHelpers";
 
 // One TestWorkflowEnvironment shared across all tests in the file. We can't
 // recreate per-test because the Temporal native Runtime is a process-global
@@ -51,26 +56,6 @@ const baseInitial: InitialEvidence = {
   feedbackEnabled: false,
 };
 
-const baseRunReviewerReturn = (
-  verdict: unknown,
-): {
-  verdictJson: string;
-  costUsd: number;
-  eventAlreadyExisted: boolean;
-  inputHash: string;
-  promptVersion: string;
-  provider: string;
-  model: string;
-} => ({
-  verdictJson: JSON.stringify(verdict),
-  costUsd: 0,
-  eventAlreadyExisted: false,
-  inputHash: "test-hash",
-  promptVersion: "reviewer_v1",
-  provider: "fake",
-  model: "fake-model",
-});
-
 // Each test gets its own task queue so that worker leaks (e.g. timeouts) in
 // one test cannot interfere with another via the "Registration of multiple
 // workers with overlapping worker task types" error.
@@ -79,62 +64,10 @@ function uniqueQueue(name: string): string {
   return `test-${name}-${++__testCounter}`;
 }
 
-/**
- * Build a fake `persistEvent` that mirrors the production EventStore contract:
- * the store assigns the sequence atomically. Returns a `StoredEvent`-shaped
- * record with monotonically increasing `sequence` per setupId.
- */
-type FakePersistInput = {
-  event: {
-    setupId: string;
-    type: string;
-    statusBefore?: string;
-    statusAfter?: string;
-    [k: string]: unknown;
-  };
-  setupUpdate: unknown;
-};
-
-function makePersistEvent(onPersist?: (input: FakePersistInput) => void) {
-  const seqBySetup = new Map<string, number>();
-  return async (input: FakePersistInput) => {
-    onPersist?.(input);
-    const prev = seqBySetup.get(input.event.setupId) ?? 0;
-    const sequence = prev + 1;
-    seqBySetup.set(input.event.setupId, sequence);
-    return {
-      ...input.event,
-      sequence,
-      id: `evt-${input.event.setupId}-${sequence}`,
-      occurredAt: new Date(),
-    };
-  };
-}
-
 describe("SetupWorkflow", () => {
   test("CANDIDATE -> REVIEWING after creation, score = initial", async () => {
     const taskQueue = uniqueQueue("candidate-reviewing");
-    const fakeActivities = {
-      createSetup: async () => ({}),
-      persistEvent: makePersistEvent(),
-      runReviewer: async () => baseRunReviewerReturn({ type: "NEUTRAL", observations: [] }),
-      runFinalizer: async () => ({
-        decisionJson: JSON.stringify({ go: false, reasoning: "x" }),
-        costUsd: 0,
-        promptVersion: "finalizer_v3",
-      }),
-      markSetupClosed: async () => {},
-      listEventsForSetup: async () => [],
-      loadSetup: async () => null,
-      notifyTelegramConfirmed: async () => null,
-      notifyTelegramRejected: async () => null,
-      notifyTelegramInvalidatedAfterConfirmed: async () => null,
-      notifyTelegramExpired: async () => null,
-      notifyTelegramSetupCreated: async () => null,
-      notifyTelegramReviewerVerdict: async () => null,
-      notifyTelegramSetupKilled: async () => null,
-      killSetup: async () => {},
-    };
+    const fakeActivities = defaultActivityStubs();
     const worker = await Worker.create({
       connection: env.nativeConnection,
       taskQueue,
@@ -158,8 +91,7 @@ describe("SetupWorkflow", () => {
   test("STRENGTHEN crossing threshold -> FINALIZING -> REJECTED if no go", async () => {
     const taskQueue = uniqueQueue("strengthen-rejected");
     const fakeActivities = {
-      createSetup: async () => ({}),
-      persistEvent: makePersistEvent(),
+      ...defaultActivityStubs(),
       runReviewer: async () =>
         baseRunReviewerReturn({
           type: "STRENGTHEN",
@@ -167,22 +99,6 @@ describe("SetupWorkflow", () => {
           observations: [],
           reasoning: "looks strong",
         }),
-      runFinalizer: async () => ({
-        decisionJson: JSON.stringify({ go: false, reasoning: "x" }),
-        costUsd: 0,
-        promptVersion: "finalizer_v3",
-      }),
-      markSetupClosed: async () => {},
-      listEventsForSetup: async () => [],
-      loadSetup: async () => null,
-      notifyTelegramConfirmed: async () => null,
-      notifyTelegramRejected: async () => null,
-      notifyTelegramInvalidatedAfterConfirmed: async () => null,
-      notifyTelegramExpired: async () => null,
-      notifyTelegramSetupCreated: async () => null,
-      notifyTelegramReviewerVerdict: async () => null,
-      notifyTelegramSetupKilled: async () => null,
-      killSetup: async () => {},
     };
     const worker = await Worker.create({
       connection: env.nativeConnection,
@@ -209,7 +125,7 @@ describe("SetupWorkflow", () => {
     const persistedTypes: string[] = [];
 
     const fakeActivities = {
-      createSetup: async () => ({}),
+      ...defaultActivityStubs(),
       persistEvent: makePersistEvent((input) => {
         persistedTypes.push(input.event.type);
       }),
@@ -231,13 +147,6 @@ describe("SetupWorkflow", () => {
         costUsd: 0,
         promptVersion: "finalizer_v3",
       }),
-      markSetupClosed: async () => {},
-      listEventsForSetup: async () => [],
-      loadSetup: async () => null,
-      notifyTelegramConfirmed: async () => null,
-      notifyTelegramRejected: async () => null,
-      notifyTelegramInvalidatedAfterConfirmed: async () => null,
-      notifyTelegramExpired: async () => null,
       notifyTelegramTPHit: async (input: { index: number; isFinal: boolean }) => {
         tpHitNotifications.push({ index: input.index, isFinal: input.isFinal });
         return null;
@@ -246,10 +155,6 @@ describe("SetupWorkflow", () => {
         slHitNotifications.push(input.level);
         return null;
       },
-      notifyTelegramSetupCreated: async () => null,
-      notifyTelegramReviewerVerdict: async () => null,
-      notifyTelegramSetupKilled: async () => null,
-      killSetup: async () => {},
     };
     const worker = await Worker.create({
       connection: env.nativeConnection,
@@ -309,7 +214,7 @@ describe("SetupWorkflow", () => {
     const persistedTypes: string[] = [];
 
     const fakeActivities = {
-      createSetup: async () => ({}),
+      ...defaultActivityStubs(),
       persistEvent: makePersistEvent((input) => {
         persistedTypes.push(input.event.type);
       }),
@@ -331,22 +236,10 @@ describe("SetupWorkflow", () => {
         costUsd: 0,
         promptVersion: "finalizer_v3",
       }),
-      markSetupClosed: async () => {},
-      listEventsForSetup: async () => [],
-      loadSetup: async () => null,
-      notifyTelegramConfirmed: async () => null,
-      notifyTelegramRejected: async () => null,
-      notifyTelegramInvalidatedAfterConfirmed: async () => null,
-      notifyTelegramExpired: async () => null,
-      notifyTelegramTPHit: async () => null,
       notifyTelegramSLHit: async (input: { level: number }) => {
         slHitNotifications.push(input.level);
         return null;
       },
-      notifyTelegramSetupCreated: async () => null,
-      notifyTelegramReviewerVerdict: async () => null,
-      notifyTelegramSetupKilled: async () => null,
-      killSetup: async () => {},
     };
     const worker = await Worker.create({
       connection: env.nativeConnection,
@@ -403,7 +296,7 @@ describe("SetupWorkflow", () => {
     let telegramExpiredCalled = false;
 
     const fakeActivities = {
-      createSetup: async () => ({}),
+      ...defaultActivityStubs(),
       persistEvent: makePersistEvent((input) => {
         persistedEvents.push({
           type: input.event.type,
@@ -411,28 +304,10 @@ describe("SetupWorkflow", () => {
           statusAfter: input.event.statusAfter ?? "",
         });
       }),
-      runReviewer: async () => baseRunReviewerReturn({ type: "NEUTRAL", observations: [] }),
-      runFinalizer: async () => ({
-        decisionJson: JSON.stringify({ go: false, reasoning: "x" }),
-        costUsd: 0,
-        promptVersion: "finalizer_v3",
-      }),
-      markSetupClosed: async () => {},
-      listEventsForSetup: async () => [],
-      loadSetup: async () => null,
-      notifyTelegramConfirmed: async () => null,
-      notifyTelegramRejected: async () => null,
-      notifyTelegramInvalidatedAfterConfirmed: async () => null,
-      notifyTelegramTPHit: async () => null,
-      notifyTelegramSLHit: async () => null,
       notifyTelegramExpired: async () => {
         telegramExpiredCalled = true;
         return { messageId: 1 };
       },
-      notifyTelegramSetupCreated: async () => null,
-      notifyTelegramReviewerVerdict: async () => null,
-      notifyTelegramSetupKilled: async () => null,
-      killSetup: async () => {},
     };
 
     const worker = await Worker.create({
@@ -474,7 +349,7 @@ describe("SetupWorkflow", () => {
     const tpHitNotifications: Array<{ index: number; isFinal: boolean }> = [];
 
     const fakeActivities = {
-      createSetup: async () => ({}),
+      ...defaultActivityStubs(),
       persistEvent: makePersistEvent((input) => {
         persistedTypes.push(input.event.type);
       }),
@@ -496,22 +371,10 @@ describe("SetupWorkflow", () => {
         costUsd: 0,
         promptVersion: "finalizer_v3",
       }),
-      markSetupClosed: async () => {},
-      listEventsForSetup: async () => [],
-      loadSetup: async () => null,
-      notifyTelegramConfirmed: async () => null,
-      notifyTelegramRejected: async () => null,
-      notifyTelegramInvalidatedAfterConfirmed: async () => null,
-      notifyTelegramExpired: async () => null,
       notifyTelegramTPHit: async (input: { index: number; isFinal: boolean }) => {
         tpHitNotifications.push({ index: input.index, isFinal: input.isFinal });
         return null;
       },
-      notifyTelegramSLHit: async () => null,
-      notifyTelegramSetupCreated: async () => null,
-      notifyTelegramReviewerVerdict: async () => null,
-      notifyTelegramSetupKilled: async () => null,
-      killSetup: async () => {},
     };
 
     const worker = await Worker.create({
@@ -567,27 +430,7 @@ describe("SetupWorkflow", () => {
 
   test("priceCheck below invalidation -> INVALIDATED", async () => {
     const taskQueue = uniqueQueue("price-invalidated");
-    const fakeActivities = {
-      createSetup: async () => ({}),
-      persistEvent: makePersistEvent(),
-      runReviewer: async () => baseRunReviewerReturn({ type: "NEUTRAL", observations: [] }),
-      runFinalizer: async () => ({
-        decisionJson: JSON.stringify({ go: false, reasoning: "x" }),
-        costUsd: 0,
-        promptVersion: "finalizer_v3",
-      }),
-      markSetupClosed: async () => {},
-      listEventsForSetup: async () => [],
-      loadSetup: async () => null,
-      notifyTelegramConfirmed: async () => null,
-      notifyTelegramRejected: async () => null,
-      notifyTelegramInvalidatedAfterConfirmed: async () => null,
-      notifyTelegramExpired: async () => null,
-      notifyTelegramSetupCreated: async () => null,
-      notifyTelegramReviewerVerdict: async () => null,
-      notifyTelegramSetupKilled: async () => null,
-      killSetup: async () => {},
-    };
+    const fakeActivities = defaultActivityStubs();
     const worker = await Worker.create({
       connection: env.nativeConnection,
       taskQueue,
@@ -618,31 +461,17 @@ describe("SetupWorkflow", () => {
     const setupKilledNotifications: string[] = [];
 
     const fakeActivities = {
-      createSetup: async () => ({}),
+      ...defaultActivityStubs(),
       persistEvent: makePersistEvent((input) => {
         persistedTypes.push(input.event.type);
       }),
-      runReviewer: async () => baseRunReviewerReturn({ type: "NEUTRAL", observations: [] }),
-      runFinalizer: async () => ({
-        decisionJson: JSON.stringify({ go: false, reasoning: "x" }),
-        costUsd: 0,
-        promptVersion: "finalizer_v3",
-      }),
-      markSetupClosed: async () => {},
-      listEventsForSetup: async () => [],
-      loadSetup: async () => null,
-      notifyTelegramConfirmed: async () => null,
-      notifyTelegramRejected: async () => null,
-      notifyTelegramInvalidatedAfterConfirmed: async () => null,
-      notifyTelegramExpired: async () => null,
-      notifyTelegramSetupCreated: async () => null,
-      notifyTelegramReviewerVerdict: async () => null,
       notifyTelegramSetupKilled: async (input: { setupId: string }) => {
         setupKilledNotifications.push(input.setupId);
         return { messageId: 99 };
       },
       killSetup: async (input: { setupId: string; reason: string }) => {
         killSetupCalls.push(input);
+        return null;
       },
     };
     const worker = await Worker.create({
@@ -688,29 +517,14 @@ describe("SetupWorkflow", () => {
     const setupKilledNotifications: string[] = [];
 
     const fakeActivities = {
-      createSetup: async () => ({}),
-      persistEvent: makePersistEvent(),
-      runReviewer: async () => baseRunReviewerReturn({ type: "NEUTRAL", observations: [] }),
-      runFinalizer: async () => ({
-        decisionJson: JSON.stringify({ go: false, reasoning: "x" }),
-        costUsd: 0,
-        promptVersion: "finalizer_v3",
-      }),
-      markSetupClosed: async () => {},
-      listEventsForSetup: async () => [],
-      loadSetup: async () => null,
-      notifyTelegramConfirmed: async () => null,
-      notifyTelegramRejected: async () => null,
-      notifyTelegramInvalidatedAfterConfirmed: async () => null,
-      notifyTelegramExpired: async () => null,
-      notifyTelegramSetupCreated: async () => null,
-      notifyTelegramReviewerVerdict: async () => null,
+      ...defaultActivityStubs(),
       notifyTelegramSetupKilled: async (input: { setupId: string }) => {
         setupKilledNotifications.push(input.setupId);
         return { messageId: 99 };
       },
       killSetup: async (input: { setupId: string; reason: string }) => {
         killSetupCalls.push(input);
+        return null;
       },
     };
     const worker = await Worker.create({
@@ -762,6 +576,7 @@ describe("SetupWorkflow", () => {
     // early apply call we'd enter the active loop on an already-killed
     // setup.
     const fakeActivities = {
+      ...defaultActivityStubs(),
       createSetup: async () => {
         await new Promise((r) => setTimeout(r, 200));
         return {};
@@ -773,23 +588,10 @@ describe("SetupWorkflow", () => {
         // The reviewer must NOT run if kill applied before active loop.
         throw new Error("runReviewer should not be called on early-killed setup");
       },
-      runFinalizer: async () => ({
-        decisionJson: JSON.stringify({ go: false, reasoning: "x" }),
-        costUsd: 0,
-        promptVersion: "finalizer_v3",
-      }),
-      markSetupClosed: async () => {},
-      listEventsForSetup: async () => [],
-      loadSetup: async () => null,
-      notifyTelegramConfirmed: async () => null,
-      notifyTelegramRejected: async () => null,
-      notifyTelegramInvalidatedAfterConfirmed: async () => null,
-      notifyTelegramExpired: async () => null,
-      notifyTelegramSetupCreated: async () => null,
-      notifyTelegramReviewerVerdict: async () => null,
       notifyTelegramSetupKilled: async () => ({ messageId: 99 }),
       killSetup: async (input: { setupId: string; reason: string }) => {
         killSetupCalls.push(input);
+        return null;
       },
     };
     const worker = await Worker.create({
