@@ -12,7 +12,10 @@
 import { describe, expect, test } from "bun:test";
 import type { InfraConfig } from "@config/InfraConfig";
 import type { WatchConfig } from "@domain/schemas/WatchesConfig";
+import type { SetupStatus } from "@domain/state-machine/setupTransitions";
 import { FakeNotifier } from "@test-fakes/FakeNotifier";
+import { InMemoryEventStore } from "@test-fakes/InMemoryEventStore";
+import { InMemorySetupRepository } from "@test-fakes/InMemorySetupRepository";
 import type { ActivityDeps } from "@workflows/activityDependencies";
 import { buildSetupActivities } from "@workflows/setup/activities";
 
@@ -298,5 +301,144 @@ describe("notifyTelegramSetupKilled — notify_on guard", () => {
     expect(sent.text).toContain("killed by user");
     // Confirmation message is intentionally button-less.
     expect(sent.buttons).toBeUndefined();
+  });
+});
+
+// ---- killSetup activity (idempotency) ---------------------------------------
+
+/**
+ * Build a minimal ActivityDeps wired to in-memory setupRepo + eventStore so
+ * we can exercise the killSetup activity's idempotency contract directly.
+ */
+function makeKillDeps(
+  setupRepo: InMemorySetupRepository,
+  eventStore: InMemoryEventStore,
+): ActivityDeps {
+  return {
+    setupRepo,
+    eventStore,
+    // Unused in killSetup
+    watchById: async () => null,
+    notifier: null as never,
+    infra: null as never,
+    clock: null as never,
+    artifactStore: null as never,
+    tickSnapshotStore: null as never,
+    llmProviders: new Map(),
+    llmCallStore: null as never,
+    fundingRateProviders: new Map(),
+    marketDataFetchers: new Map(),
+    chartRenderer: null as never,
+    indicatorCalculator: null as never,
+    indicatorRegistry: null as never,
+    promptBuilder: null as never,
+    priceFeeds: new Map(),
+    watchRepo: null as never,
+    config: null as never,
+    temporalClient: null as never,
+    scheduleController: null as never,
+    db: null as never,
+    pgPool: null as never,
+    lessonStore: null as never,
+    lessonEventStore: null as never,
+    feedbackContextRegistry: null as never,
+    notifyLessonPending: null as never,
+  };
+}
+
+function seedSetup(
+  repo: InMemorySetupRepository,
+  setupId: string,
+  status: SetupStatus,
+): Promise<unknown> {
+  return repo.create({
+    id: setupId,
+    watchId: "btc-1h",
+    asset: "BTCUSDT",
+    timeframe: "1h",
+    status,
+    currentScore: 25,
+    patternHint: "double_bottom",
+    patternCategory: "accumulation",
+    expectedMaturationTicks: 4,
+    invalidationLevel: 100,
+    direction: "LONG",
+    ttlCandles: 50,
+    ttlExpiresAt: new Date(Date.now() + 365 * 24 * 3600_000),
+    workflowId: "wf-test",
+  });
+}
+
+/**
+ * The InMemoryEventStore tracks setupUpdate in a side map but does not
+ * mutate the repo (production EventStore.append does both inside one
+ * tx). For the idempotency test we manually patch the repo to reflect
+ * the post-append status — this is what the real Postgres tx commits.
+ * Without the patch the second activity call would still observe
+ * REVIEWING and fail the no-op assertion for reasons unrelated to the
+ * production behavior we care about.
+ */
+function syncRepoFromEvent(
+  repo: InMemorySetupRepository,
+  store: InMemoryEventStore,
+  setupId: string,
+): void {
+  const update = store.setupStateAfterAppend.get(setupId);
+  if (!update) return;
+  repo.patch(setupId, {
+    status: update.status,
+    currentScore: update.score,
+  });
+}
+
+describe("killSetup — idempotency", () => {
+  test("calling twice on the same setup persists Killed event only once", async () => {
+    const repo = new InMemorySetupRepository();
+    const events = new InMemoryEventStore();
+    await seedSetup(repo, "kill-1", "REVIEWING");
+    const activities = buildSetupActivities(makeKillDeps(repo, events));
+
+    await activities.killSetup({ setupId: "kill-1", reason: "user_killed_via_telegram" });
+    // Mirror the same-tx update that PostgresEventStore.append performs.
+    syncRepoFromEvent(repo, events, "kill-1");
+
+    // Second call must be a no-op — repo status is now KILLED (terminal).
+    await activities.killSetup({ setupId: "kill-1", reason: "user_killed_via_telegram" });
+
+    const killedEvents = events.events.filter(
+      (e) => e.setupId === "kill-1" && e.type === "Killed",
+    );
+    expect(killedEvents).toHaveLength(1);
+    expect(killedEvents[0]?.statusAfter).toBe("KILLED");
+  });
+
+  test("calling on a setup already in CONFIRMED-equivalent terminal status is a no-op", async () => {
+    const repo = new InMemorySetupRepository();
+    const events = new InMemoryEventStore();
+    // CLOSED is the canonical post-confirm terminal status (CONFIRMED is
+    // a transient finalizer event, not a status). Either covers the spec
+    // intent: kill on already-terminal setup must be a no-op.
+    await seedSetup(repo, "kill-2", "CLOSED");
+    const activities = buildSetupActivities(makeKillDeps(repo, events));
+
+    await activities.killSetup({ setupId: "kill-2", reason: "late_kill" });
+
+    expect(events.events).toHaveLength(0);
+    // Status preserved (no flip to KILLED).
+    const after = await repo.get("kill-2");
+    expect(after?.status).toBe("CLOSED");
+  });
+
+  test("calling on a setup with status REJECTED is a no-op", async () => {
+    const repo = new InMemorySetupRepository();
+    const events = new InMemoryEventStore();
+    await seedSetup(repo, "kill-3", "REJECTED");
+    const activities = buildSetupActivities(makeKillDeps(repo, events));
+
+    await activities.killSetup({ setupId: "kill-3", reason: "late_kill" });
+
+    expect(events.events).toHaveLength(0);
+    const after = await repo.get("kill-3");
+    expect(after?.status).toBe("REJECTED");
   });
 });

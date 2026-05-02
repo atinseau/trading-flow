@@ -16,6 +16,7 @@ import { computeInputHash } from "@domain/services/inputHash";
 import { classifyRegime } from "@domain/services/marketRegime";
 import { getSession, getSessionState } from "@domain/services/marketSession";
 import { getTradingSession } from "@domain/services/tradingSession";
+import { isTerminal } from "@domain/state-machine/setupTransitions";
 import { getLogger } from "@observability/logger";
 import type { ActivityDeps } from "@workflows/activityDependencies";
 import { ensurePriceMonitorStarted } from "@workflows/price-monitor/ensureRunning";
@@ -832,8 +833,20 @@ export function buildSetupActivities(deps: ActivityDeps) {
     },
 
     /**
-     * Persists a Killed event and transitions the setup to the terminal KILLED
-     * status. Called from the workflow's killSignal handler.
+     * Persists a Killed event and transitions the setup to the terminal
+     * KILLED status. Called from the workflow's killSignal handler.
+     *
+     * Idempotent: a no-op when the setup is already in a terminal status
+     * (CLOSED / INVALIDATED / EXPIRED / REJECTED / KILLED). This covers
+     * three legitimate races where the activity may be re-invoked on a
+     * non-active setup:
+     *   - Activity retry after a transient DB blip mid-append (the row was
+     *     committed but the worker missed the ack).
+     *   - Workflow history replay after a worker restart (Temporal re-runs
+     *     activities that did not complete from its perspective).
+     *   - Late kill arriving after the setup naturally terminated (e.g.
+     *     finalizer rejected and persisted REJECTED before the kill signal
+     *     was delivered to the workflow).
      */
     async killSetup(input: { setupId: string; reason: string }): Promise<void> {
       const setup = await deps.setupRepo.get(input.setupId);
@@ -841,9 +854,13 @@ export function buildSetupActivities(deps: ActivityDeps) {
         log.warn({ setupId: input.setupId }, "killSetup: setup not found, ignoring");
         return;
       }
-      // Status before may be REVIEWING or FINALIZING — both transition to
-      // KILLED. Idempotent: if already terminal, persistEvent's sequence
-      // ordering will fail loudly rather than silently double-kill.
+      if (isTerminal(setup.status)) {
+        log.info(
+          { setupId: input.setupId, status: setup.status },
+          "killSetup: setup already terminal, no-op",
+        );
+        return;
+      }
       const before = setup.status;
       await deps.eventStore.append(
         {
