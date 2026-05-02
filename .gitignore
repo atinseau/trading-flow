@@ -21,10 +21,6 @@ data/
 .dev-artifacts/
 .dev-claude-workspace/
 
-# Claude Code OAuth credentials (extracted from macOS Keychain by
-# scripts/dev/extract-claude-creds.sh — local dev only, never committed)
-.dev-claude-credentials.json
-
 # Logs
 *.log
 npm-debug.log*
@@ -52,4 +48,3 @@ TODO.md
 # Dev compose bind-mounted volumes (artifacts, claude workspace)
 .dev-artifacts/
 .dev-claude-workspace/
-.playwright-cli/
