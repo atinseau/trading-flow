@@ -1,12 +1,15 @@
 import { parseCallbackData } from "@adapters/notify/lessonProposalFormat";
+import { parseSetupCallback } from "@adapters/notify/setupCallbackFormat";
 import { TelegramNotifier } from "@adapters/notify/TelegramNotifier";
 import { loadInfraConfig } from "@config/InfraConfig";
 import { loadWatchesFromDb } from "@config/loadWatchesFromDb";
 import { buildLessonApprovalUseCase } from "@domain/feedback/lessonApprovalUseCase";
 import { HealthServer } from "@observability/healthServer";
 import { getLogger } from "@observability/logger";
+import { Client, Connection } from "@temporalio/client";
 import { NativeConnection, Worker } from "@temporalio/worker";
 import { buildNotificationActivities } from "@workflows/notification/activities";
+import { setupWorkflowId } from "@workflows/setup/setupWorkflow";
 import { Bot } from "grammy";
 import pg from "pg";
 import { buildContainer } from "./buildContainer";
@@ -37,9 +40,18 @@ const worker = await Worker.create({
   activities: buildNotificationActivities(container.deps),
 });
 
-// --- Telegram callback handler (lesson approval) ---
+// --- Telegram callback handler (lesson approval + setup kill) ---
 const allowlistedChatId = infra.notifications.telegram.chat_id;
 const bot = new Bot(infra.notifications.telegram.bot_token);
+// Workflow client used to deliver kill signals. Separate from the worker's
+// NativeConnection — `Client` requires a regular grpc Connection.
+const workflowClientConnection = await Connection.connect({
+  address: infra.temporal.address,
+});
+const workflowClient = new Client({
+  connection: workflowClientConnection,
+  namespace: infra.temporal.namespace,
+});
 {
   const telegramNotifier = new TelegramNotifier({
     token: infra.notifications.telegram.bot_token,
@@ -71,9 +83,32 @@ const bot = new Bot(infra.notifications.telegram.bot_token);
       await ctx.answerCallbackQuery();
       return;
     }
-    const parsed = parseCallbackData(ctx.callbackQuery.data ?? "");
+
+    const data = ctx.callbackQuery.data ?? "";
+
+    // Try setup-kill format FIRST (v2|setup|...). It's strictly disjoint from
+    // the legacy v1 lesson format, so this ordering is safe — neither parser
+    // matches the other's payload.
+    const setupCb = parseSetupCallback(data);
+    if (setupCb) {
+      try {
+        const handle = workflowClient.workflow.getHandle(setupWorkflowId(setupCb.setupId));
+        await handle.signal("kill", { reason: "user_killed_via_telegram" });
+        // Strip the inline keyboard so the user can't double-click; the
+        // workflow's confirmation notification will follow once the kill
+        // applies.
+        await ctx.editMessageReplyMarkup({ reply_markup: { inline_keyboard: [] } });
+        await ctx.answerCallbackQuery({ text: "Setup kill signal sent." });
+      } catch (err) {
+        log.error({ err, setupId: setupCb.setupId }, "kill signal dispatch failed");
+        await ctx.answerCallbackQuery({ text: "Kill failed (see logs)." });
+      }
+      return;
+    }
+
+    const parsed = parseCallbackData(data);
     if (!parsed) {
-      log.warn({ data: ctx.callbackQuery.data }, "ignored malformed callback_data");
+      log.warn({ data }, "ignored malformed callback_data");
       await ctx.answerCallbackQuery();
       return;
     }
@@ -121,5 +156,6 @@ process.on("SIGTERM", async () => {
   if (bot) await bot.stop();
   worker.shutdown();
   await container.shutdown();
+  await workflowClientConnection.close();
 });
 await worker.run();
