@@ -550,6 +550,10 @@ export function buildSetupActivities(deps: ActivityDeps) {
       takeProfit: number[];
       reasoning: string;
       chartUri?: string;
+      /** Snapshotted at workflow start; falls back to live `watch.include_reasoning` for back-compat. */
+      includeReasoning?: boolean;
+      /** Snapshotted at workflow start; falls back to live `watch.include_chart_image` for back-compat. */
+      includeChartImage?: boolean;
     }): Promise<{ messageId: number } | null> {
       const childLog = log.child({ watchId: input.watchId, asset: input.asset });
       const watch = await deps.watchById(input.watchId);
@@ -559,13 +563,16 @@ export function buildSetupActivities(deps: ActivityDeps) {
         return null;
       }
 
+      const includeReasoning = input.includeReasoning ?? watch.include_reasoning;
+      const includeChartImage = input.includeChartImage ?? watch.include_chart_image;
+
       const arrow = input.direction === "LONG" ? "🟢 LONG" : "🔴 SHORT";
       const tpStr = input.takeProfit.length ? `\nTP: ${input.takeProfit.join(" / ")}` : "";
-      const reasoning = watch.include_reasoning ? `\n\n${input.reasoning}` : "";
+      const reasoning = includeReasoning ? `\n\n${input.reasoning}` : "";
       const text = `${arrow} ${input.asset} ${input.timeframe}\nEntry: ${input.entry}\nSL: ${input.stopLoss}${tpStr}${reasoning}`;
 
       const images =
-        watch.include_chart_image && input.chartUri ? [{ uri: input.chartUri }] : undefined;
+        includeChartImage && input.chartUri ? [{ uri: input.chartUri }] : undefined;
 
       const result = await deps.notifier.send({
         chatId: deps.infra.notifications.telegram.chat_id,
@@ -706,6 +713,8 @@ export function buildSetupActivities(deps: ActivityDeps) {
       rawObservation: string;
       invalidationLevel: number;
       chartUri?: string;
+      /** Snapshotted at workflow start; falls back to live `watch.include_chart_image` for back-compat. */
+      includeChartImage?: boolean;
     }): Promise<{ messageId: number } | null> {
       const childLog = log.child({ watchId: input.watchId, asset: input.asset });
       const watch = await deps.watchById(input.watchId);
@@ -714,6 +723,8 @@ export function buildSetupActivities(deps: ActivityDeps) {
         childLog.debug({ event: "setup_created" }, "notification skipped (not in notify_on)");
         return null;
       }
+
+      const includeChartImage = input.includeChartImage ?? watch.include_chart_image;
 
       const arrow = input.direction === "LONG" ? "🟢 LONG" : "🔴 SHORT";
       const text = [
@@ -726,7 +737,7 @@ export function buildSetupActivities(deps: ActivityDeps) {
       ].join("\n");
 
       const images =
-        watch.include_chart_image && input.chartUri ? [{ uri: input.chartUri }] : undefined;
+        includeChartImage && input.chartUri ? [{ uri: input.chartUri }] : undefined;
 
       const result = await deps.notifier.sendWithButtons({
         chatId: deps.infra.notifications.telegram.chat_id,
@@ -762,6 +773,8 @@ export function buildSetupActivities(deps: ActivityDeps) {
       scoreDelta: number;
       scoreAfter: number;
       reasoning: string;
+      /** Snapshotted at workflow start; falls back to live `watch.include_reasoning` for back-compat. */
+      includeReasoning?: boolean;
     }): Promise<{ messageId: number } | null> {
       const childLog = log.child({ watchId: input.watchId, asset: input.asset });
       const watch = await deps.watchById(input.watchId);
@@ -773,6 +786,7 @@ export function buildSetupActivities(deps: ActivityDeps) {
         return null;
       }
 
+      const includeReasoning = input.includeReasoning ?? watch.include_reasoning;
       const scoreBefore = input.scoreAfter - input.scoreDelta;
       const header =
         input.verdict === "STRENGTHEN"
@@ -782,7 +796,7 @@ export function buildSetupActivities(deps: ActivityDeps) {
         header,
         `Score: ${scoreBefore}→${input.scoreAfter}`,
         "",
-        watch.include_reasoning ? input.reasoning : "",
+        includeReasoning ? input.reasoning : "",
       ]
         .filter((l) => l !== "")
         .join("\n");

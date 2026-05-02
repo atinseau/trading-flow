@@ -101,6 +101,21 @@ export type InitialEvidence = {
    */
   feedbackEnabled: boolean;
   /**
+   * Snapshot of `watch.include_reasoning` at setup-creation time. Captured
+   * here (vs. read live in each notify activity) so a watch-config edit
+   * between setup creation and reviewer verdict / confirmation cannot flip
+   * the message format mid-setup. Same defensive pattern as `feedbackEnabled`.
+   * Optional for back-compat with in-flight workflows whose history was
+   * serialized before this field existed (notify activities fall back to
+   * reading from `watch` in that case).
+   */
+  includeReasoning?: boolean;
+  /**
+   * Snapshot of `watch.include_chart_image` at setup-creation time. Same
+   * rationale as `includeReasoning` above. Optional for back-compat.
+   */
+  includeChartImage?: boolean;
+  /**
    * Detector's free-form natural-language observation that justified
    * proposing this setup. Forwarded to the setup-created Telegram
    * notification so the user can review the reasoning at glance.
@@ -277,6 +292,7 @@ export async function setupWorkflow(initial: InitialEvidence): Promise<SetupStat
         scoreDelta: next.score - before.score,
         scoreAfter: next.score,
         reasoning: verdict.reasoning,
+        includeReasoning: initial.includeReasoning,
       });
     }
   });
@@ -453,6 +469,7 @@ export async function setupWorkflow(initial: InitialEvidence): Promise<SetupStat
     rawObservation: initial.rawObservation ?? "Initial detection",
     invalidationLevel: initial.invalidationLevel,
     chartUri: initial.chartUri,
+    includeChartImage: initial.includeChartImage,
   });
 
   // Helper: poll-and-apply for the killSignal. Called after every async wait
@@ -640,6 +657,8 @@ export async function setupWorkflow(initial: InitialEvidence): Promise<SetupStat
             stopLoss: decision.stop_loss ?? 0,
             takeProfit: decision.take_profit ?? [],
             reasoning: decision.reasoning,
+            includeReasoning: initial.includeReasoning,
+            includeChartImage: initial.includeChartImage,
           });
           const trackingResult = await trackingLoop({
             setupId: initial.setupId,

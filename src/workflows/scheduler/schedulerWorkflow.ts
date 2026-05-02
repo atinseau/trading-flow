@@ -203,6 +203,11 @@ async function runOneTick(
       // Captured at creation time so a later watch-config edit cannot retro-
       // actively flip the feedback fate of in-flight setups.
       feedbackEnabled: watch.feedback.enabled,
+      // Same defensive snapshot for the message-formatting flags so a config
+      // edit between detection and reviewer verdict / confirmation cannot
+      // change how a setup's notifications are rendered mid-flight.
+      includeReasoning: watch.include_reasoning,
+      includeChartImage: watch.include_chart_image,
       // Forwarded to the setup-created Telegram notification — non-load-
       // bearing for the workflow itself.
       rawObservation: newSetup.rawObservation,
