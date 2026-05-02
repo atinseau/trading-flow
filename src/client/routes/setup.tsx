@@ -56,7 +56,18 @@ export function Component() {
   });
   const ohlcv = useQuery({
     queryKey: ["setups", id, "ohlcv"],
-    queryFn: () => api<Candle[]>(`/api/setups/${id}/ohlcv`),
+    queryFn: async (): Promise<Candle[]> => {
+      const rows = await api<
+        { timestamp: string; open: number; high: number; low: number; close: number }[]
+      >(`/api/setups/${id}/ohlcv`);
+      return rows.map((r) => ({
+        time: Math.floor(new Date(r.timestamp).getTime() / 1000) as Candle["time"],
+        open: r.open,
+        high: r.high,
+        low: r.low,
+        close: r.close,
+      }));
+    },
     staleTime: 60_000,
     retry: false,
   });

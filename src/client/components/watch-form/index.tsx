@@ -11,8 +11,28 @@ import { SectionSchedule } from "@client/components/watch-form/section-schedule"
 import { WatchFormWizard, type WizardStep } from "@client/components/watch-form/wizard";
 import { type WatchConfig, WatchSchema } from "@domain/schemas/WatchesConfig";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { type SubmitHandler, useForm } from "react-hook-form";
+import { type FieldErrors, type SubmitHandler, useForm } from "react-hook-form";
+import { toast } from "sonner";
 import type { z } from "zod";
+
+/** Walk a (possibly nested) FieldErrors tree and return the first message
+ * with its dot-path (e.g. "asset.quoteType: required"). Used to surface
+ * validation errors on hidden steps where no FormMessage can render. */
+function firstError(
+  errors: FieldErrors,
+  prefix = "",
+): { path: string; message: string } | null {
+  for (const key of Object.keys(errors)) {
+    const v = (errors as Record<string, unknown>)[key];
+    if (!v || typeof v !== "object") continue;
+    const path = prefix ? `${prefix}.${key}` : key;
+    const msg = (v as { message?: unknown }).message;
+    if (typeof msg === "string" && msg.length > 0) return { path, message: msg };
+    const nested = firstError(v as FieldErrors, path);
+    if (nested) return nested;
+  }
+  return null;
+}
 
 type WatchFormInput = z.input<typeof WatchSchema>;
 
@@ -64,7 +84,7 @@ const SENSIBLE_DEFAULTS = {
 /** Loose partial — caller passes whatever subset of the shape they have. */
 export type WatchFormPreset = {
   id?: string;
-  asset?: { symbol?: string; source?: string };
+  asset?: { symbol?: string; source?: string; quoteType?: string; exchange?: string };
   timeframes?: { primary?: string };
 };
 
@@ -173,20 +193,27 @@ export function WatchForm({ initial, preset, mode, onSubmit }: WatchFormProps) {
     mode: "onBlur",
   });
 
+  const onInvalid = (errors: FieldErrors): void => {
+    const first = firstError(errors);
+    toast.error(
+      first ? `Champ invalide — ${first.path} : ${first.message}` : "Le formulaire contient des erreurs.",
+    );
+  };
+
   return (
     <Form {...form}>
       <form onSubmit={(e) => e.preventDefault()}>
         {mode === "create" ? (
           <WatchFormWizard
             steps={WIZARD_STEPS}
-            onSubmit={() => form.handleSubmit(onSubmit)()}
+            onSubmit={() => form.handleSubmit(onSubmit, onInvalid)()}
             submitLabel="Créer la watch"
             isSubmitting={form.formState.isSubmitting}
           />
         ) : (
           <WatchEditTabs
             steps={WIZARD_STEPS}
-            onSubmit={() => form.handleSubmit(onSubmit)()}
+            onSubmit={() => form.handleSubmit(onSubmit, onInvalid)()}
             onReset={() => form.reset(merged)}
             isSubmitting={form.formState.isSubmitting}
           />
