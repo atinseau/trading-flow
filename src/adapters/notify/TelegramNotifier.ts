@@ -20,10 +20,14 @@ export class TelegramNotifier implements Notifier {
   async send(args: {
     chatId: string;
     text: string;
-    parseMode?: "Markdown" | "HTML";
+    parseMode?: "Markdown" | "MarkdownV2" | "HTML";
     images?: NotificationImage[];
   }): Promise<{ messageId: number }> {
-    const parseMode = args.parseMode === "Markdown" ? "MarkdownV2" : args.parseMode;
+    // No translation — pass through whatever the caller requested. The
+    // legacy lesson template uses "Markdown" (v1) which is more permissive
+    // than MarkdownV2 about un-escaped punctuation; silently up-converting
+    // would cause Telegram's parse-entities check to fail.
+    const parseMode = args.parseMode;
 
     if (args.images?.length === 1) {
       const path = args.images[0]?.uri.replace(/^file:\/\//, "");
@@ -53,11 +57,12 @@ export class TelegramNotifier implements Notifier {
   async sendWithButtons(args: {
     chatId: string;
     text: string;
-    parseMode?: "Markdown" | "HTML";
+    parseMode?: "Markdown" | "MarkdownV2" | "HTML";
     images?: NotificationImage[];
     buttons: NotificationButton[][];
   }): Promise<{ messageId: number }> {
-    const parseMode = args.parseMode === "Markdown" ? "MarkdownV2" : args.parseMode;
+    // No translation — see comment in `send()` above.
+    const parseMode = args.parseMode;
     const reply_markup = {
       inline_keyboard: args.buttons.map((row) =>
         row.map((b) => ({ text: b.text, callback_data: b.callbackData })),

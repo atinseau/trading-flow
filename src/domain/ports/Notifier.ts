@@ -6,7 +6,7 @@ export interface Notifier {
   send(args: {
     chatId: string;
     text: string;
-    parseMode?: "Markdown" | "HTML";
+    parseMode?: "Markdown" | "MarkdownV2" | "HTML";
     images?: NotificationImage[];
   }): Promise<{ messageId: number }>;
 
@@ -20,7 +20,7 @@ export interface Notifier {
   sendWithButtons(args: {
     chatId: string;
     text: string;
-    parseMode?: "Markdown" | "HTML";
+    parseMode?: "Markdown" | "MarkdownV2" | "HTML";
     images?: NotificationImage[];
     buttons: NotificationButton[][];
   }): Promise<{ messageId: number }>;

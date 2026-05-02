@@ -6,7 +6,7 @@ export function buildNotificationActivities(deps: ActivityDeps) {
       chatId: string;
       text: string;
       images?: { uri: string; caption?: string }[];
-      parseMode?: "Markdown" | "HTML";
+      parseMode?: "Markdown" | "MarkdownV2" | "HTML";
     }): Promise<{ messageId: number }> {
       return deps.notifier.send(input);
     },

@@ -8,7 +8,7 @@ export class FakeNotifier implements Notifier {
   sentMessages: {
     chatId: string;
     text: string;
-    parseMode?: "Markdown" | "HTML";
+    parseMode?: "Markdown" | "MarkdownV2" | "HTML";
     images?: NotificationImage[];
     buttons?: NotificationButton[][];
   }[] = [];
@@ -17,7 +17,7 @@ export class FakeNotifier implements Notifier {
   async send(args: {
     chatId: string;
     text: string;
-    parseMode?: "Markdown" | "HTML";
+    parseMode?: "Markdown" | "MarkdownV2" | "HTML";
     images?: NotificationImage[];
   }): Promise<{ messageId: number }> {
     this.sentMessages.push({
@@ -32,7 +32,7 @@ export class FakeNotifier implements Notifier {
   async sendWithButtons(args: {
     chatId: string;
     text: string;
-    parseMode?: "Markdown" | "HTML";
+    parseMode?: "Markdown" | "MarkdownV2" | "HTML";
     images?: NotificationImage[];
     buttons: NotificationButton[][];
   }): Promise<{ messageId: number }> {
