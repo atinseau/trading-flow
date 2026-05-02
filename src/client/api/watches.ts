@@ -102,14 +102,11 @@ export function makeWatchesApi(deps: { db: DB; hooks: WatchConfigHooks }) {
       // biome-ignore lint/suspicious/noExplicitAny: raw body before validation
       const raw = (await req.json()) as any;
       // Server-side enrichment: yahoo watches without quoteType get a Yahoo lookup.
+      // Mirrors GET /api/yahoo/lookup for non-wizard API clients (cron, scripts).
       if (raw?.asset?.source === "yahoo" && !raw.asset.quoteType) {
-        const meta = await lookupYahooMetadata(String(raw.asset.symbol));
-        if (!meta) {
-          return Response.json(
-            { error: `Asset '${raw.asset.symbol}' not found on Yahoo` },
-            { status: 422 },
-          );
-        }
+        const symbol = String(raw.asset.symbol);
+        const meta = await lookupYahooMetadata(symbol);
+        if (!meta) throw new NotFoundError(`yahoo asset not found: ${symbol}`);
         raw.asset.quoteType = meta.quoteType;
         if (meta.exchange) raw.asset.exchange = meta.exchange;
       }

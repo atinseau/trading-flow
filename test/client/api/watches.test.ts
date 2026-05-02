@@ -252,16 +252,16 @@ describe("watches API — server-side yahoo enrichment", () => {
     }
   });
 
-  test("yahoo watch missing quoteType, lookup fails → 422 with clear error", async () => {
+  test("yahoo watch missing quoteType, lookup fails → 404 with clear error", async () => {
     mockYahooFetch({ quotes: [] });
     const tp = await startTestPostgres();
     try {
       const api = makeWatchesApi({ db: tp.db, hooks: hooks() });
       const res = await api.create(POST(yahooBase));
-      expect(res.status).toBe(422);
+      expect(res.status).toBe(404);
       const body = (await res.json()) as { error: string };
       expect(body.error).toContain("AAPL");
-      expect(body.error).toContain("Yahoo");
+      expect(body.error).toContain("yahoo asset not found");
     } finally {
       await tp.cleanup();
     }

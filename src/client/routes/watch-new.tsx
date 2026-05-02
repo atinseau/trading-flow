@@ -4,11 +4,10 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { WatchForm, type WatchFormPreset } from "../components/watch-form";
 import { api } from "../lib/api";
+import type { YahooMetadata } from "../lib/yahooMetadata";
 
 const VALID_TIMEFRAMES = ["1m", "5m", "15m", "30m", "1h", "2h", "4h", "1d", "1w"] as const;
 const VALID_SOURCES = ["binance", "yahoo"] as const;
-
-type YahooMeta = { quoteType: string; exchange?: string };
 
 export function Component() {
   const qc = useQueryClient();
@@ -31,7 +30,7 @@ export function Component() {
         ? {
             asset: {
               ...(symbol ? { symbol } : {}),
-              ...(sourceOk ? { source: source ?? undefined } : {}),
+              ...(sourceOk && source ? { source } : {}),
             },
           }
         : {}),
@@ -46,7 +45,7 @@ export function Component() {
   const yahooMeta = useQuery({
     queryKey: ["yahoo-lookup", preset?.asset?.symbol],
     queryFn: () =>
-      api<YahooMeta>(`/api/yahoo/lookup?symbol=${encodeURIComponent(preset!.asset!.symbol!)}`),
+      api<YahooMetadata>(`/api/yahoo/lookup?symbol=${encodeURIComponent(preset!.asset!.symbol!)}`),
     enabled: needsYahooLookup,
     staleTime: 5 * 60_000,
     retry: false,

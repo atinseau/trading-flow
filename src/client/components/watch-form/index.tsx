@@ -16,16 +16,27 @@ import { toast } from "sonner";
 import type { z } from "zod";
 
 /** Walk a (possibly nested) FieldErrors tree and return the first message
- * with its dot-path (e.g. "asset.quoteType: required"). Used to surface
- * validation errors on hidden steps where no FormMessage can render. */
-function firstError(
+ * with its dot-path (e.g. "asset.quoteType"). Used to surface validation
+ * errors on hidden steps where no FormMessage can render.
+ *
+ * Path formatting matches what a developer would grep for:
+ *   - numeric segments → "[0]" (RHF arrays)
+ *   - "root" segments → omitted (RHF synthesizes these for array-level
+ *     errors like `min(1)` and form-level `setError("root", ...)` calls) */
+export function firstError(
   errors: FieldErrors,
   prefix = "",
 ): { path: string; message: string } | null {
+  const join = (key: string): string => {
+    if (!prefix) return key === "root" ? "(form)" : key;
+    if (/^\d+$/.test(key)) return `${prefix}[${key}]`;
+    if (key === "root") return prefix;
+    return `${prefix}.${key}`;
+  };
   for (const key of Object.keys(errors)) {
     const v = (errors as Record<string, unknown>)[key];
     if (!v || typeof v !== "object") continue;
-    const path = prefix ? `${prefix}.${key}` : key;
+    const path = join(key);
     const msg = (v as { message?: unknown }).message;
     if (typeof msg === "string" && msg.length > 0) return { path, message: msg };
     const nested = firstError(v as FieldErrors, path);
