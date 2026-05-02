@@ -9,7 +9,8 @@ export type Outcome =
   | "REJECTED"
   | "INVALIDATED_PRE_TRADE"
   | "INVALIDATED_POST_TRADE"
-  | "EXPIRED_NO_FILL";
+  | "EXPIRED_NO_FILL"
+  | "KILLED";
 
 export type EventTypeLite = {
   type: string;
@@ -24,6 +25,10 @@ export function deriveOutcome(status: SetupStatus, events: EventTypeLite[]): Out
   if (!TERMINAL_STATUSES.has(status)) return null;
 
   if (status === "REJECTED") return "REJECTED";
+  // User-initiated kill via Telegram: terminal + opaque, no PnL bucket.
+  // Tracked separately from system terminal states so the dashboard can
+  // distinguish manual kills from rejections / invalidations / expirations.
+  if (status === "KILLED") return "KILLED";
 
   const hasEvent = (t: string) => events.some((e) => e.type === t);
   const hasConfirmed = hasEvent("Confirmed");

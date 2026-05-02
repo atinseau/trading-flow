@@ -75,6 +75,13 @@ export const OUTCOME_META: Record<Outcome, OutcomeMeta> = {
     badge: "bg-zinc-500/15 text-zinc-400 border-zinc-500/30",
     border: "border-l-zinc-500",
   },
+  KILLED: {
+    label: "Tué par l'utilisateur",
+    short: "Killed",
+    emoji: "☠️",
+    badge: "bg-zinc-500/15 text-zinc-400 border-zinc-500/30",
+    border: "border-l-zinc-500",
+  },
 };
 
 export function outcomeMeta(outcome: string | null | undefined): OutcomeMeta | null {

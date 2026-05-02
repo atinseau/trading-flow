@@ -16,6 +16,20 @@ describe("deriveOutcome", () => {
     expect(deriveOutcome("REJECTED", [ev("SetupCreated"), ev("Rejected", 2)])).toBe("REJECTED");
   });
 
+  test("KILLED status -> KILLED (regardless of prior events)", () => {
+    expect(deriveOutcome("KILLED", [ev("SetupCreated"), ev("Killed", 2)])).toBe("KILLED");
+    // Edge: even if the user kills mid-tracking, status==KILLED wins.
+    expect(
+      deriveOutcome("KILLED", [
+        ev("SetupCreated"),
+        ev("Confirmed", 2),
+        ev("EntryFilled", 3),
+        ev("TPHit", 4),
+        ev("Killed", 5),
+      ]),
+    ).toBe("KILLED");
+  });
+
   test("INVALIDATED before any Confirmed/EntryFilled -> INVALIDATED_PRE_TRADE", () => {
     expect(deriveOutcome("INVALIDATED", [ev("SetupCreated"), ev("Invalidated", 2)])).toBe(
       "INVALIDATED_PRE_TRADE",
