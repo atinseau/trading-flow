@@ -30,34 +30,19 @@ services:
     ports:
       - "127.0.0.1:8080:8080"
 
-  # Worker services that make LLM calls bind-mount the host's Claude Code
-  # OAuth credentials so the bundled `claude` binary (used by the
-  # claude-agent-sdk provider) can authenticate without an interactive
-  # `claude /login` per container. macOS keeps the creds in the Keychain — to
-  # populate the file-on-disk read here, run once:
-  #   security find-generic-password -s "Claude Code-credentials" -w \
-  #     > ~/.claude/.credentials.json
-  # Refresh the file when the OAuth token expires (the SDK will say "Not
-  # logged in"). Read-only mount: the container can't write back, so refresh
-  # rotation lives on the host.
+  # Worker services authenticate to Claude via the CLAUDE_CODE_OAUTH_TOKEN
+  # env var (propagated through the worker_env anchor in docker-compose.yml,
+  # sourced from .env). The token is generated locally by
+  # `scripts/dev/bootstrap-claude-token.sh`, which spins up a one-shot
+  # interactive container running `claude setup-token` and writes the result
+  # to .env. The host's ${HOME}/.claude/ is never touched.
   scheduler-worker:
     ports:
       - "127.0.0.1:8081:8081"
-    # Compose REPLACES volume lists, so re-state the base worker_volumes too.
-    volumes:
-      - ./prompts:/app/prompts:ro
-      - artifacts_data:/data/artifacts
-      - claude_workspace:/data/claude-workspace
-      - ${HOME}/.claude/.credentials.json:/home/bun/.claude/.credentials.json:ro
 
   analysis-worker:
     ports:
       - "127.0.0.1:8082:8082"
-    volumes:
-      - ./prompts:/app/prompts:ro
-      - artifacts_data:/data/artifacts
-      - claude_workspace:/data/claude-workspace
-      - ${HOME}/.claude/.credentials.json:/home/bun/.claude/.credentials.json:ro
 
   notification-worker:
     ports:

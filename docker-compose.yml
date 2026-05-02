@@ -121,6 +121,12 @@ services:
       TEMPORAL_TASK_QUEUE_NOTIFICATIONS: ${TEMPORAL_TASK_QUEUE_NOTIFICATIONS:-notifications}
       ARTIFACTS_BASE_DIR: ${ARTIFACTS_BASE_DIR:-/data/artifacts}
       CLAUDE_WORKSPACE_DIR: ${CLAUDE_WORKSPACE_DIR:-/data/claude-workspace}
+      # Long-lived OAuth token for the bundled `claude` binary (used by the
+      # claude-agent-sdk provider). Generated locally by
+      # `scripts/dev/bootstrap-claude-token.sh` (auto-fired before
+      # `bun compose:dev`) and stored in `.env`. Empty in production unless
+      # the deployer wants OAuth instead of an API key.
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
     volumes: &worker_volumes
       - ./prompts:/app/prompts:ro
       - artifacts_data:/data/artifacts
