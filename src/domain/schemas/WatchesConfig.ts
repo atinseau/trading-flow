@@ -84,6 +84,12 @@ const SetupLifecycleSchema = z
   );
 
 export const NotifyEventSchema = z.enum([
+  // Setup lifecycle (detector + reviewer events).
+  "setup_created",
+  "setup_strengthened",
+  "setup_weakened",
+  // Confirmation that a user-issued kill (via Telegram inline button) succeeded.
+  "setup_killed",
   "confirmed",
   "rejected",
   "tp_hit",

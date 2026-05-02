@@ -1,0 +1,2 @@
+ALTER TABLE "setups" DROP CONSTRAINT "setups_outcome_chk";--> statement-breakpoint
+ALTER TABLE "setups" ADD CONSTRAINT "setups_outcome_chk" CHECK (outcome IS NULL OR outcome IN ('WIN','LOSS','PARTIAL_WIN','TIME_OUT','REJECTED','INVALIDATED_PRE_TRADE','INVALIDATED_POST_TRADE','EXPIRED_NO_FILL','KILLED'));

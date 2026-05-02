@@ -71,7 +71,7 @@ export const setups = pgTable(
     // category= filters and stats query would silently drop those rows).
     check(
       "setups_outcome_chk",
-      sql`outcome IS NULL OR outcome IN ('WIN','LOSS','PARTIAL_WIN','TIME_OUT','REJECTED','INVALIDATED_PRE_TRADE','INVALIDATED_POST_TRADE','EXPIRED_NO_FILL')`,
+      sql`outcome IS NULL OR outcome IN ('WIN','LOSS','PARTIAL_WIN','TIME_OUT','REJECTED','INVALIDATED_PRE_TRADE','INVALIDATED_POST_TRADE','EXPIRED_NO_FILL','KILLED')`,
     ),
   ],
 );

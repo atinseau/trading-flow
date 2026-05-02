@@ -6,13 +6,17 @@ export type SetupStatus =
   | "CLOSED"
   | "INVALIDATED"
   | "EXPIRED"
-  | "REJECTED";
+  | "REJECTED"
+  // User cancelled the setup mid-flight via Telegram (kill button).
+  // Always terminal — no further reviewer/finalizer ticks fire after this.
+  | "KILLED";
 
 export const TERMINAL_STATUSES: ReadonlySet<SetupStatus> = new Set([
   "CLOSED",
   "INVALIDATED",
   "EXPIRED",
   "REJECTED",
+  "KILLED",
 ]);
 
 export const ACTIVE_STATUSES: ReadonlySet<SetupStatus> = new Set([
