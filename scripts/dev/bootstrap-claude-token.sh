@@ -28,9 +28,11 @@ set -euo pipefail
 ENV_FILE="$(pwd)/.env"
 TOKEN_KEY="CLAUDE_CODE_OAUTH_TOKEN"
 
-# Image whose entrypoint can run `claude setup-token`. We reuse the project's
-# worker image since it already has the bundled Linux binary baked in.
-IMAGE_TAG="trading-flow-claude-bootstrap:local"
+# We reuse one of the project's already-built worker images (they all have
+# the bundled `claude` Linux binary baked in). Falling back to a fresh build
+# only if no image exists yet.
+WORKER_IMAGE="trading-flow-analysis-worker:latest"
+FALLBACK_BUILD_TAG="trading-flow-claude-bootstrap:local"
 DOCKERFILE="docker/Dockerfile.worker"
 
 # Fast path: token already populated.
@@ -44,9 +46,17 @@ if [[ ! -f "$ENV_FILE" ]]; then
   exit 1
 fi
 
-# Build the worker image once (cheap if already cached).
-echo "Building image for claude setup-token..."
-docker build -q -t "$IMAGE_TAG" -f "$DOCKERFILE" . > /dev/null
+# Pick an image. Reuse the worker image if it exists (fast: 0s), else build
+# the bootstrap image (slow: 1-2 min on first run, with progress visible).
+if docker image inspect "$WORKER_IMAGE" >/dev/null 2>&1; then
+  IMAGE_TAG="$WORKER_IMAGE"
+  echo "✓ Reusing existing worker image: $IMAGE_TAG"
+else
+  IMAGE_TAG="$FALLBACK_BUILD_TAG"
+  echo "Building bootstrap image (one-time, ~1-2 min)..."
+  # No -q so the user sees build progress; goes to stderr by default.
+  docker build -t "$IMAGE_TAG" -f "$DOCKERFILE" .
+fi
 
 cat <<'BANNER'
 
@@ -61,30 +71,52 @@ cat <<'BANNER'
 
 BANNER
 
-# Run setup-token interactively. Stdout is a mix of prompts and the final
-# token line; we tee to both the user's terminal AND a log file so we can
-# extract the token deterministically afterward.
-LOG_FILE="$(mktemp -t claude-setup-token.XXXXXX)"
-trap 'rm -f "$LOG_FILE"' EXIT
-
-# --network=host lets the device-flow callback reach localhost if claude
-# uses a local listener; harmless on Linux/Mac if it doesn't.
+# Run setup-token interactively. Claude prints an OAuth URL → user opens it
+# in their browser → completes login → claude prints the long-lived token
+# directly in the terminal.
+#
+# We do NOT try to auto-capture the token: BSD `script(1)` on macOS records
+# ANSI escape codes + cursor manipulations in a way that makes regex extraction
+# unreliable (tested: ends up gluing the token to the next sentence "Store
+# this token securely." with no separator, producing 401-rejected corrupted
+# tokens). A 3-second paste is bulletproof.
+#
+# --network=host lets the OAuth callback reach localhost if claude uses
+# a local listener; harmless if it doesn't.
 docker run --rm -it \
   --network=host \
   --entrypoint /app/node_modules/@anthropic-ai/claude-agent-sdk-linux-arm64/claude \
   "$IMAGE_TAG" \
-  setup-token 2>&1 | tee "$LOG_FILE"
+  setup-token
 
-# Extract the token. Claude Code prints lines like:
-#   Long-lived token: sk-ant-oat01-xxxxxxxx
-# but the exact prefix may vary. We accept anything matching `sk-ant-oat...`.
-TOKEN=$(grep -oE 'sk-ant-oat[A-Za-z0-9_-]{20,}' "$LOG_FILE" | tail -1 || true)
+cat <<'PROMPT'
 
-if [[ -z "$TOKEN" ]]; then
+──────────────────────────────────────────────────────────────────────
+  Copy the token printed above (the line starting with `sk-ant-oat01-`)
+  and paste it below. The script appends it to .env.
+
+  Tip: triple-click the token line to select the whole token cleanly,
+  then ⌘C / Ctrl+C to copy. Avoid selecting "Store" from the next line.
+──────────────────────────────────────────────────────────────────────
+
+PROMPT
+
+read -r -p "Token: " TOKEN
+
+# Strip whitespace defensively (paste sometimes includes trailing space).
+TOKEN="${TOKEN#"${TOKEN%%[![:space:]]*}"}"
+TOKEN="${TOKEN%"${TOKEN##*[![:space:]]}"}"
+
+# Strict validation: tokens are typically ~108 chars; reject anything outside
+# the plausible 90-130 range or with the wrong prefix.
+if [[ ! "$TOKEN" =~ ^sk-ant-oat[0-9]+-[A-Za-z0-9_-]+$ ]] || \
+   [[ ${#TOKEN} -lt 90 ]] || \
+   [[ ${#TOKEN} -gt 130 ]]; then
   echo ""
-  echo "✗ Could not capture an OAuth token from the setup-token output." >&2
-  echo "  If the token was printed, re-run and copy it manually:" >&2
-  echo "    echo 'CLAUDE_CODE_OAUTH_TOKEN=<paste-token-here>' >> .env" >&2
+  echo "✗ Token does not look valid:" >&2
+  echo "    expected: sk-ant-oat... 90-130 chars, base64url chars only" >&2
+  echo "    got:      ${#TOKEN} chars" >&2
+  echo "  Re-run \`bun compose:dev\` and try again." >&2
   exit 1
 fi
 
