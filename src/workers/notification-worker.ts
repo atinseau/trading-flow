@@ -6,7 +6,7 @@ import { loadWatchesFromDb } from "@config/loadWatchesFromDb";
 import { buildLessonApprovalUseCase } from "@domain/feedback/lessonApprovalUseCase";
 import { HealthServer } from "@observability/healthServer";
 import { getLogger } from "@observability/logger";
-import { Client, Connection } from "@temporalio/client";
+import { Client, Connection, WorkflowNotFoundError } from "@temporalio/client";
 import { NativeConnection, Worker } from "@temporalio/worker";
 import { buildNotificationActivities } from "@workflows/notification/activities";
 import { setupWorkflowId } from "@workflows/setup/setupWorkflow";
@@ -100,8 +100,28 @@ const workflowClient = new Client({
         await ctx.editMessageReplyMarkup({ reply_markup: { inline_keyboard: [] } });
         await ctx.answerCallbackQuery({ text: "Setup kill signal sent." });
       } catch (err) {
-        log.error({ err, setupId: setupCb.setupId }, "kill signal dispatch failed");
-        await ctx.answerCallbackQuery({ text: "Kill failed (see logs)." });
+        // Workflow no longer exists / is closed: the setup has already
+        // terminated (TTL, finalizer rejection, SL hit, etc.). This is
+        // not a failure — surface a friendlier message and strip the
+        // keyboard so the user can't keep clicking a stale button.
+        // Both "not found" and "already completed" surface as
+        // WorkflowNotFoundError in the current Temporal SDK
+        // (see @temporalio/common errors.d.ts: "Workflow is closed").
+        if (err instanceof WorkflowNotFoundError) {
+          log.info(
+            { setupId: setupCb.setupId },
+            "kill ignored: workflow already terminated",
+          );
+          try {
+            await ctx.editMessageReplyMarkup({ reply_markup: undefined });
+          } catch (editErr) {
+            log.debug({ editErr }, "editMessageReplyMarkup failed (non-fatal)");
+          }
+          await ctx.answerCallbackQuery({ text: "Setup already terminated." });
+        } else {
+          log.error({ err, setupId: setupCb.setupId }, "kill signal dispatch failed");
+          await ctx.answerCallbackQuery({ text: "Kill failed (see logs)." });
+        }
       }
       return;
     }
