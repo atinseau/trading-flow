@@ -10,7 +10,19 @@ import {
 import { Switch } from "@client/components/ui/switch";
 import { useFormContext } from "react-hook-form";
 
-const EVENTS = [
+// Lifecycle events fired by the detector + reviewer (pre-finalizer).
+// These notifications carry an inline "Kill setup" button so the user can
+// short-circuit a setup that doesn't match their thesis before any LLM cost
+// accumulates further.
+const DETECTOR_REVIEWER_EVENTS = [
+  "setup_created",
+  "setup_strengthened",
+  "setup_weakened",
+  "setup_killed",
+] as const;
+
+// Events fired by the finalizer + tracking loop (post-confirmation).
+const FINALIZER_LIFECYCLE_EVENTS = [
   "confirmed",
   "rejected",
   "tp_hit",
@@ -18,6 +30,11 @@ const EVENTS = [
   "invalidated",
   "invalidated_after_confirmed",
   "expired",
+] as const;
+
+const EVENT_GROUPS = [
+  { title: "Détecteur & Reviewer", events: DETECTOR_REVIEWER_EVENTS },
+  { title: "Finalizer & lifecycle", events: FINALIZER_LIFECYCLE_EVENTS },
 ] as const;
 
 export function SectionNotifications() {
@@ -34,30 +51,42 @@ export function SectionNotifications() {
         render={({ field }) => (
           <FormItem>
             <FormLabel>Notifier sur</FormLabel>
-            <div className="grid grid-cols-2 gap-2 mt-2">
-              {EVENTS.map((evt) => {
-                const checked = (field.value as string[] | undefined)?.includes(evt) ?? false;
-                return (
-                  <label
-                    key={evt}
-                    htmlFor={`notify-${evt}`}
-                    className="flex items-center gap-2 text-sm"
-                  >
-                    <Checkbox
-                      id={`notify-${evt}`}
-                      checked={checked}
-                      onCheckedChange={(v) => {
-                        const cur = (field.value as string[] | undefined) ?? [];
-                        field.onChange(v ? [...cur, evt] : cur.filter((e) => e !== evt));
-                      }}
-                    />
-                    <span>{evt}</span>
-                  </label>
-                );
-              })}
+            <div className="space-y-4 mt-2">
+              {EVENT_GROUPS.map((group) => (
+                <div key={group.title} className="space-y-2">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    {group.title}
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {group.events.map((evt) => {
+                      const checked =
+                        (field.value as string[] | undefined)?.includes(evt) ?? false;
+                      return (
+                        <label
+                          key={evt}
+                          htmlFor={`notify-${evt}`}
+                          className="flex items-center gap-2 text-sm"
+                        >
+                          <Checkbox
+                            id={`notify-${evt}`}
+                            checked={checked}
+                            onCheckedChange={(v) => {
+                              const cur = (field.value as string[] | undefined) ?? [];
+                              field.onChange(v ? [...cur, evt] : cur.filter((e) => e !== evt));
+                            }}
+                          />
+                          <span>{evt}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
             </div>
             <FormDescription>
-              Le chat ID Telegram est configuré globalement par variable d'environnement.
+              Le chat ID Telegram est configuré globalement par variable d'environnement. Les
+              événements détecteur/reviewer incluent un bouton "Kill setup" pour annuler
+              avant le finalizer.
             </FormDescription>
             <FormMessage />
           </FormItem>
