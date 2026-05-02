@@ -788,10 +788,12 @@ export function buildSetupActivities(deps: ActivityDeps) {
 
       const includeReasoning = input.includeReasoning ?? watch.include_reasoning;
       const scoreBefore = input.scoreAfter - input.scoreDelta;
-      const header =
-        input.verdict === "STRENGTHEN"
-          ? `💪 STRENGTHEN +${input.scoreDelta} — ${input.asset} ${input.timeframe}`
-          : `💔 WEAKEN ${input.scoreDelta} — ${input.asset} ${input.timeframe}`;
+      // Symmetric template — the verdict already encodes the sign, so we
+      // build it explicitly from `Math.abs` rather than relying on a leading
+      // `+` for STRENGTHEN and a natural `-` for WEAKEN.
+      const sign = input.verdict === "STRENGTHEN" ? "+" : "-";
+      const emoji = input.verdict === "STRENGTHEN" ? "💪" : "💔";
+      const header = `${emoji} ${input.verdict} ${sign}${Math.abs(input.scoreDelta)} — ${input.asset} ${input.timeframe}`;
       const text = [
         header,
         `Score: ${scoreBefore}→${input.scoreAfter}`,
