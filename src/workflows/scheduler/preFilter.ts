@@ -54,7 +54,7 @@ export function evaluatePreFilter(
     if (high !== undefined && low !== undefined && last != null) {
       const distHigh = Math.abs(high - last) / last;
       const distLow = Math.abs(low - last) / last;
-      if (Math.min(distHigh, distLow) < 0.003) reasons.push("near_pivot");
+      if (Math.min(distHigh, distLow) < t.near_pivot_distance_pct / 100) reasons.push("near_pivot");
     }
   }
 

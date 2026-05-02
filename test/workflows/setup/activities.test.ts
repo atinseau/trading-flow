@@ -44,7 +44,7 @@ const nasdaqWatch: WatchConfig = {
   pre_filter: {
     enabled: true,
     mode: "lenient",
-    thresholds: { atr_ratio_min: 1.3, volume_spike_min: 1.5, rsi_extreme_distance: 25 },
+    thresholds: { atr_ratio_min: 1.3, volume_spike_min: 1.5, rsi_extreme_distance: 25, near_pivot_distance_pct: 0.3 },
   },
   analyzers: {
     // biome-ignore lint/suspicious/noExplicitAny: test fake provider
@@ -93,7 +93,7 @@ const binanceWatch: WatchConfig = {
   pre_filter: {
     enabled: true,
     mode: "lenient",
-    thresholds: { atr_ratio_min: 1.3, volume_spike_min: 1.5, rsi_extreme_distance: 25 },
+    thresholds: { atr_ratio_min: 1.3, volume_spike_min: 1.5, rsi_extreme_distance: 25, near_pivot_distance_pct: 0.3 },
   },
   analyzers: {
     // biome-ignore lint/suspicious/noExplicitAny: test fake provider
@@ -231,7 +231,7 @@ describe("runReviewer — market-hours guard", () => {
       pre_filter: {
         enabled: true,
         mode: "lenient",
-        thresholds: { atr_ratio_min: 1.3, volume_spike_min: 1.5, rsi_extreme_distance: 25 },
+        thresholds: { atr_ratio_min: 1.3, volume_spike_min: 1.5, rsi_extreme_distance: 25, near_pivot_distance_pct: 0.3 },
       },
       analyzers: {
         // biome-ignore lint/suspicious/noExplicitAny: test fake provider

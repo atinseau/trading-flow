@@ -13,6 +13,7 @@ const PreFilterSchema = z
         atr_ratio_min: z.number().positive().default(1.3),
         volume_spike_min: z.number().positive().default(1.5),
         rsi_extreme_distance: z.number().min(0).max(50).default(25),
+        near_pivot_distance_pct: z.number().min(0).max(2).default(0.3),
       })
       .prefault({}),
   })

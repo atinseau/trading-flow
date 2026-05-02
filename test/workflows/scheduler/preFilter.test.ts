@@ -7,7 +7,12 @@ const allPlugins = registry.all();
 const baseConfig = {
   enabled: true,
   mode: "lenient" as const,
-  thresholds: { atr_ratio_min: 1.3, volume_spike_min: 1.5, rsi_extreme_distance: 25 },
+  thresholds: {
+    atr_ratio_min: 1.3,
+    volume_spike_min: 1.5,
+    rsi_extreme_distance: 25,
+    near_pivot_distance_pct: 0.3,
+  },
 };
 
 describe("preFilter β degradation", () => {
@@ -59,6 +64,47 @@ describe("preFilter β degradation", () => {
     };
     const result = evaluatePreFilter([], scalars, baseConfig, [...allPlugins]);
     expect(result.passed).toBe(false);
+  });
+
+  test("near_pivot uses configurable threshold (default 0.3% triggers at 0.2%)", () => {
+    const structureOnly = [...allPlugins].filter((p) => p.id === "structure_levels");
+    // last close = 100, recentHigh = 100.2 → distance = 0.2% < 0.3% default → triggers
+    const scalars = { recentHigh: 100.2, recentLow: 90 };
+    const candles = [
+      { timestamp: new Date(), open: 100, high: 100, low: 100, close: 100, volume: 10 },
+    ];
+    const result = evaluatePreFilter(candles, scalars, baseConfig, structureOnly);
+    expect(result.passed).toBe(true);
+    expect(result.reasons).toContain("near_pivot");
+  });
+
+  test("near_pivot configurable: tighter 0.1% threshold rejects 0.2% distance", () => {
+    const structureOnly = [...allPlugins].filter((p) => p.id === "structure_levels");
+    const tightConfig = {
+      ...baseConfig,
+      thresholds: { ...baseConfig.thresholds, near_pivot_distance_pct: 0.1 },
+    };
+    const scalars = { recentHigh: 100.2, recentLow: 90 };
+    const candles = [
+      { timestamp: new Date(), open: 100, high: 100, low: 100, close: 100, volume: 10 },
+    ];
+    const result = evaluatePreFilter(candles, scalars, tightConfig, structureOnly);
+    expect(result.passed).toBe(false);
+  });
+
+  test("near_pivot configurable: permissive 1.0% threshold still triggers at 0.2%", () => {
+    const structureOnly = [...allPlugins].filter((p) => p.id === "structure_levels");
+    const permissiveConfig = {
+      ...baseConfig,
+      thresholds: { ...baseConfig.thresholds, near_pivot_distance_pct: 1.0 },
+    };
+    const scalars = { recentHigh: 100.2, recentLow: 90 };
+    const candles = [
+      { timestamp: new Date(), open: 100, high: 100, low: 100, close: 100, volume: 10 },
+    ];
+    const result = evaluatePreFilter(candles, scalars, permissiveConfig, structureOnly);
+    expect(result.passed).toBe(true);
+    expect(result.reasons).toContain("near_pivot");
   });
 
   test("volume spike triggers pass", () => {

@@ -41,7 +41,7 @@ function makeWatch(injection: { reviewer: boolean; finalizer: boolean }): WatchC
     pre_filter: {
       enabled: true,
       mode: "lenient",
-      thresholds: { atr_ratio_min: 1.3, volume_spike_min: 1.5, rsi_extreme_distance: 25 },
+      thresholds: { atr_ratio_min: 1.3, volume_spike_min: 1.5, rsi_extreme_distance: 25, near_pivot_distance_pct: 0.3 },
     },
     analyzers: {
       detector: { provider: "fake", model: "fake", max_tokens: 2000 },
