@@ -11,4 +11,15 @@ export class MultiNotifier implements Notifier {
     }
     return firstResult ?? { messageId: 0 };
   }
+
+  async sendWithButtons(
+    args: Parameters<Notifier["sendWithButtons"]>[0],
+  ): Promise<{ messageId: number }> {
+    let firstResult: { messageId: number } | null = null;
+    for (const d of this.delegates) {
+      const r = await d.sendWithButtons(args);
+      if (firstResult === null) firstResult = r;
+    }
+    return firstResult ?? { messageId: 0 };
+  }
 }

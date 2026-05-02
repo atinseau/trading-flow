@@ -1,4 +1,8 @@
-import type { NotificationImage, Notifier } from "@domain/ports/Notifier";
+import type {
+  NotificationButton,
+  NotificationImage,
+  Notifier,
+} from "@domain/ports/Notifier";
 import { Bot, InputFile } from "grammy";
 import {
   encodeCallbackData,
@@ -46,6 +50,41 @@ export class TelegramNotifier implements Notifier {
     return { messageId: msg.message_id };
   }
 
+  async sendWithButtons(args: {
+    chatId: string;
+    text: string;
+    parseMode?: "Markdown" | "HTML";
+    images?: NotificationImage[];
+    buttons: NotificationButton[][];
+  }): Promise<{ messageId: number }> {
+    const parseMode = args.parseMode === "Markdown" ? "MarkdownV2" : args.parseMode;
+    const reply_markup = {
+      inline_keyboard: args.buttons.map((row) =>
+        row.map((b) => ({ text: b.text, callback_data: b.callbackData })),
+      ),
+    };
+
+    if (args.images?.length === 1) {
+      const path = args.images[0]?.uri.replace(/^file:\/\//, "");
+      const msg = await this.bot.api.sendPhoto(args.chatId, new InputFile(path), {
+        caption: args.text,
+        parse_mode: parseMode,
+        reply_markup,
+      });
+      return { messageId: msg.message_id };
+    }
+
+    // Telegram does not support inline keyboards on media-groups (sendMediaGroup
+    // ignores reply_markup). For multi-image + buttons we fall through to a
+    // text-only message with the keyboard — callers should pick at most one
+    // image when buttons are required.
+    const msg = await this.bot.api.sendMessage(args.chatId, args.text, {
+      parse_mode: parseMode,
+      reply_markup,
+    });
+    return { messageId: msg.message_id };
+  }
+
   async sendLessonProposal(
     args: LessonProposalMessageInput & {
       chatId: string;
@@ -53,24 +92,23 @@ export class TelegramNotifier implements Notifier {
     },
   ): Promise<{ messageId: number }> {
     const text = formatLessonProposalMessage(args);
-    const msg = await this.bot.api.sendMessage(args.chatId, text, {
-      parse_mode: "Markdown",
-      reply_markup: {
-        inline_keyboard: [
-          [
-            {
-              text: "✅ Approve",
-              callback_data: encodeCallbackData({ action: "approve", lessonId: args.lessonId }),
-            },
-            {
-              text: "❌ Reject",
-              callback_data: encodeCallbackData({ action: "reject", lessonId: args.lessonId }),
-            },
-          ],
+    return this.sendWithButtons({
+      chatId: args.chatId,
+      text,
+      parseMode: "Markdown",
+      buttons: [
+        [
+          {
+            text: "✅ Approve",
+            callbackData: encodeCallbackData({ action: "approve", lessonId: args.lessonId }),
+          },
+          {
+            text: "❌ Reject",
+            callbackData: encodeCallbackData({ action: "reject", lessonId: args.lessonId }),
+          },
         ],
-      },
+      ],
     });
-    return { messageId: msg.message_id };
   }
 
   async editLessonMessage(args: {

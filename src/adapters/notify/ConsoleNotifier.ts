@@ -16,4 +16,20 @@ export class ConsoleNotifier implements Notifier {
     );
     return { messageId: 0 };
   }
+
+  async sendWithButtons(
+    args: Parameters<Notifier["sendWithButtons"]>[0],
+  ): Promise<{ messageId: number }> {
+    log.info(
+      {
+        chatId: args.chatId,
+        text: args.text,
+        parseMode: args.parseMode,
+        images: args.images?.map((i) => ({ uri: i.uri, caption: i.caption })),
+        buttons: args.buttons.map((row) => row.map((b) => b.text)),
+      },
+      "notification(with-buttons)",
+    );
+    return { messageId: 0 };
+  }
 }
