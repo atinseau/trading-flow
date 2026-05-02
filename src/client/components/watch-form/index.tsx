@@ -87,7 +87,12 @@ const SENSIBLE_DEFAULTS = {
   pre_filter: {
     enabled: true,
     mode: "lenient" as const,
-    thresholds: { atr_ratio_min: 1.3, volume_spike_min: 1.5, rsi_extreme_distance: 25 },
+    thresholds: {
+      atr_ratio_min: 1.3,
+      volume_spike_min: 1.5,
+      rsi_extreme_distance: 25,
+      near_pivot_distance_pct: 0.3,
+    },
   },
   indicators: {},
 };
