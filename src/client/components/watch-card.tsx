@@ -40,7 +40,7 @@ export function WatchCard({ watch }: { watch: WatchListItem }) {
   });
 
   return (
-    <Card className="overflow-hidden">
+    <Card className="overflow-hidden h-full flex flex-col">
       <MarketClosedBanner watch={{ asset: watch.config.asset }} />
       <CardHeader className="flex flex-row items-start justify-between gap-2 pb-2">
         <div>
@@ -53,7 +53,7 @@ export function WatchCard({ watch }: { watch: WatchListItem }) {
           {watch.enabled ? "Active" : "Pause"}
         </Badge>
       </CardHeader>
-      <CardContent className="text-xs space-y-1">
+      <CardContent className="text-xs space-y-1 flex-1 flex flex-col">
         <div>
           Dernier tick : <RelativeTime date={detail.data?.state?.lastTickAt} />
         </div>
@@ -66,7 +66,7 @@ export function WatchCard({ watch }: { watch: WatchListItem }) {
             ${Number(detail.data?.state?.totalCostUsdMtd ?? 0).toFixed(2)}
           </span>
         </div>
-        <div className="flex gap-2 pt-2">
+        <div className="flex gap-2 pt-2 mt-auto">
           {watch.enabled ? (
             <>
               <Button size="sm" variant="outline" onClick={() => forceTick.mutate(watch.id)}>
