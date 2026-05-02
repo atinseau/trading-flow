@@ -18,7 +18,17 @@ services:
       POSTGRES_DB: trading_flow
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./docker/postgres/init-multiple-dbs.sh:/docker-entrypoint-initdb.d/init-multiple-dbs.sh:ro
+    # Use a Docker config (inline content) instead of a bind-mount: Coolify runs
+    # `docker compose up` from inside its build helper container, but the docker
+    # daemon is on the host. A `./relative/path` bind-mount source is resolved
+    # against `--project-directory` (a path that exists ONLY inside the helper),
+    # so the daemon never finds the file and silently creates a directory at
+    # the bind-mount source. Postgres then logs
+    # `init-multiple-dbs.sh: Is a directory` and the init never runs.
+    configs:
+      - source: postgres_init_script
+        target: /docker-entrypoint-initdb.d/init-multiple-dbs.sh
+        mode: 0755
     expose:
       - "5432"
     deploy:
@@ -259,3 +269,16 @@ volumes:
     driver: local
   claude_workspace:
     driver: local
+
+configs:
+  postgres_init_script:
+    # `$$` escapes a literal `$` so docker-compose doesn't substitute the
+    # variable at parse time — we want the running shell to expand
+    # POSTGRES_USER/POSTGRES_DB inside the container, not compose.
+    content: |
+      #!/bin/bash
+      set -e
+      psql -v ON_ERROR_STOP=1 --username "$$POSTGRES_USER" --dbname "$$POSTGRES_DB" <<-EOSQL
+        CREATE DATABASE temporal;
+        CREATE DATABASE temporal_visibility;
+      EOSQL
