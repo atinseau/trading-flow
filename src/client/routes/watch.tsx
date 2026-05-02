@@ -4,7 +4,7 @@ import { Zap } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
 import { LessonsSection } from "../components/lessons/lessons-section";
-import { MarketStateBadge } from "../components/market-state-badge";
+import { MarketClosedBanner } from "../components/market-state-badge";
 import { SetupsListSection } from "../components/setup/setups-list-section";
 import { ConfirmAction } from "../components/shared/confirm-action";
 import { Button } from "../components/ui/button";
@@ -73,6 +73,7 @@ export function Component() {
 
   return (
     <div className="space-y-6">
+      <MarketClosedBanner watch={{ asset: cfg.asset }} variant="page" />
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-xl font-bold flex items-center gap-3">
@@ -87,9 +88,6 @@ export function Component() {
             {cfg.asset.symbol} · {cfg.timeframes.primary} · {cfg.asset.source}
             {watch.state?.lastTickAt && <> · dernier tick {fmtRelative(watch.state.lastTickAt)}</>}
           </p>
-          <div className="flex gap-2 mt-2">
-            <MarketStateBadge watch={{ asset: cfg.asset }} />
-          </div>
         </div>
         <div className="flex gap-2">
           <Button
