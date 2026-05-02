@@ -45,6 +45,9 @@ coverage/
 .worktrees/
 TODO.md
 
+# Playwright CLI snapshots (nightwatch / playwright-cli)
+.playwright-cli/
+
 # Dev compose bind-mounted volumes (artifacts, claude workspace)
 .dev-artifacts/
 .dev-claude-workspace/
