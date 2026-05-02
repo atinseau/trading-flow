@@ -864,21 +864,24 @@ export function buildSetupActivities(deps: ActivityDeps) {
      *     finalizer rejected and persisted REJECTED before the kill signal
      *     was delivered to the workflow).
      */
-    async killSetup(input: { setupId: string; reason: string }): Promise<void> {
+    async killSetup(input: {
+      setupId: string;
+      reason: string;
+    }): Promise<{ sequence: number } | null> {
       const setup = await deps.setupRepo.get(input.setupId);
       if (!setup) {
         log.warn({ setupId: input.setupId }, "killSetup: setup not found, ignoring");
-        return;
+        return null;
       }
       if (isTerminal(setup.status)) {
         log.info(
           { setupId: input.setupId, status: setup.status },
           "killSetup: setup already terminal, no-op",
         );
-        return;
+        return null;
       }
       const before = setup.status;
-      await deps.eventStore.append(
+      const stored = await deps.eventStore.append(
         {
           setupId: input.setupId,
           stage: "system",
@@ -896,6 +899,7 @@ export function buildSetupActivities(deps: ActivityDeps) {
           invalidationLevel: setup.invalidationLevel,
         },
       );
+      return { sequence: stored.sequence };
     },
   };
 }

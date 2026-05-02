@@ -486,7 +486,16 @@ export async function setupWorkflow(initial: InitialEvidence): Promise<SetupStat
     killRequested = null;
 
     await CancellationScope.nonCancellable(async () => {
-      await dbActivities.killSetup({ setupId: initial.setupId, reason });
+      const stored = await dbActivities.killSetup({ setupId: initial.setupId, reason });
+      // Maintain the `sequence` invariant other persist activities preserve.
+      // killSetup returns null on the no-op path (setup already terminal) —
+      // skip the assignment in that case (the upstream terminal transition
+      // already advanced state.sequence). Defensive null/undefined check
+      // because some workflow histories may have been replayed past this
+      // point with a void-returning fake activity.
+      if (stored != null) {
+        state.sequence = stored.sequence;
+      }
       state.status = "KILLED";
       await notifyActivities.notifyTelegramSetupKilled({
         watchId: initial.watchId,
