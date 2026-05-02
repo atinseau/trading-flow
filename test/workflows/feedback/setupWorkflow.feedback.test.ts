@@ -119,6 +119,10 @@ function makeFakeActivities(opts: {
     notifyTelegramExpired: async () => null,
     notifyTelegramTPHit: async () => null,
     notifyTelegramSLHit: async () => null,
+    notifyTelegramSetupCreated: async () => null,
+    notifyTelegramReviewerVerdict: async () => null,
+    notifyTelegramSetupKilled: async () => null,
+    killSetup: async () => {},
     // Feedback activities (the child workflow's needs).
     gatherFeedbackContext: async () => {
       opts.feedbackHooks.gather++;

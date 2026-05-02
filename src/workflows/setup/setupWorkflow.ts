@@ -100,17 +100,32 @@ export type InitialEvidence = {
    * change a setup's feedback fate mid-flight.
    */
   feedbackEnabled: boolean;
+  /**
+   * Detector's free-form natural-language observation that justified
+   * proposing this setup. Forwarded to the setup-created Telegram
+   * notification so the user can review the reasoning at glance.
+   * Optional for back-compat with any in-flight workflows whose history
+   * was serialized before this field existed.
+   */
+  rawObservation?: string;
+  /**
+   * URI of the chart snapshot rendered at detection time. Forwarded to the
+   * setup-created Telegram notification. Optional for back-compat.
+   */
+  chartUri?: string;
 };
 
 export type ReviewSignalArgs = { tickSnapshotId: string };
 export type CorroborateSignalArgs = { confidenceDelta: number; evidence: unknown };
 export type PriceCheckSignalArgs = { currentPrice: number; observedAt: string };
 export type CloseSignalArgs = { reason: string };
+export type KillSignalArgs = { reason: string };
 
 export const reviewSignal = defineSignal<[ReviewSignalArgs]>("review");
 export const corroborateSignal = defineSignal<[CorroborateSignalArgs]>("corroborate");
 export const priceCheckSignal = defineSignal<[PriceCheckSignalArgs]>("priceCheck");
 export const closeSignal = defineSignal<[CloseSignalArgs]>("close");
+export const killSignal = defineSignal<[KillSignalArgs]>("kill");
 
 export type SetupWorkflowState = {
   status: SetupStatus;
@@ -248,6 +263,22 @@ export async function setupWorkflow(initial: InitialEvidence): Promise<SetupStat
       },
     });
     state.sequence = stored.sequence;
+
+    // Reviewer-verdict notification (gated on watch.notify_on inside the
+    // activity). Only STRENGTHEN/WEAKEN trigger this — NEUTRAL is silent and
+    // INVALIDATE has its own deterministic-invalidation path.
+    if (verdict.type === "STRENGTHEN" || verdict.type === "WEAKEN") {
+      await notifyActivities.notifyTelegramReviewerVerdict({
+        watchId: initial.watchId,
+        asset: initial.asset,
+        timeframe: initial.timeframe,
+        setupId: initial.setupId,
+        verdict: verdict.type,
+        scoreDelta: next.score - before.score,
+        scoreAfter: next.score,
+        reasoning: verdict.reasoning,
+      });
+    }
   });
 
   setHandler(corroborateSignal, async (args) => {
@@ -346,6 +377,19 @@ export async function setupWorkflow(initial: InitialEvidence): Promise<SetupStat
     state.status = "CLOSED";
   });
 
+  // User kill via Telegram inline button. The signal payload is a flag — the
+  // active loop polls it after each wait point and performs the actual
+  // persist + notify in a non-cancellable scope so a concurrent TTL or
+  // priceCheck flip cannot drop the Killed event mid-flight. We do NOT do
+  // the kill work inline in the signal handler because that runs
+  // concurrently with the main flow and would race the active loop.
+  let killRequested: { reason: string } | null = null;
+  setHandler(killSignal, (args) => {
+    // Only the latest kill wins (idempotent — repeated clicks are no-ops).
+    if (killRequested) return;
+    killRequested = { reason: args.reason };
+  });
+
   // Create the setup row first so subsequent events satisfy the FK.
   await dbActivities.createSetup({
     setupId: initial.setupId,
@@ -381,7 +425,7 @@ export async function setupWorkflow(initial: InitialEvidence): Promise<SetupStat
           direction: initial.direction,
           keyLevels: { invalidation: initial.invalidationLevel },
           initialScore: initial.initialScore,
-          rawObservation: "Initial detection",
+          rawObservation: initial.rawObservation ?? "Initial detection",
         },
       },
     },
@@ -392,6 +436,55 @@ export async function setupWorkflow(initial: InitialEvidence): Promise<SetupStat
     },
   });
   state.sequence = createdEvt.sequence;
+
+  // Setup-created Telegram notification (gated on watch.notify_on inside the
+  // activity). Sends BEFORE the same-tick fast-path so the user always sees
+  // a kill button — even on instant-finalize setups, the notification is
+  // best-effort and racing against finalizer completion is acceptable
+  // (the kill signal handler is idempotent and a no-op past terminal state).
+  await notifyActivities.notifyTelegramSetupCreated({
+    watchId: initial.watchId,
+    asset: initial.asset,
+    timeframe: initial.timeframe,
+    setupId: initial.setupId,
+    patternHint: initial.patternHint,
+    direction: initial.direction,
+    initialScore: initial.initialScore,
+    rawObservation: initial.rawObservation ?? "Initial detection",
+    invalidationLevel: initial.invalidationLevel,
+    chartUri: initial.chartUri,
+  });
+
+  // Helper: poll-and-apply for the killSignal. Called after every async wait
+  // point in the active loop. Persists the Killed event + sends confirmation
+  // notification, and flips state.status to KILLED so the active loop's
+  // `isActive` check exits. Idempotent — repeated invocations after the
+  // first kill are no-ops.
+  async function applyKillIfRequested(): Promise<boolean> {
+    if (!killRequested) return false;
+    if (!isActive(state.status)) return false;
+    const reason = killRequested.reason;
+    // Clear the flag eagerly so any concurrent re-entry from another await
+    // bails out via the early returns above.
+    killRequested = null;
+
+    await CancellationScope.nonCancellable(async () => {
+      await dbActivities.killSetup({ setupId: initial.setupId, reason });
+      state.status = "KILLED";
+      await notifyActivities.notifyTelegramSetupKilled({
+        watchId: initial.watchId,
+        asset: initial.asset,
+        timeframe: initial.timeframe,
+        setupId: initial.setupId,
+      });
+    });
+    return true;
+  }
+
+  // The handler may have been delivered before this point (e.g. while the
+  // SetupCreated persist + notification were in flight). Apply once now so
+  // we do not enter the active loop on an already-killed setup.
+  await applyKillIfRequested();
 
   // Same-tick fast-path for high-conviction event setups.
   // If the detector emitted a setup that already meets the finalizer
@@ -473,7 +566,11 @@ export async function setupWorkflow(initial: InitialEvidence): Promise<SetupStat
   // Active loop
   try {
     while (isActive(state.status)) {
-      await condition(() => !isActive(state.status) || state.status === "FINALIZING");
+      await condition(
+        () => !isActive(state.status) || state.status === "FINALIZING" || killRequested !== null,
+      );
+
+      if (await applyKillIfRequested()) continue;
 
       if (state.status === "FINALIZING") {
         const finalizerResult = await llmActivities.runFinalizer({

@@ -203,6 +203,10 @@ async function runOneTick(
       // Captured at creation time so a later watch-config edit cannot retro-
       // actively flip the feedback fate of in-flight setups.
       feedbackEnabled: watch.feedback.enabled,
+      // Forwarded to the setup-created Telegram notification — non-load-
+      // bearing for the workflow itself.
+      rawObservation: newSetup.rawObservation,
+      chartUri,
     };
     await startChild(setupWorkflow, {
       args: [initial],

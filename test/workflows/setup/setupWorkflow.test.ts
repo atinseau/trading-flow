@@ -130,6 +130,10 @@ describe("SetupWorkflow", () => {
       notifyTelegramRejected: async () => null,
       notifyTelegramInvalidatedAfterConfirmed: async () => null,
       notifyTelegramExpired: async () => null,
+      notifyTelegramSetupCreated: async () => null,
+      notifyTelegramReviewerVerdict: async () => null,
+      notifyTelegramSetupKilled: async () => null,
+      killSetup: async () => {},
     };
     const worker = await Worker.create({
       connection: env.nativeConnection,
@@ -175,6 +179,10 @@ describe("SetupWorkflow", () => {
       notifyTelegramRejected: async () => null,
       notifyTelegramInvalidatedAfterConfirmed: async () => null,
       notifyTelegramExpired: async () => null,
+      notifyTelegramSetupCreated: async () => null,
+      notifyTelegramReviewerVerdict: async () => null,
+      notifyTelegramSetupKilled: async () => null,
+      killSetup: async () => {},
     };
     const worker = await Worker.create({
       connection: env.nativeConnection,
@@ -238,6 +246,10 @@ describe("SetupWorkflow", () => {
         slHitNotifications.push(input.level);
         return null;
       },
+      notifyTelegramSetupCreated: async () => null,
+      notifyTelegramReviewerVerdict: async () => null,
+      notifyTelegramSetupKilled: async () => null,
+      killSetup: async () => {},
     };
     const worker = await Worker.create({
       connection: env.nativeConnection,
@@ -331,6 +343,10 @@ describe("SetupWorkflow", () => {
         slHitNotifications.push(input.level);
         return null;
       },
+      notifyTelegramSetupCreated: async () => null,
+      notifyTelegramReviewerVerdict: async () => null,
+      notifyTelegramSetupKilled: async () => null,
+      killSetup: async () => {},
     };
     const worker = await Worker.create({
       connection: env.nativeConnection,
@@ -413,6 +429,10 @@ describe("SetupWorkflow", () => {
         telegramExpiredCalled = true;
         return { messageId: 1 };
       },
+      notifyTelegramSetupCreated: async () => null,
+      notifyTelegramReviewerVerdict: async () => null,
+      notifyTelegramSetupKilled: async () => null,
+      killSetup: async () => {},
     };
 
     const worker = await Worker.create({
@@ -488,6 +508,10 @@ describe("SetupWorkflow", () => {
         return null;
       },
       notifyTelegramSLHit: async () => null,
+      notifyTelegramSetupCreated: async () => null,
+      notifyTelegramReviewerVerdict: async () => null,
+      notifyTelegramSetupKilled: async () => null,
+      killSetup: async () => {},
     };
 
     const worker = await Worker.create({
@@ -559,6 +583,10 @@ describe("SetupWorkflow", () => {
       notifyTelegramRejected: async () => null,
       notifyTelegramInvalidatedAfterConfirmed: async () => null,
       notifyTelegramExpired: async () => null,
+      notifyTelegramSetupCreated: async () => null,
+      notifyTelegramReviewerVerdict: async () => null,
+      notifyTelegramSetupKilled: async () => null,
+      killSetup: async () => {},
     };
     const worker = await Worker.create({
       connection: env.nativeConnection,
