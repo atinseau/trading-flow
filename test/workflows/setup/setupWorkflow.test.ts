@@ -608,4 +608,217 @@ describe("SetupWorkflow", () => {
       expect(result).toBe("INVALIDATED");
     });
   }, 30_000);
+
+  // --- kill signal path -----------------------------------------------------
+
+  test("kill signal in REVIEWING -> KILLED + Killed event persisted + notification sent + workflow exits", async () => {
+    const taskQueue = uniqueQueue("kill-reviewing");
+    const persistedTypes: string[] = [];
+    const killSetupCalls: { setupId: string; reason: string }[] = [];
+    const setupKilledNotifications: string[] = [];
+
+    const fakeActivities = {
+      createSetup: async () => ({}),
+      persistEvent: makePersistEvent((input) => {
+        persistedTypes.push(input.event.type);
+      }),
+      runReviewer: async () => baseRunReviewerReturn({ type: "NEUTRAL", observations: [] }),
+      runFinalizer: async () => ({
+        decisionJson: JSON.stringify({ go: false, reasoning: "x" }),
+        costUsd: 0,
+        promptVersion: "finalizer_v3",
+      }),
+      markSetupClosed: async () => {},
+      listEventsForSetup: async () => [],
+      loadSetup: async () => null,
+      notifyTelegramConfirmed: async () => null,
+      notifyTelegramRejected: async () => null,
+      notifyTelegramInvalidatedAfterConfirmed: async () => null,
+      notifyTelegramExpired: async () => null,
+      notifyTelegramSetupCreated: async () => null,
+      notifyTelegramReviewerVerdict: async () => null,
+      notifyTelegramSetupKilled: async (input: { setupId: string }) => {
+        setupKilledNotifications.push(input.setupId);
+        return { messageId: 99 };
+      },
+      killSetup: async (input: { setupId: string; reason: string }) => {
+        killSetupCalls.push(input);
+      },
+    };
+    const worker = await Worker.create({
+      connection: env.nativeConnection,
+      taskQueue,
+      workflowsPath: require.resolve("@workflows/setup/setupWorkflow"),
+      activities: fakeActivities,
+    });
+    await worker.runUntil(async () => {
+      const handle = await env.client.workflow.start(setupWorkflow, {
+        args: [{ ...baseInitial, setupId: "test-kill-reviewing" }],
+        workflowId: `test-kill-reviewing-${__testCounter}`,
+        taskQueue,
+      });
+
+      // Wait until the workflow is in REVIEWING (post createSetup +
+      // SetupCreated notification) before signaling.
+      const start = Date.now();
+      while (Date.now() - start < 10_000) {
+        const state = await handle.query(getStateQuery);
+        if (state.status === "REVIEWING") break;
+        await new Promise((r) => setTimeout(r, 25));
+      }
+
+      await handle.signal("kill", { reason: "user_killed_via_telegram" });
+
+      const result = await handle.result();
+      expect(result).toBe("KILLED");
+    });
+
+    // killSetup activity invoked once with the right reason.
+    expect(killSetupCalls).toHaveLength(1);
+    expect(killSetupCalls[0]?.setupId).toBe("test-kill-reviewing");
+    expect(killSetupCalls[0]?.reason).toBe("user_killed_via_telegram");
+
+    // Confirmation notification fired.
+    expect(setupKilledNotifications).toEqual(["test-kill-reviewing"]);
+  }, 30_000);
+
+  test("duplicate kill signal is a no-op (no second persist, no second notify)", async () => {
+    const taskQueue = uniqueQueue("kill-dedup");
+    const killSetupCalls: { setupId: string; reason: string }[] = [];
+    const setupKilledNotifications: string[] = [];
+
+    const fakeActivities = {
+      createSetup: async () => ({}),
+      persistEvent: makePersistEvent(),
+      runReviewer: async () => baseRunReviewerReturn({ type: "NEUTRAL", observations: [] }),
+      runFinalizer: async () => ({
+        decisionJson: JSON.stringify({ go: false, reasoning: "x" }),
+        costUsd: 0,
+        promptVersion: "finalizer_v3",
+      }),
+      markSetupClosed: async () => {},
+      listEventsForSetup: async () => [],
+      loadSetup: async () => null,
+      notifyTelegramConfirmed: async () => null,
+      notifyTelegramRejected: async () => null,
+      notifyTelegramInvalidatedAfterConfirmed: async () => null,
+      notifyTelegramExpired: async () => null,
+      notifyTelegramSetupCreated: async () => null,
+      notifyTelegramReviewerVerdict: async () => null,
+      notifyTelegramSetupKilled: async (input: { setupId: string }) => {
+        setupKilledNotifications.push(input.setupId);
+        return { messageId: 99 };
+      },
+      killSetup: async (input: { setupId: string; reason: string }) => {
+        killSetupCalls.push(input);
+      },
+    };
+    const worker = await Worker.create({
+      connection: env.nativeConnection,
+      taskQueue,
+      workflowsPath: require.resolve("@workflows/setup/setupWorkflow"),
+      activities: fakeActivities,
+    });
+    await worker.runUntil(async () => {
+      const handle = await env.client.workflow.start(setupWorkflow, {
+        args: [{ ...baseInitial, setupId: "test-kill-dedup" }],
+        workflowId: `test-kill-dedup-${__testCounter}`,
+        taskQueue,
+      });
+
+      // Wait for REVIEWING.
+      const start = Date.now();
+      while (Date.now() - start < 10_000) {
+        const state = await handle.query(getStateQuery);
+        if (state.status === "REVIEWING") break;
+        await new Promise((r) => setTimeout(r, 25));
+      }
+
+      // Send TWO kill signals. The handler must coalesce — only the first
+      // sets killRequested, the second sees a non-null flag and bails out.
+      await handle.signal("kill", { reason: "first" });
+      await handle.signal("kill", { reason: "second" });
+
+      const result = await handle.result();
+      expect(result).toBe("KILLED");
+    });
+
+    // Activity called exactly once with the FIRST reason — second click is dropped.
+    expect(killSetupCalls).toHaveLength(1);
+    expect(killSetupCalls[0]?.reason).toBe("first");
+    expect(setupKilledNotifications).toHaveLength(1);
+  }, 30_000);
+
+  test("kill arriving before active-loop entry is processed via early applyKillIfRequested", async () => {
+    const taskQueue = uniqueQueue("kill-early");
+    const persistedTypes: string[] = [];
+    const killSetupCalls: { setupId: string; reason: string }[] = [];
+
+    // Block createSetup briefly so the kill signal lands BEFORE the workflow
+    // reaches the early `await applyKillIfRequested()` call. This is the
+    // race condition the early apply guards against — the kill signal
+    // handler runs concurrently with the in-flight createSetup +
+    // SetupCreated persist + notifyTelegramSetupCreated, so without the
+    // early apply call we'd enter the active loop on an already-killed
+    // setup.
+    const fakeActivities = {
+      createSetup: async () => {
+        await new Promise((r) => setTimeout(r, 200));
+        return {};
+      },
+      persistEvent: makePersistEvent((input) => {
+        persistedTypes.push(input.event.type);
+      }),
+      runReviewer: async () => {
+        // The reviewer must NOT run if kill applied before active loop.
+        throw new Error("runReviewer should not be called on early-killed setup");
+      },
+      runFinalizer: async () => ({
+        decisionJson: JSON.stringify({ go: false, reasoning: "x" }),
+        costUsd: 0,
+        promptVersion: "finalizer_v3",
+      }),
+      markSetupClosed: async () => {},
+      listEventsForSetup: async () => [],
+      loadSetup: async () => null,
+      notifyTelegramConfirmed: async () => null,
+      notifyTelegramRejected: async () => null,
+      notifyTelegramInvalidatedAfterConfirmed: async () => null,
+      notifyTelegramExpired: async () => null,
+      notifyTelegramSetupCreated: async () => null,
+      notifyTelegramReviewerVerdict: async () => null,
+      notifyTelegramSetupKilled: async () => ({ messageId: 99 }),
+      killSetup: async (input: { setupId: string; reason: string }) => {
+        killSetupCalls.push(input);
+      },
+    };
+    const worker = await Worker.create({
+      connection: env.nativeConnection,
+      taskQueue,
+      workflowsPath: require.resolve("@workflows/setup/setupWorkflow"),
+      activities: fakeActivities,
+    });
+    await worker.runUntil(async () => {
+      const handle = await env.client.workflow.start(setupWorkflow, {
+        args: [{ ...baseInitial, setupId: "test-kill-early" }],
+        workflowId: `test-kill-early-${__testCounter}`,
+        taskQueue,
+      });
+
+      // Signal IMMEDIATELY — before the workflow has had a chance to leave
+      // its createSetup activity. Temporal queues the signal and delivers
+      // it once the workflow becomes responsive; the early
+      // applyKillIfRequested() call after notifyTelegramSetupCreated picks
+      // it up before we enter the active loop / call runReviewer.
+      await handle.signal("kill", { reason: "early_kill" });
+
+      const result = await handle.result();
+      expect(result).toBe("KILLED");
+    });
+
+    // Killed activity ran. Reviewer never ran (its throw would have
+    // surfaced as a workflow failure if invoked).
+    expect(killSetupCalls).toHaveLength(1);
+    expect(killSetupCalls[0]?.reason).toBe("early_kill");
+  }, 30_000);
 });
