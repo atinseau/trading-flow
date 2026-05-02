@@ -166,7 +166,12 @@ export async function buildContainer(
 
   let temporalConnection: Connection | null = null;
   let temporalClient: Client | null = null;
-  if (role === "scheduler") {
+  // The analysis role needs a temporal client too: createSetup activity calls
+  // ensurePriceMonitorStarted, which uses signalWithStart to spawn the shared
+  // per-symbol price monitor workflow. Without it, createSetup crashes with
+  // `null is not an object (evaluating 'client.workflow')` and the workflow
+  // fails before any SetupCreated event is persisted.
+  if (role === "scheduler" || role === "analysis") {
     temporalConnection = await Connection.connect({ address: infra.temporal.address });
     temporalClient = new Client({
       connection: temporalConnection,
