@@ -9,6 +9,10 @@ function spy(returnId: number) {
       calls.push(args);
       return { messageId: returnId };
     },
+    async sendWithButtons(args) {
+      calls.push({ chatId: args.chatId, text: args.text, parseMode: args.parseMode });
+      return { messageId: returnId };
+    },
   };
   return { notifier, calls };
 }
@@ -33,6 +37,9 @@ test("MultiNotifier with empty delegate list returns synthetic messageId 0", asy
 test("MultiNotifier propagates errors from delegates", async () => {
   const failing: Notifier = {
     async send() {
+      throw new Error("boom");
+    },
+    async sendWithButtons() {
       throw new Error("boom");
     },
   };

@@ -13,4 +13,6 @@ export type EventTypeName =
   | "SLHit"
   | "TrailingMoved"
   | "Expired"
-  | "PriceInvalidated";
+  | "PriceInvalidated"
+  // User cancelled the setup mid-flight via Telegram (kill button).
+  | "Killed";

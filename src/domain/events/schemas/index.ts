@@ -94,6 +94,12 @@ export const PriceInvalidatedPayload = z.object({
   observedAt: z.iso.datetime(),
 });
 
+export const KilledPayload = z.object({
+  /** Free-text reason. Currently always "user_killed_via_telegram"; reserved
+      for future kill triggers (e.g. budget cap, schedule override). */
+  reason: z.string(),
+});
+
 export const EventPayloadSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("SetupCreated"), data: SetupCreatedPayload }),
   z.object({ type: z.literal("Strengthened"), data: StrengthenedPayload }),
@@ -108,6 +114,7 @@ export const EventPayloadSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("TrailingMoved"), data: TrailingMovedPayload }),
   z.object({ type: z.literal("Expired"), data: ExpiredPayload }),
   z.object({ type: z.literal("PriceInvalidated"), data: PriceInvalidatedPayload }),
+  z.object({ type: z.literal("Killed"), data: KilledPayload }),
 ]);
 
 export type EventPayload = z.infer<typeof EventPayloadSchema>;

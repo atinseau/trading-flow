@@ -1,4 +1,8 @@
-import type { NotificationImage, Notifier } from "@domain/ports/Notifier";
+import type {
+  NotificationButton,
+  NotificationImage,
+  Notifier,
+} from "@domain/ports/Notifier";
 
 export class FakeNotifier implements Notifier {
   sentMessages: {
@@ -6,6 +10,7 @@ export class FakeNotifier implements Notifier {
     text: string;
     parseMode?: "Markdown" | "HTML";
     images?: NotificationImage[];
+    buttons?: NotificationButton[][];
   }[] = [];
   private nextId = 1;
 
@@ -20,6 +25,23 @@ export class FakeNotifier implements Notifier {
       text: args.text,
       parseMode: args.parseMode,
       images: args.images,
+    });
+    return { messageId: this.nextId++ };
+  }
+
+  async sendWithButtons(args: {
+    chatId: string;
+    text: string;
+    parseMode?: "Markdown" | "HTML";
+    images?: NotificationImage[];
+    buttons: NotificationButton[][];
+  }): Promise<{ messageId: number }> {
+    this.sentMessages.push({
+      chatId: args.chatId,
+      text: args.text,
+      parseMode: args.parseMode,
+      images: args.images,
+      buttons: args.buttons,
     });
     return { messageId: this.nextId++ };
   }

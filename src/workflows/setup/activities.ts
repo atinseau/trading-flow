@@ -1,4 +1,5 @@
 import { resolveAndCall } from "@adapters/llm/resolveAndCall";
+import { encodeSetupCallback } from "@adapters/notify/setupCallbackFormat";
 import { loadPrompt } from "@adapters/prompts/loadPrompt";
 import { InvalidConfigError } from "@domain/errors";
 // loadPrompt is still used for finalizer (not managed by PromptBuilder)
@@ -686,6 +687,182 @@ export function buildSetupActivities(deps: ActivityDeps) {
       });
       childLog.info({ event: "expired" }, "telegram sent");
       return result;
+    },
+
+    /**
+     * Notification fired right after the detector creates a new setup. Includes
+     * an inline "Kill setup" button so the user can short-circuit the
+     * reviewer/finalizer chain on a setup they don't want followed.
+     */
+    async notifyTelegramSetupCreated(input: {
+      watchId: string;
+      asset: string;
+      timeframe: string;
+      setupId: string;
+      patternHint: string;
+      direction: "LONG" | "SHORT";
+      initialScore: number;
+      rawObservation: string;
+      invalidationLevel: number;
+      chartUri?: string;
+    }): Promise<{ messageId: number } | null> {
+      const childLog = log.child({ watchId: input.watchId, asset: input.asset });
+      const watch = await deps.watchById(input.watchId);
+      if (!watch) return null;
+      if (!watch.notify_on.includes("setup_created")) {
+        childLog.debug({ event: "setup_created" }, "notification skipped (not in notify_on)");
+        return null;
+      }
+
+      const arrow = input.direction === "LONG" ? "🟢 LONG" : "🔴 SHORT";
+      const text = [
+        `🆕 New setup detected — ${input.watchId}`,
+        `${input.asset} ${input.timeframe} | ${arrow} | pattern=${input.patternHint}`,
+        `Score initial: ${input.initialScore}/100`,
+        `Invalidation: ${input.invalidationLevel}`,
+        "",
+        input.rawObservation,
+      ].join("\n");
+
+      const images =
+        watch.include_chart_image && input.chartUri ? [{ uri: input.chartUri }] : undefined;
+
+      const result = await deps.notifier.sendWithButtons({
+        chatId: deps.infra.notifications.telegram.chat_id,
+        text,
+        images,
+        buttons: [
+          [
+            {
+              text: "❌ Kill setup",
+              callbackData: encodeSetupCallback({ action: "kill", setupId: input.setupId }),
+            },
+          ],
+        ],
+      });
+      childLog.info(
+        { event: "setup_created", setupId: input.setupId },
+        "telegram setup_created sent",
+      );
+      return result;
+    },
+
+    /**
+     * Notification fired when the reviewer returns a STRENGTHEN or WEAKEN
+     * verdict. Includes the kill button so the user can pull the plug if a
+     * STRENGTHEN moved the setup into territory they don't believe.
+     */
+    async notifyTelegramReviewerVerdict(input: {
+      watchId: string;
+      asset: string;
+      timeframe: string;
+      setupId: string;
+      verdict: "STRENGTHEN" | "WEAKEN";
+      scoreDelta: number;
+      scoreAfter: number;
+      reasoning: string;
+    }): Promise<{ messageId: number } | null> {
+      const childLog = log.child({ watchId: input.watchId, asset: input.asset });
+      const watch = await deps.watchById(input.watchId);
+      if (!watch) return null;
+      const event =
+        input.verdict === "STRENGTHEN" ? "setup_strengthened" : "setup_weakened";
+      if (!watch.notify_on.includes(event)) {
+        childLog.debug({ event }, "notification skipped (not in notify_on)");
+        return null;
+      }
+
+      const scoreBefore = input.scoreAfter - input.scoreDelta;
+      const header =
+        input.verdict === "STRENGTHEN"
+          ? `💪 STRENGTHEN +${input.scoreDelta} — ${input.asset} ${input.timeframe}`
+          : `💔 WEAKEN ${input.scoreDelta} — ${input.asset} ${input.timeframe}`;
+      const text = [
+        header,
+        `Score: ${scoreBefore}→${input.scoreAfter}`,
+        "",
+        watch.include_reasoning ? input.reasoning : "",
+      ]
+        .filter((l) => l !== "")
+        .join("\n");
+
+      const result = await deps.notifier.sendWithButtons({
+        chatId: deps.infra.notifications.telegram.chat_id,
+        text,
+        buttons: [
+          [
+            {
+              text: "❌ Kill setup",
+              callbackData: encodeSetupCallback({ action: "kill", setupId: input.setupId }),
+            },
+          ],
+        ],
+      });
+      childLog.info({ event, setupId: input.setupId }, "telegram reviewer verdict sent");
+      return result;
+    },
+
+    /**
+     * Confirmation message echoed back after a user-issued kill via the inline
+     * Telegram button. Sent without a kill button (the setup is already
+     * terminal).
+     */
+    async notifyTelegramSetupKilled(input: {
+      watchId: string;
+      asset: string;
+      timeframe: string;
+      setupId: string;
+    }): Promise<{ messageId: number } | null> {
+      const childLog = log.child({ watchId: input.watchId, asset: input.asset });
+      const watch = await deps.watchById(input.watchId);
+      if (!watch) return null;
+      if (!watch.notify_on.includes("setup_killed")) {
+        childLog.debug({ event: "setup_killed" }, "notification skipped (not in notify_on)");
+        return null;
+      }
+      const result = await deps.notifier.send({
+        chatId: deps.infra.notifications.telegram.chat_id,
+        text: `☠️ Setup killed by user — ${input.asset} ${input.timeframe}`,
+      });
+      childLog.info(
+        { event: "setup_killed", setupId: input.setupId },
+        "telegram setup_killed sent",
+      );
+      return result;
+    },
+
+    /**
+     * Persists a Killed event and transitions the setup to the terminal KILLED
+     * status. Called from the workflow's killSignal handler.
+     */
+    async killSetup(input: { setupId: string; reason: string }): Promise<void> {
+      const setup = await deps.setupRepo.get(input.setupId);
+      if (!setup) {
+        log.warn({ setupId: input.setupId }, "killSetup: setup not found, ignoring");
+        return;
+      }
+      // Status before may be REVIEWING or FINALIZING — both transition to
+      // KILLED. Idempotent: if already terminal, persistEvent's sequence
+      // ordering will fail loudly rather than silently double-kill.
+      const before = setup.status;
+      await deps.eventStore.append(
+        {
+          setupId: input.setupId,
+          stage: "system",
+          actor: "user_kill",
+          type: "Killed",
+          scoreDelta: 0,
+          scoreAfter: setup.currentScore,
+          statusBefore: before,
+          statusAfter: "KILLED",
+          payload: { type: "Killed", data: { reason: input.reason } },
+        },
+        {
+          score: setup.currentScore,
+          status: "KILLED",
+          invalidationLevel: setup.invalidationLevel,
+        },
+      );
     },
   };
 }
