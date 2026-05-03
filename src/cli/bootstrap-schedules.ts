@@ -56,19 +56,26 @@ async function waitForNamespaceReady(
   let lastErr: unknown = null;
   while (Date.now() - start < opts.deadlineMs) {
     try {
+      // describeNamespace returns as soon as the namespace row is in postgres,
+      // but Temporal's schedule subsystem routes to history shards that need
+      // to acquire their lease before serving. Probing schedule.list actually
+      // exercises that path, so we wait until *that* call returns.
       await client.workflowService.describeNamespace({ namespace });
-      log.info({ namespace, waitedMs: Date.now() - start }, "namespace ready");
+      // schedule.list is an AsyncIterable — pull at most one item to force
+      // the underlying gRPC roundtrip. The list is allowed to be empty.
+      for await (const _ of client.schedule.list({ pageSize: 1 })) break;
+      log.info({ namespace, waitedMs: Date.now() - start }, "temporal ready");
       return;
     } catch (err) {
       lastErr = err;
       const msg = err instanceof Error ? err.message : String(err);
-      // Only retry the cold-start signature; surface real errors immediately.
+      // Only retry the cold-start signatures; surface real errors immediately.
       if (!msg.includes("UNAVAILABLE") && !msg.includes("Not enough hosts")) throw err;
       await new Promise((r) => setTimeout(r, intervalMs));
     }
   }
   throw new Error(
-    `Temporal namespace "${namespace}" not ready after ${opts.deadlineMs}ms: ${
+    `Temporal not ready (namespace "${namespace}" + schedule subsystem) after ${opts.deadlineMs}ms: ${
       lastErr instanceof Error ? lastErr.message : String(lastErr)
     }`,
   );
