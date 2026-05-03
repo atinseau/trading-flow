@@ -97,15 +97,23 @@ services:
       retries: 3
       start_period: 15s
     # Basic-auth gate via Traefik (Coolify-managed). Coolify auto-generates a
-    # router named `https-0-${COOLIFY_RESOURCE_UUID}-temporal-ui` with `gzip`
-    # in its middlewares chain; we override the chain to append our auth check
-    # AFTER gzip. BASIC_AUTH_USERS holds an htpasswd line — generate it with:
-    #   htpasswd -nbB <user> '<password>'
-    # (no `$$` escaping needed: docker-compose substitutes ${VAR} once and
-    # passes the value through unchanged to the docker daemon.)
+    # router named `https-0-<RESOURCE_UUID>-temporal-ui` with `gzip` in its
+    # middlewares chain; we override the chain to append our auth check after
+    # gzip.
+    #
+    # The router name and credentials are inlined (not env-var driven) because
+    # Coolify escapes user-provided ${VAR} in labels to prevent injection,
+    # which kills compose's own substitution. To rotate the password:
+    #   1. Generate a new hash, escaping `$` for compose:
+    #        htpasswd -nbB admin 'NEW_PASSWORD' | sed 's/\$/\$\$/g'
+    #   2. Replace the `users=` value in BOTH this service and tf-web below.
+    #   3. Update `.env.prod` (gitignored) for your local record.
+    #   4. Commit + redeploy.
+    # The `<RESOURCE_UUID>` is also hardcoded — change it only if you rebuild
+    # the Coolify resource from scratch.
     labels:
-      - "traefik.http.middlewares.temporal-ui-auth.basicauth.users=${BASIC_AUTH_USERS}"
-      - "traefik.http.routers.https-0-${COOLIFY_RESOURCE_UUID}-temporal-ui.middlewares=gzip,temporal-ui-auth"
+      - "traefik.http.middlewares.temporal-ui-auth.basicauth.users=admin:$$2y$$05$$/CPYotVeySn8AISJ2cCa5OC8CuFZiAYCOUBuW4gO.ZXiH0FLR/qn2"
+      - "traefik.http.routers.https-0-zngv9hpmcuihpvx6u7n1a2e1-temporal-ui.middlewares=gzip,temporal-ui-auth"
 
   # ⚠ COOLIFY: in the resource settings, mark `migrate` and `bootstrap-schedules`
   # as "Exclude from health check" — they exit 0 once done and would otherwise
@@ -281,13 +289,13 @@ services:
       timeout: 3s
       retries: 3
       start_period: 20s
-    # Basic-auth gate via Traefik. Same mechanism as temporal-ui — see comment
-    # on that service for the rationale and credential generation. The docker
+    # Basic-auth gate via Traefik. Same hash as temporal-ui above (rotate both
+    # together); see that comment for the rotation procedure. The docker
     # healthcheck above hits localhost:8084 from inside the container, bypassing
     # Traefik entirely, so basic auth doesn't break it.
     labels:
-      - "traefik.http.middlewares.tf-web-auth.basicauth.users=${BASIC_AUTH_USERS}"
-      - "traefik.http.routers.https-0-${COOLIFY_RESOURCE_UUID}-tf-web.middlewares=gzip,tf-web-auth"
+      - "traefik.http.middlewares.tf-web-auth.basicauth.users=admin:$$2y$$05$$/CPYotVeySn8AISJ2cCa5OC8CuFZiAYCOUBuW4gO.ZXiH0FLR/qn2"
+      - "traefik.http.routers.https-0-zngv9hpmcuihpvx6u7n1a2e1-tf-web.middlewares=gzip,tf-web-auth"
 
 volumes:
   postgres_data:
