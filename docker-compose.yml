@@ -102,17 +102,20 @@ services:
     # gzip.
     #
     # The router name and credentials are inlined (not env-var driven) because
-    # Coolify escapes user-provided ${VAR} in labels to prevent injection,
-    # which kills compose's own substitution. To rotate the password:
-    #   1. Generate a new hash, escaping `$` for compose:
-    #        htpasswd -nbB admin 'NEW_PASSWORD' | sed 's/\$/\$\$/g'
-    #   2. Replace the `users=` value in BOTH this service and tf-web below.
+    # Coolify rewrites the compose before passing to docker — both ${VAR}
+    # interpolation and compose's own $$→$ unescaping are skipped on labels.
+    # The hash is therefore stored with a SINGLE `$` (Coolify passes label
+    # values through verbatim; doubling would land `$$` in Traefik and break
+    # the bcrypt match). To rotate the password:
+    #   1. htpasswd -nbB admin 'NEW_PASSWORD'
+    #   2. Replace the `users=` value in BOTH this service and tf-web below
+    #      with the htpasswd output AS-IS (no $$ doubling).
     #   3. Update `.env.prod` (gitignored) for your local record.
     #   4. Commit + redeploy.
-    # The `<RESOURCE_UUID>` is also hardcoded — change it only if you rebuild
-    # the Coolify resource from scratch.
+    # The `<RESOURCE_UUID>` prefix is also hardcoded — change it only if you
+    # rebuild the Coolify resource from scratch.
     labels:
-      - "traefik.http.middlewares.temporal-ui-auth.basicauth.users=admin:$$2y$$05$$/CPYotVeySn8AISJ2cCa5OC8CuFZiAYCOUBuW4gO.ZXiH0FLR/qn2"
+      - "traefik.http.middlewares.temporal-ui-auth.basicauth.users=admin:$2y$05$/CPYotVeySn8AISJ2cCa5OC8CuFZiAYCOUBuW4gO.ZXiH0FLR/qn2"
       - "traefik.http.routers.https-0-zngv9hpmcuihpvx6u7n1a2e1-temporal-ui.middlewares=gzip,temporal-ui-auth"
 
   # ⚠ COOLIFY: in the resource settings, mark `migrate` and `bootstrap-schedules`
@@ -294,7 +297,7 @@ services:
     # healthcheck above hits localhost:8084 from inside the container, bypassing
     # Traefik entirely, so basic auth doesn't break it.
     labels:
-      - "traefik.http.middlewares.tf-web-auth.basicauth.users=admin:$$2y$$05$$/CPYotVeySn8AISJ2cCa5OC8CuFZiAYCOUBuW4gO.ZXiH0FLR/qn2"
+      - "traefik.http.middlewares.tf-web-auth.basicauth.users=admin:$2y$05$/CPYotVeySn8AISJ2cCa5OC8CuFZiAYCOUBuW4gO.ZXiH0FLR/qn2"
       - "traefik.http.routers.https-0-zngv9hpmcuihpvx6u7n1a2e1-tf-web.middlewares=gzip,tf-web-auth"
 
 volumes:
