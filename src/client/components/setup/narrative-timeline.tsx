@@ -159,7 +159,21 @@ function SmallEventLine({ e }: { e: SetupEvent }) {
   );
 }
 
-export function NarrativeTimeline({ events }: { events: SetupEvent[] }) {
+export type LLMCallSummary = {
+  id: string;
+  stage: string;
+  provider: string;
+  model: string;
+  costUsd: string;
+};
+
+export function NarrativeTimeline({
+  events,
+  llmCalls,
+}: {
+  events: SetupEvent[];
+  llmCalls: LLMCallSummary[];
+}) {
   const [showNeutral, setShowNeutral] = useState(false);
   const filtered = useMemo(
     () => (showNeutral ? events : events.filter((e) => e.type !== "Neutral")),
@@ -174,7 +188,9 @@ export function NarrativeTimeline({ events }: { events: SetupEvent[] }) {
     const c = events.find((e) => e.type === "Confirmed");
     return c ? Number(c.scoreAfter) : null;
   })();
-  const totalCost = events.reduce((sum, e) => sum + Number(e.costUsd ?? 0), 0);
+  // Total LLM cost = sum of every llm_call attributed to this setup. Includes
+  // detector calls (back-filled at create time) on top of reviewer/finalizer.
+  const totalCost = llmCalls.reduce((sum, c) => sum + Number(c.costUsd ?? 0), 0);
 
   return (
     <div className="space-y-6">
@@ -228,8 +244,7 @@ export function NarrativeTimeline({ events }: { events: SetupEvent[] }) {
                 </div>
               )}
               <div className="text-[10px] text-muted-foreground font-mono">
-                {phase.event.provider} · {phase.event.model} · {fmtCost(phase.event.costUsd)} ·{" "}
-                {phase.event.latencyMs}ms
+                {phase.event.provider} · {phase.event.model} · {phase.event.latencyMs}ms
               </div>
             </section>
           );
@@ -308,7 +323,7 @@ export function NarrativeTimeline({ events }: { events: SetupEvent[] }) {
                 </div>
               )}
               <div className="text-[10px] text-muted-foreground font-mono">
-                {phase.event.provider} · {phase.event.model} · {fmtCost(phase.event.costUsd)}
+                {phase.event.provider} · {phase.event.model}
               </div>
             </section>
           );

@@ -61,10 +61,7 @@ export function Component() {
               <span className="text-muted-foreground text-xs">
                 {e.provider} · {e.model}
               </span>
-              <span className="ml-auto font-mono text-xs">
-                ${Number(e.costUsd ?? 0).toFixed(2)}
-              </span>
-              <span className="font-mono w-16 text-right">
+              <span className="font-mono w-16 ml-auto text-right">
                 {Number(e.scoreAfter).toFixed(0)}
               </span>
             </button>

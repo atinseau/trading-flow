@@ -115,6 +115,7 @@ const server = Bun.serve({
     "/api/setups/stats": { GET: (req) => setupsApi.stats(req) },
     "/api/setups/:id": { GET: withParams(setupsApi.get) },
     "/api/setups/:id/events": { GET: withParams(setupsApi.events) },
+    "/api/setups/:id/llm-calls": { GET: withParams(setupsApi.llmCalls) },
     "/api/setups/:id/ohlcv": { GET: withParams(setupsApi.ohlcv) },
     "/api/events": { GET: (req) => eventsApi.list(req) },
     "/api/ticks": { GET: (req) => ticksApi.list(req) },

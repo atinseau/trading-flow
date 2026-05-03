@@ -39,7 +39,6 @@ export class PostgresEventStore implements EventStore {
           model: event.model ?? null,
           promptVersion: event.promptVersion ?? null,
           inputHash: event.inputHash ?? null,
-          costUsd: event.costUsd != null ? String(event.costUsd) : null,
           latencyMs: event.latencyMs ?? null,
         })
         .returning();
@@ -96,7 +95,6 @@ function mapStored(r: typeof events.$inferSelect): StoredEvent {
     model: r.model ?? undefined,
     promptVersion: r.promptVersion ?? undefined,
     inputHash: r.inputHash ?? undefined,
-    costUsd: r.costUsd != null ? Number(r.costUsd) : undefined,
     latencyMs: r.latencyMs ?? undefined,
   };
 }

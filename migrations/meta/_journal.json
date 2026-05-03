@@ -92,6 +92,13 @@
       "when": 1777723285985,
       "tag": "0012_dapper_tarot",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1777793862597,
+      "tag": "0013_organic_blazing_skull",
+      "breakpoints": true
     }
   ]
 }

@@ -23,7 +23,6 @@ export type NewEvent = {
   model?: string;
   promptVersion?: string;
   inputHash?: string;
-  costUsd?: number;
   latencyMs?: number;
 };
 

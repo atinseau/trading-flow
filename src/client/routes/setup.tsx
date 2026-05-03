@@ -54,6 +54,13 @@ export function Component() {
     queryKey: ["setups", id, "events"],
     queryFn: () => api<SetupEvent[]>(`/api/setups/${id}/events`),
   });
+  const llmCalls = useQuery({
+    queryKey: ["setups", id, "llm-calls"],
+    queryFn: () =>
+      api<{ id: string; stage: string; provider: string; model: string; costUsd: string }[]>(
+        `/api/setups/${id}/llm-calls`,
+      ),
+  });
   const ohlcv = useQuery({
     queryKey: ["setups", id, "ohlcv"],
     queryFn: async (): Promise<Candle[]> => {
@@ -185,7 +192,7 @@ export function Component() {
         <div>
           <h3 className="text-xs uppercase tracking-wide text-muted-foreground mb-3">Histoire</h3>
           {events.data && events.data.length > 0 ? (
-            <NarrativeTimeline events={events.data} />
+            <NarrativeTimeline events={events.data} llmCalls={llmCalls.data ?? []} />
           ) : (
             <div className="text-xs text-muted-foreground">Pas encore d'événements.</div>
           )}

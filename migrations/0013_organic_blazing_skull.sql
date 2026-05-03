@@ -1,0 +1,1 @@
+ALTER TABLE "events" DROP COLUMN "cost_usd";

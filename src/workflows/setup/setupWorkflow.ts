@@ -269,7 +269,6 @@ export async function setupWorkflow(initial: InitialEvidence): Promise<SetupStat
         model: reviewerResult.model,
         promptVersion: reviewerResult.promptVersion,
         inputHash: reviewerResult.inputHash,
-        costUsd: reviewerResult.costUsd,
       },
       setupUpdate: {
         score: next.score,
@@ -646,7 +645,6 @@ export async function setupWorkflow(initial: InitialEvidence): Promise<SetupStat
                   reasoning: decision.reasoning,
                 },
               },
-              costUsd: finalizerResult.costUsd,
             },
             setupUpdate: {
               score: state.score,
@@ -730,7 +728,6 @@ export async function setupWorkflow(initial: InitialEvidence): Promise<SetupStat
                   reasoning: decision.reasoning,
                 },
               },
-              costUsd: finalizerResult.costUsd,
             },
             setupUpdate: {
               score: state.score,

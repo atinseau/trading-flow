@@ -18,8 +18,7 @@ export function EventDetailModal(props: {
         {props.event && (
           <div className="space-y-4 text-sm">
             <p className="font-mono text-xs">
-              {props.event.provider} · {props.event.model} · $
-              {Number(props.event.costUsd ?? 0).toFixed(2)} · {props.event.latencyMs}ms
+              {props.event.provider} · {props.event.model} · {props.event.latencyMs}ms
             </p>
             <p>
               Score : <span className="font-mono">{Number(props.event.scoreAfter).toFixed(0)}</span>

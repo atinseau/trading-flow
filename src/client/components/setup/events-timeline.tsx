@@ -20,7 +20,6 @@ export type SetupEvent = {
   };
   provider: string | null;
   model: string | null;
-  costUsd: string | null;
   latencyMs: number | null;
 };
 
@@ -62,7 +61,7 @@ export function EventsTimeline({ events }: { events: SetupEvent[] }) {
             </div>
             {e.provider && (
               <div className="text-[10px] text-muted-foreground font-mono mt-1 ml-1">
-                {e.provider} · {e.model} · ${Number(e.costUsd ?? 0).toFixed(2)} · {e.latencyMs}ms
+                {e.provider} · {e.model} · {e.latencyMs}ms
               </div>
             )}
             {open && e.payload?.data?.reasoning && (

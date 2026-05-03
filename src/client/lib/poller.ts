@@ -82,7 +82,6 @@ export function startPoller(opts: PollerOpts): () => void {
           payload: events.payload,
           provider: events.provider,
           model: events.model,
-          costUsd: events.costUsd,
           latencyMs: events.latencyMs,
           watchId: setups.watchId,
         })

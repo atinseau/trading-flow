@@ -38,7 +38,27 @@ export class PostgresSetupRepository implements SetupRepository {
       })
       .onConflictDoNothing({ target: setups.id })
       .returning();
-    if (inserted) return mapSetup(inserted);
+
+    // Backfill the most recent detector LLM call for this watch with the new
+    // setup's id. Detector calls are recorded with setup_id=null because at
+    // that point the setup doesn't exist yet — once it does, we attribute
+    // the cost to it so the per-setup cost ledger is complete. Skips if the
+    // insert was a no-op (idempotent retry of an already-bootstrapped setup),
+    // since the original create already did the backfill.
+    if (inserted) {
+      await this.db.execute(sql`
+        UPDATE llm_calls SET setup_id = ${setup.id}
+        WHERE id = (
+          SELECT id FROM llm_calls
+          WHERE watch_id = ${setup.watchId}
+            AND stage = 'detector'
+            AND setup_id IS NULL
+          ORDER BY occurred_at DESC
+          LIMIT 1
+        )
+      `);
+      return mapSetup(inserted);
+    }
 
     const existing = await this.get(setup.id);
     if (!existing) throw new Error(`setup ${setup.id} insert conflicted but row not found`);

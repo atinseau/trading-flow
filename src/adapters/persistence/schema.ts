@@ -97,7 +97,6 @@ export const events = pgTable(
     model: text("model"),
     promptVersion: text("prompt_version"),
     inputHash: text("input_hash"),
-    costUsd: numeric("cost_usd", { precision: 10, scale: 6 }),
     latencyMs: integer("latency_ms"),
   },
   (t) => [

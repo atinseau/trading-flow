@@ -133,6 +133,21 @@ export function makeSetupsApi(deps: { db: DB }) {
       return Response.json(rows);
     }),
 
+    llmCalls: safeHandler(async (_req, params) => {
+      // Per-setup LLM-call ledger. Used by the setup-detail page to display
+      // total cost (and per-stage breakdown) — events.cost_usd was dropped
+      // because detector calls aren't event-scoped (one detector run can
+      // produce zero, one, or many events), so the cost lives here and is
+      // attributed to the setup via setup_id (backfilled at create time).
+      const id = requireParam(params, "id");
+      const rows = await db
+        .select()
+        .from(llmCalls)
+        .where(eq(llmCalls.setupId, id))
+        .orderBy(asc(llmCalls.occurredAt));
+      return Response.json(rows);
+    }),
+
     ohlcv: safeHandler(async (_req, params) => {
       const id = requireParam(params, "id");
       const [setup] = await db.select().from(setups).where(eq(setups.id, id));
