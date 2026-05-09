@@ -1,5 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
+import { ArrowRight } from "lucide-react";
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { api } from "../../lib/api";
 import { cn } from "../../lib/utils";
 import { SetupCard, type SetupListItem } from "./setup-card";
@@ -38,9 +40,21 @@ export function SetupsListSection({ watchId }: { watchId?: string }) {
     staleTime: 30_000,
   });
 
+  const perfHref = watchId ? `/performance?watchId=${encodeURIComponent(watchId)}` : "/performance";
+
   return (
     <div className="space-y-4">
       <SetupsStatsBar stats={stats.data} loading={stats.isLoading} />
+
+      <div className="flex items-center justify-end">
+        <Link
+          to={perfHref}
+          className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
+        >
+          Performance détaillée (R-multiple, equity, calibration)
+          <ArrowRight className="size-3" />
+        </Link>
+      </div>
 
       <div className="flex items-center gap-2 flex-wrap">
         {CATEGORIES.map((c) => {

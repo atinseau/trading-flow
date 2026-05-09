@@ -5,6 +5,7 @@ import { PatternBreakdown } from "@client/components/performance/pattern-breakdo
 import { PerfKpiTiles } from "@client/components/performance/perf-kpi-tiles";
 import type { PerfResponse } from "@client/components/performance/perf-types";
 import { RDistribution } from "@client/components/performance/r-distribution";
+import { SignificanceBanner } from "@client/components/performance/significance-banner";
 import {
   Select,
   SelectContent,
@@ -16,6 +17,7 @@ import { useWatches } from "@client/hooks/useWatches";
 import { api } from "@client/lib/api";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
+import { useSearchParams } from "react-router-dom";
 
 const WINDOWS = [
   { value: 7, label: "7 jours" },
@@ -25,9 +27,19 @@ const WINDOWS = [
 ];
 
 export function Component() {
-  const [watchId, setWatchId] = useState<string>("__all__");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialWatchId = searchParams.get("watchId") ?? "__all__";
+  const [watchId, setWatchIdState] = useState<string>(initialWatchId);
   const [windowDays, setWindowDays] = useState(30);
   const watches = useWatches();
+
+  const setWatchId = (next: string) => {
+    setWatchIdState(next);
+    const sp = new URLSearchParams(searchParams);
+    if (next === "__all__") sp.delete("watchId");
+    else sp.set("watchId", next);
+    setSearchParams(sp, { replace: true });
+  };
 
   const params = new URLSearchParams();
   if (watchId !== "__all__") params.set("watchId", watchId);
@@ -86,6 +98,8 @@ export function Component() {
           </Select>
         </div>
       </div>
+
+      {perf.data && <SignificanceBanner tradeCount={perf.data.kpis.tradeCount} />}
 
       <PerfKpiTiles kpis={perf.data?.kpis} loading={perf.isLoading} />
 

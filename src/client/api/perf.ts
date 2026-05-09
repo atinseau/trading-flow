@@ -97,12 +97,19 @@ export function makePerfApi(deps: { db: DB }) {
 
       // ── Calibration: score-at-confirmation → observed win rate ──────────
       // We need score from Confirmed event. Use a lateral query.
+      // ── Calibration: score AT CONFIRMATION → observed win rate ──────────
+      // Joins with the Confirmed event to read score_after at confirmation
+      // time. Using setups.current_score would be wrong: the score keeps
+      // moving after Confirmed (Reviewer keeps emitting deltas during
+      // tracking) so a setup confirmed at 82 may end at 67 — and we'd be
+      // bucketing the calibration by the wrong number.
       const calibRaw = await db.execute(sql`
         SELECT
-          floor(s.current_score / 5) * 5 AS score_bucket,
+          floor(e.score_after::numeric / 5) * 5 AS score_bucket,
           count(*) FILTER (WHERE s.r_multiple::numeric > 0) AS wins,
           count(*) AS total
         FROM setups s
+        JOIN events e ON e.setup_id = s.id AND e.type = 'Confirmed'
         WHERE s.r_multiple IS NOT NULL
           ${watchId ? sql`AND s.watch_id = ${watchId}` : sql``}
           AND s.closed_at >= ${sinceDate}
