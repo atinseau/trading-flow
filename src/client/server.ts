@@ -6,6 +6,7 @@ import { makeCostsApi } from "@client/api/costs";
 import { makeEventsApi } from "@client/api/events";
 import { health } from "@client/api/health";
 import { makeLessonsApi } from "@client/api/lessons";
+import { makePerfApi } from "@client/api/perf";
 import { search } from "@client/api/search";
 import { makeSetupsApi } from "@client/api/setups";
 import { makeStreamHandler } from "@client/api/stream";
@@ -57,6 +58,7 @@ const eventsApi = makeEventsApi({ db });
 const ticksApi = makeTicksApi({ db });
 const costsApi = makeCostsApi({ db });
 const lessonsApi = makeLessonsApi({ db });
+const perfApi = makePerfApi({ db });
 
 const adminApi = makeAdminApi({
   ops: {
@@ -121,6 +123,7 @@ const server = Bun.serve({
     "/api/ticks": { GET: (req) => ticksApi.list(req) },
     "/api/ticks/:id/chart.png": { GET: withParams(ticksApi.chartPng) },
     "/api/costs": { GET: (req) => costsApi.aggregations(req) },
+    "/api/perf": { GET: (req) => perfApi.perf(req) },
     "/api/watches/:id/force-tick": { POST: withParams(adminApi.forceTick) },
     "/api/watches/:id/pause": { POST: withParams(adminApi.pause) },
     "/api/watches/:id/resume": { POST: withParams(adminApi.resume) },

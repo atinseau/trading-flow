@@ -1,7 +1,9 @@
 import { events, setups, tickSnapshots, watchStates } from "@adapters/persistence/schema";
 import type { Broadcaster } from "@client/lib/broadcaster";
 import { childLogger } from "@client/lib/logger";
+import type { Direction } from "@domain/services/computeTradeMetrics";
 import { deriveOutcome } from "@domain/services/deriveOutcome";
+import { deriveTradeOutcome } from "@domain/services/deriveTradeOutcome";
 import type { SetupStatus } from "@domain/state-machine/setupTransitions";
 import { TERMINAL_STATUSES } from "@domain/state-machine/setupTransitions";
 import { and, asc, eq, gt, inArray, isNotNull, isNull } from "drizzle-orm";
@@ -125,23 +127,54 @@ export function startPoller(opts: PollerOpts): () => void {
       // so only one instance grabs each row. Acceptable for now.
       const terminalArr = [...TERMINAL_STATUSES] as string[];
       const pendingOutcome = await db
-        .select({ id: setups.id, status: setups.status })
+        .select({ id: setups.id, status: setups.status, direction: setups.direction })
         .from(setups)
         .where(and(inArray(setups.status, terminalArr), isNull(setups.outcome)))
         .limit(50);
       for (const row of pendingOutcome) {
         const evts = await db
-          .select({ type: events.type, sequence: events.sequence })
+          .select({
+            type: events.type,
+            sequence: events.sequence,
+            payload: events.payload,
+          })
           .from(events)
           .where(eq(events.setupId, row.id))
           .orderBy(asc(events.sequence));
         const outcome = deriveOutcome(row.status as SetupStatus, evts);
         if (!outcome) continue;
+
+        // For trades that reached EntryFilled, also derive perf metrics
+        // (entry/SL/exit prices, pnl%, R-multiple). For non-trade outcomes
+        // (REJECTED, INVALIDATED_PRE_TRADE, ...), trade is null and only
+        // outcome is set. Idempotent: the WHERE clause guards against
+        // double-write.
+        const trade = deriveTradeOutcome({
+          direction: row.direction as Direction | null,
+          events: evts,
+        });
+        const updateValues: Record<string, unknown> = { outcome };
+        if (trade) {
+          updateValues.entryPrice = trade.entryPrice.toString();
+          updateValues.stopLoss = trade.stopLoss.toString();
+          updateValues.exitPrice = trade.exitPrice.toString();
+          updateValues.exitReason = trade.exitReason;
+          updateValues.pnlPct = trade.metrics.pnlPct.toFixed(4);
+          updateValues.rMultiple = trade.metrics.rMultiple.toFixed(4);
+        }
         await db
           .update(setups)
-          .set({ outcome })
+          .set(updateValues)
           .where(and(eq(setups.id, row.id), isNull(setups.outcome)));
-        log.info({ setupId: row.id, outcome }, "outcome derived");
+        log.info(
+          {
+            setupId: row.id,
+            outcome,
+            rMultiple: trade?.metrics.rMultiple,
+            exitReason: trade?.exitReason,
+          },
+          "outcome derived",
+        );
       }
 
       const tickRows = await db

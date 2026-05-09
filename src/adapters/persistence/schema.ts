@@ -62,16 +62,31 @@ export const setups = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
     closedAt: timestamp("closed_at", { withTimezone: true }),
     outcome: text("outcome"),
+    // Performance metrics — denormalized from events at outcome derivation time.
+    // entryPrice/stopLoss come from the Confirmed event payload; exitPrice from
+    // the terminating TPHit/SLHit/Invalidated/Expired event. Null for setups
+    // that never reached EntryFilled (REJECTED, INVALIDATED_PRE_TRADE, etc).
+    entryPrice: numeric("entry_price"),
+    stopLoss: numeric("stop_loss"),
+    exitPrice: numeric("exit_price"),
+    exitReason: text("exit_reason"),
+    pnlPct: numeric("pnl_pct", { precision: 10, scale: 4 }),
+    rMultiple: numeric("r_multiple", { precision: 10, scale: 4 }),
   },
   (t) => [
     index("idx_setups_watch_status").on(t.watchId, t.status),
     index("idx_setups_outcome").on(t.outcome),
+    index("idx_setups_closed_at").on(t.closedAt),
     // Lock down the outcome string so a future code path / manual SQL update
     // can't silently corrupt the dashboard with an unknown value (the
     // category= filters and stats query would silently drop those rows).
     check(
       "setups_outcome_chk",
       sql`outcome IS NULL OR outcome IN ('WIN','LOSS','PARTIAL_WIN','TIME_OUT','REJECTED','INVALIDATED_PRE_TRADE','INVALIDATED_POST_TRADE','EXPIRED_NO_FILL','KILLED')`,
+    ),
+    check(
+      "setups_exit_reason_chk",
+      sql`exit_reason IS NULL OR exit_reason IN ('TP_HIT','SL_HIT','TTL_EXPIRED','INVALIDATED','KILLED')`,
     ),
   ],
 );
