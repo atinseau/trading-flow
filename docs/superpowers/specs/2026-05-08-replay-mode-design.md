@@ -6,6 +6,65 @@
 
 ---
 
+## Préambule métier
+
+### Le besoin
+
+Trading Flow est un bot LLM-driven : ses décisions de trading sont produites par un raisonnement opaque (Detector → Reviewer → Finalizer). Quand un setup se ferme, on a aujourd'hui :
+
+- la liste textuelle des events sur `/setups/:id`
+- les chart artifacts persistés
+- les agrégats statistiques sur `/performance`
+
+Mais on **ne voit pas ce que le bot voyait au moment où il a décidé**. On ne peut pas savoir s'il a halluciné un pattern, sur-pondéré un indicateur, ou réagi correctement à des données partielles. Et quand on veut **améliorer le bot** (modifier un prompt, ajuster un seuil, changer un modèle), on n'a aucun moyen de tester ce changement sans le déployer en prod et attendre que des trades surviennent.
+
+### Ce que ce projet fournit
+
+Une **rétro-exécution contrôlée**, déclenchée à la demande par l'utilisateur, sur **une fenêtre temporelle passée d'une watch précise**.
+
+Concrètement, sur la page `/replay` :
+
+1. L'utilisateur **choisit une watch** (ex: `btc-1h`) et **une fenêtre de bougies passées** (ex: du 12 avril 14h au 13 avril 14h, soit 24 bougies).
+2. Une **session de replay** est créée. Toutes les bougies de la fenêtre sont chargées : celles ≤ playhead sont visibles au bot, celles > playhead sont masquées au bot mais affichées en transparence à l'utilisateur (qui, lui, connaît le futur).
+3. **Bougie par bougie**, l'utilisateur clique "Step" et observe le bot raisonner exactement comme il l'aurait fait à ce moment-là :
+   - Le **Detector** reçoit le chart **dans l'état exact** où il était à cette bougie.
+   - S'il propose un setup, l'utilisateur voit le verdict, le reasoning textuel, et le score initial.
+   - Bougie suivante : le **Reviewer** réévalue, le score évolue.
+   - Si le seuil est atteint : **Finalizer** → décision GO/NO_GO.
+   - Si GO : tracking simulé bougie par bougie pour TP/SL.
+
+L'utilisateur peut **comparer en temps réel les décisions du bot à ce qui s'est réellement passé** (visible en transparence sur le chart) et identifier où le bot s'est trompé, où il a eu raison, ou où un changement de prompt aurait fait la différence.
+
+### Pourquoi c'est utile (cas d'usage métier)
+
+| Cas d'usage | Comment le replay aide |
+|---|---|
+| **Comprendre une perte** | Prendre un trade qui a perdu en prod, lancer un replay sur sa fenêtre, voir bougie par bougie où le bot a fait un faux pas (mauvaise lecture du Detector ? sur-confiance du Reviewer ? Finalizer trop permissif ?). |
+| **Tester un changement de prompt** | Modifier `detector_v3` → `v4` localement, lancer un replay sur une fenêtre passée intéressante, voir si v4 décide mieux — sans toucher aux watches actives. |
+| **Apprendre à connaître le bot** | Observer son raisonnement dans des contextes variés (bull, bear, range, news), calibrer son intuition sur ses forces et faiblesses. |
+| **Itérer rapidement** | Chaque replay coûte quelques cents (cache LLM mutualisé, fenêtre courte), pas des heures et des centaines de dollars comme un batch agrégé. |
+
+### Ce qui distingue cette approche
+
+- **Manuel et on-demand** : l'utilisateur déclenche, regarde, comprend. Aucun cron, aucune analyse statistique en arrière-plan, aucun scoring automatique.
+- **Une watch à la fois** : la session est attachée à une watch et **utilise sa config réelle** (prompts versionnés, indicateurs activés, seuils, modèles).
+- **Une fenêtre courte** (24-100 bougies typiquement) : on étudie un cas précis à fond, pas une moyenne sur 12 mois.
+- **Observation, pas optimisation** : la session ne produit pas de Sharpe ni de profit factor. Elle produit une **trace** — la séquence d'events que le bot aurait émis, avec tout son raisonnement.
+- **Aucun impact sur la prod** : zéro Telegram envoyé, zéro écriture sur les tables live (`setups`, `events`, `lessons`, `llm_calls`...), zéro workflow Temporal démarré. La prod continue à tourner pendant qu'on fait des replays.
+
+### Ancrage architectural
+
+L'implémentation respecte strictement l'**architecture hexagonale** déjà en place :
+
+- La pipeline domain (Detector, Reviewer, Finalizer, scoring, state machine) est invoquée **sans modification**.
+- Seuls les **adapters sont substitués** via dependency injection : `CachedLLMProvider` (cache mutualisé), `NoopTelegramNotifier` (capture sans envoi), `Replay*Store` (écriture sur tables `replay_*` isolées), `FixedClock` (horloge simulée à la bougie courante).
+- Aucun nouveau workflow Temporal : l'orchestrateur `ReplayStepper` est synchrone, in-process, testable sans infra.
+- Aucune modification du schéma live ; uniquement de nouvelles tables `replay_*` et un cache `llm_response_cache`.
+
+C'est cette discipline qui garantit que **le bot replayé est rigoureusement le même que le bot live** — modulo les side-effects neutralisés.
+
+---
+
 ## Table des matières
 
 1. [Vision & contexte](#1-vision--contexte)
@@ -28,48 +87,37 @@
 
 ## 1. Vision & contexte
 
-### Problème
+### Forme du système
 
-L'intelligence du bot est **dans le LLM**. Quand un setup confirmé perd, ou quand on veut comprendre pourquoi le Detector a fait un faux positif, on a aujourd'hui :
+Une **rétro-exécution contrôlée** de la pipeline du bot sur une fenêtre temporelle passée. La session est manuelle, on-demand, attachée à une watch précise. L'utilisateur navigue **bougie par bougie** et voit :
 
-- la liste textuelle des events (sur `/setups/:id`)
-- les chart artifacts persistés
-- les agrégats statistiques (sur `/performance`)
+- l'**input** envoyé au LLM (chart figé à la bougie courante, scalars d'indicateurs)
+- la **réponse** du LLM (verdict, score, reasoning textuel)
+- les **events** émis (SetupCreated, Strengthened, Confirmed, TPHit, ...)
+- le **message Telegram** qui aurait été envoyé en prod, capturé sans envoi
 
-Mais on **ne peut pas** :
+Le tout est persisté dans des tables `replay_*` isolées, reprenable, supprimable.
 
-1. Revivre le moment où le bot a pris une décision en voyant **exactement le chart qu'il voyait** (pas les bougies suivantes), avec les markers de ses décisions.
-2. Tester *"si j'avais utilisé un autre prompt / un autre seuil sur cette même fenêtre, qu'aurait-il décidé ?"* sans risquer de perturber la prod ni saigner $50-200 sur un Full LLM backtest dont on ne sait pas s'il sera utile.
-3. Comprendre **brique par brique** (Detector → Reviewer → Finalizer) le raisonnement du LLM dans son contexte temporel.
+### Cas d'usage primaires
 
-### Vision du Replay Mode
+1. **Post-mortem d'une perte** — replay sur la fenêtre du trade pour voir où le bot s'est planté.
+2. **Validation d'un changement de prompt / config** — tester localement sans toucher la prod.
+3. **Compréhension qualitative** — apprendre comment le bot réagit dans tel régime, sur tel pattern.
 
-Une **rétro-exécution contrôlée** de la pipeline du bot sur une fenêtre temporelle passée, présentée comme une expérience interactive plutôt qu'un batch run :
+### Périmètre explicite
 
-- L'utilisateur **sélectionne une fenêtre** (par ex. "BTC 1h, du 12 avril 14h au 13 avril 14h" — 24 bougies).
-- Une **session de replay** est créée. Toutes les bougies hors fenêtre sont chargées en RAM mais visiblement masquées au bot.
-- L'utilisateur clique **Step** ou active **Auto-step** : le serveur avance le playhead d'une bougie, exécute la pipeline (Detector, Reviewer, Finalizer si applicable, simulation TP/SL si setup confirmé), persiste les events dans des tables `replay_*` isolées, et streame les résultats au frontend.
-- L'utilisateur **voit le bot raisonner brique par brique** : pour chaque event produit, l'input snapshot envoyé au LLM, le verdict, le reasoning textuel, et le message Telegram qui *aurait* été envoyé (mais ne l'est pas).
-- Toute la session est persistée : on peut **fermer l'onglet et reprendre** plus tard.
-
-### Différence vs un "backtest" classique
-
-Le Replay Mode n'est **pas** un backtest agrégé sur 12 mois pour produire un Sharpe global. C'est un **outil expérientiel d'introspection** sur de **petites fenêtres choisies pour leur intérêt** (un trade qu'on veut comprendre, une régression suspecte, un setup raté). L'objectif est qualitatif (comprendre le raisonnement du LLM), pas quantitatif (mesurer une edge agrégée).
-
-Cette distinction est structurante :
-
-- **Petite fenêtre** (24-100 bougies typiquement) → coût LLM borné à $0.30-1 par session.
-- **Cache LLM par `inputHash`** → re-jouer la même fenêtre = gratuit.
-- **Pas de walk-forward** → on n'optimise rien automatiquement.
-- **Pas de circuit breaker** → c'est du R&D, pas du monitoring.
+- **Une fenêtre courte** : 24 à 100 bougies typiquement. Pas un backtest 12 mois.
+- **Une watch à la fois** : la session utilise la config de cette watch (prompts versionnés, indicateurs, seuils, modèles).
+- **Manuel** : l'utilisateur clique Step (ou active Auto-step à intervalle). Pas de cron, pas de trigger automatique.
+- **Observation** : la session produit une trace, pas une métrique d'optimisation.
 
 ### Principes guides
 
-1. **Hexagonal strict** — la pipeline (Detector / Reviewer / Finalizer) est invoquée **inchangée**. Seuls les adapters changent (LLM cache, Notifier no-op, EventStore replay-scoped, Clock simulé).
+1. **Hexagonal strict** — la pipeline (Detector / Reviewer / Finalizer) est invoquée **inchangée**. Seuls les adapters changent (LLM cache, Notifier no-op, stores replay-scoped, Clock simulé).
 2. **Side-effects neutralisés** — zéro Telegram, zéro écriture sur `setups`/`events`/`tick_snapshots`/`llm_calls` live, zéro Temporal Schedule créé, zéro tracking workflow démarré.
-3. **Event-sourcé** — `replay_events` est la source de vérité d'une session. On peut rejouer une session à zéro coût en relisant ses events.
+3. **Event-sourcé** — `replay_events` est la source de vérité d'une session. On peut rejouer la lecture d'une session à zéro coût en relisant ses events.
 4. **Reprenable** — une session pausée peut être reprise. Le state du replay est entièrement dans `replay_sessions.current_playhead_at` + les `replay_events` accumulés.
-5. **Page dédiée** — `/replay` est une zone à part entière, pas un onglet d'une watch. Une session référence une watch (pour la config), mais les sessions vivent leur propre vie.
+5. **Page dédiée** — `/replay` est une zone à part entière, pas un onglet d'une watch. Une session référence une watch (pour la config), mais les sessions vivent leur propre vie et survivent à la suppression d'une watch.
 
 ---
 
@@ -77,17 +125,17 @@ Cette distinction est structurante :
 
 | # | Dimension | Décision |
 |---|---|---|
-| 1 | Périmètre v1 | **Phase A** : viewer post-mortem read-only des setups passés. **Phase B** : mode interactif avec vrais LLM calls et rétro-exécution. **Phase C** (optionnelle) : override de prompts/modèles + comparaison de sessions. v1 ships A+B, C en backlog. |
+| 1 | Périmètre v1 | Le produit cible est la rétro-exécution interactive complète (step → invoke pipeline → afficher trace). Livré en deux jalons (cf. §12) : un squelette navigable d'abord, puis le step interactif qui déclenche les vrais LLM calls. |
 | 2 | Localisation UI | Page dédiée `/replay` (liste de sessions + bouton nouvelle) et `/replay/:sessionId` (la session). **Pas** d'onglet sous `/watches/:id`. Une session référence une watch via `watch_id` mais peut survivre à la suppression de la watch. |
 | 3 | Granularité du step | 1 step = 1 bougie sur le `timeframe.primary` de la watch. Step `count > 1` autorisé pour avancer rapidement. Auto-step à intervalle paramétrable (1s / 2s / 5s entre bougies). |
 | 4 | Source des bougies | `MarketDataFetcher` existant (Binance / Yahoo) avec borne haute = `current_playhead_at`. Pas de stockage local des OHLCV — on les re-fetch à chaque step (rapide, déjà cached côté Bun). |
 | 5 | Side-effects neutralisés | (a) `NoopTelegramNotifier` capture les messages dans `replay_events.payload.telegram_preview` mais n'envoie rien. (b) `ReplayEventStore` écrit dans `replay_events` au lieu de `events`. (c) `ReplayLLMCallStore` écrit dans `replay_llm_calls`. (d) `ReplaySetupRepository` écrit dans `replay_setups`. (e) Tracking simulé dans le step lui-même, pas via Temporal child workflow. |
-| 6 | Clock | Pour Phase B, on injecte un `FixedClock` qui retourne `current_playhead_at`. Le `inputHash` reste reproductible. |
+| 6 | Clock | À chaque step on injecte un `FixedClock` qui retourne `current_playhead_at`. Le `inputHash` reste reproductible. |
 | 7 | Cache LLM | Table `llm_response_cache` indexée par `(provider, model, prompt_version, input_hash)`. Hit = $0. Miss = appel réel + insert dans le cache. Cache mutualisé entre toutes les sessions. |
 | 8 | Cost cap | Cap obligatoire à la création (default $5 / session). Si le coût cumulé d'une session atteint le cap, le step suivant retourne 402, la session passe en `COST_CAPPED`. Reprenable après augmentation du cap. |
 | 9 | Persistence config snapshot | À la création, on snapshot la config de la watch (prompts versions, modèles, indicateurs, seuils) dans `replay_sessions.config_snapshot`. Si la watch est éditée plus tard, le replay reste reproductible. |
-| 10 | Phase C : override de config | Optionnel, modal avancé. L'utilisateur peut surcharger des champs (`prompt_detector_version`, `model.detector`, etc.). Le `config_snapshot` reflète l'override. |
-| 11 | Comparaison de sessions | Out-of-scope v1. Si pertinent post-MVP : page `/replay/compare?a=...&b=...` qui superpose deux sessions sur la même fenêtre. |
+| 10 | Override de config | Hors scope v1. La session utilise toujours la config snapshotée de la watch. Une évolution post-v1 pourrait permettre de surcharger ponctuellement (autre prompt, autre modèle) ; v1 reste sur "config réelle de la watch". |
+| 11 | Comparaison de sessions | Hors scope v1. Évolution possible post-v1 si l'usage le demande. |
 | 12 | Auto-trigger | Out-of-scope. Aucun cron, aucun déclenchement automatique. 100% on-demand par l'utilisateur. |
 | 13 | Suppression | Une session peut être supprimée par l'utilisateur (cascade sur `replay_events`, `replay_setups`, `replay_llm_calls`). Le `llm_response_cache` survit (utilisé par d'autres sessions). |
 | 14 | Échec en cours de step | Si un LLM call échoue (timeout, rate limit, erreur provider), la session passe en `FAILED` avec le message d'erreur. Reprenable après résolution (retry idempotent grâce au cache). |
@@ -147,7 +195,7 @@ Cette distinction est structurante :
 
 Le replay est **synchrone et interactif** : le user clique Step, on attend la réponse (5-15s pour 1 step avec LLM call). Temporal apporterait du surcoût (worker, schedule, queue) sans bénéfice — on n'a pas besoin de durabilité long-running, ni de retry automatique transparent. Si le step crashe, on retourne 500 au frontend et le user ré-essaie ; le cache LLM garantit qu'on ne paie pas deux fois.
 
-**Ce qui justifierait un workflow Temporal** : un mode "Auto-run jusqu'à la fin de la fenêtre" (ex: 200 bougies d'un coup). On reportera cette décision à Phase C.
+**Ce qui justifierait un workflow Temporal** : un mode "Auto-run jusqu'à la fin de la fenêtre" (ex: 200 bougies d'un coup). On reportera cette décision à une éventuelle évolution post-v1.
 
 ### Diagramme : flux d'une session
 
@@ -472,7 +520,7 @@ export class ReplayStepper {
    - Si `new_setup` proposé → INSERT replay_setups, INSERT replay_event(SetupCreated).
    - Si `corroborations[]` sur des setups vivants → applyVerdict, INSERT replay_event(Strengthened).
    - Si `ignore_reason` → INSERT replay_event(DetectorTickProcessed) avec le reason.
-4. **Reviewer call** pour chaque replay_setup en status `REVIEWING` (NB : pour Phase B v1, on appelle le Reviewer **uniquement si le Detector n'a pas déjà émis une corroboration sur ce setup au même tick** — sinon double-comptage).
+4. **Reviewer call** pour chaque replay_setup en status `REVIEWING` (NB : on appelle le Reviewer **uniquement si le Detector n'a pas déjà émis une corroboration sur ce setup au même tick** — sinon double-comptage).
 5. **Finalizer call** pour chaque replay_setup dont le score atteint `score_threshold_finalizer`. Si GO → INSERT EntryFilled à `entry_price = close de la bougie courante`. Si NO_GO → INSERT Rejected, status REJECTED.
 6. **Tracking simulation** pour chaque replay_setup en status `TRACKING` :
    - `LONG` : si `bougie.high >= TP[i]` → TPHit ; si `bougie.low <= currentSL` → SLHit.
@@ -549,7 +597,7 @@ Champs :
 - `name` (Input, optionnel).
 - `windowStartAt`, `windowEndAt` (date pickers, default = 7 derniers jours).
 - `costCapUsd` (Input number, default 5).
-- (Phase C, masqué par défaut, accordion "Avancé") : override prompts/modèles/seuils/indicateurs.
+- (Hors scope v1, prévu comme évolution future) : section "Avancé" pour overrider prompts/modèles/seuils/indicateurs.
 
 À la validation : POST `/api/replay/sessions`, redirect → `/replay/:id`.
 
@@ -761,41 +809,45 @@ Vérifié avant chaque LLM call. La transition `RUNNING → COST_CAPPED` se fait
 
 ## 12. Plan de phases & déploiement
 
-### Phase A — Viewer post-mortem (3-4 jours, gratuit)
+Le produit cible est **la rétro-exécution interactive** décrite au préambule. On la livre en deux jalons pour réduire le risque et profiter de la valeur d'une UI fonctionnelle dès le premier jalon.
 
-Objectif : naviguer dans les setups passés sur un chart avec scrubber. **Pas de LLM call.**
+### Jalon 1 — Squelette navigable (3-4 jours, gratuit)
 
-Livrables :
-- Migration 0015 : 5 tables `replay_*`.
-- Endpoints `/api/replay/sessions` (CRUD list/get/create/delete) + `/api/replay/sessions/:id/events|setups|ohlcv`.
-- Création de session avec `mode=postmortem` (flag à supprimer Phase B) qui copie les events live de la fenêtre dans `replay_events` au create-time, sans rien recalculer.
-- Pages `/replay` + `/replay/:id`.
-- Composants frontend (chart, scrubber, decisions log).
-
-Ce qu'on **n'a pas** en Phase A :
-- Step / auto-step (bouton désactivé, badge "Replay viewer mode").
-- LLM calls.
-- Telegram preview.
-
-### Phase B — Rétro-exécution interactive (1-2 semaines, payant cheap)
+Objectif : la page `/replay` est en ligne, on peut créer une session sur une fenêtre passée et **naviguer dans les events des setups qui ont déjà tourné en prod** sur cette fenêtre. Le bouton "Step" est encore désactivé (pas de re-exécution LLM), mais toute la mécanique UI est là : chart, scrubber, decisions log, transparence des bougies futures.
 
 Livrables :
+
+- Migration 0015 : 5 tables `replay_*` + `llm_response_cache`.
+- Domain : `ReplaySession` entity + `ReplaySessionService` (creation, validation).
+- Endpoints `/api/replay/sessions` (list/create/get/delete) + `/api/replay/sessions/:id/events|setups|ohlcv`.
+- À la création d'une session, on **copie une fois** dans `replay_events` les events live de la fenêtre demandée (lecture sur `events`, écriture sur `replay_events`). Cette copie sert de baseline avant que le Jalon 2 ajoute le step.
+- Pages `/replay` (liste + bouton créer) et `/replay/:id` (chart + scrubber + log).
+- Tests : domain, adapters (testcontainers), frontend (composants).
+
+Ce qui n'est pas encore là : step interactif, LLM calls, telegram preview, cost cap.
+
+### Jalon 2 — Rétro-exécution interactive (1-2 semaines, payant cheap)
+
+Objectif : la session devient **active**. Le bouton "Step" appelle réellement Detector / Reviewer / Finalizer sur la bougie courante via les adapters neutralisés, et écrit les events produits dans `replay_events`.
+
+Livrables :
+
+- Adapters : `CachedLLMProvider`, `NoopTelegramNotifier`, `ReplayEventStore`, `ReplaySetupRepository`, `ReplayLLMCallStore`, `FixedClock`.
+- Domain : `ReplayStepper` (orchestrateur in-process, voir §3 et §6).
 - Endpoint `/api/replay/sessions/:id/step`.
-- Adapters de neutralisation (`Cached`, `Noop`, `Replay*`, `FixedClock`).
-- `ReplayStepper` orchestrateur.
-- Cache LLM (`llm_response_cache`).
-- UI step controls + current-phase panel + telegram-preview.
-- Cost cap + estimation.
+- Cache LLM `llm_response_cache` + lookup par `inputHash`.
+- Cost cap (vérifié avant chaque LLM call) + estimation pré-création.
+- UI : step controls, current-phase card, telegram preview, breakdown coût.
+- Tests : intégration cost cap, isolation tables live, smoke LLM (RUN_LLM_CLAUDE=1).
 
-À l'issue de la Phase B, on a une expérience interactive complète. C'est la version qu'on veut.
+À l'issue du Jalon 2, le produit cible est livré.
 
-### Phase C — Override config + comparaison (3-5 jours, optionnel)
+### Évolutions post-v1 (optionnelles, déclenchées par usage réel)
 
-Livrables :
-- Modal avancé "override" : choisir prompt_version, model, seuils, indicateurs.
-- Page `/replay/compare?a=...&b=...` qui superpose 2 sessions sur la même fenêtre (équity et events alignés).
+- **Override de config dans le modal** : choisir un prompt alternatif (v3 vs v4), un autre modèle, un seuil différent, désactiver un indicateur. Permet de tester une variation sans modifier le repo.
+- **Comparaison de sessions** : page `/replay/compare?a=...&b=...` superposant deux sessions sur la même fenêtre (mêmes bougies, configs différentes).
 
-À considérer après usage de Phase B (besoin réel ?).
+Aucun engagement de planning sur ces évolutions — on les considère seulement si l'usage réel des Jalons 1+2 fait apparaître le besoin.
 
 ### Migration / déploiement
 
@@ -826,16 +878,18 @@ Points d'extension prévus (architecture le permet, code v1 ne les implémente p
 ## 14. Décisions consciemment écartées (out-of-scope v1)
 
 - **Multi-tenant / permissions** : single user trusted, comme le reste du projet.
-- **Replay temps réel** (live mode + replay synchrone) : pas pertinent.
-- **Walk-forward optimization** : pas un backtest classique, pas notre but.
-- **Comparaison automatique de sessions** : Phase C, optionnel.
-- **Auto-trigger sur événement** (e.g. après une perte) : pas v1. Outil R&D, pas monitoring.
-- **Editeur de prompt inline** dans l'UI replay : v1 utilise les prompts versionnés du repo. Modifier un prompt = bumper une version + redeploy.
-- **Streaming SSE des events pendant un step** : v1 = HTTP simple. SSE en Phase C si UX le demande.
-- **Replay sur un setup live actif** : interdit. Une session ne peut pas être créée sur une fenêtre incluant `now()`.
-- **Cross-watch session** : une session = une watch.
-- **Modification du `config_snapshot` post-création** : interdit. Changement = nouvelle session.
-- **Notification de fin de session** : pas v1. Les sessions Phase B sont courtes (24-100 bougies, 2-15 min), l'utilisateur est devant l'écran.
+- **Auto-trigger sur événement** (e.g. après une perte en prod, déclencher automatiquement un replay) : pas v1. C'est un outil R&D manuel, pas un monitoring.
+- **Cron / planification** : aucun replay automatique récurrent.
+- **Walk-forward optimization** : pas notre but. Le replay observe, il n'optimise pas.
+- **Comparaison automatique de sessions** : possible évolution post-v1, pas v1.
+- **Override de prompt / config dans l'UI** : possible évolution post-v1. v1 utilise la config réelle de la watch (snapshot au create-time). Tester un autre prompt = créer un nouveau prompt versionné dans le repo et lancer une nouvelle session.
+- **Editeur de prompt inline** dans l'UI replay : non. Les prompts vivent dans `prompts/*.hbs`, versionnés par git.
+- **Streaming SSE des events pendant un step** : v1 = HTTP simple synchrone. SSE possible plus tard si latence devient gênante sur des steps multiples.
+- **Replay sur un setup live actif** : interdit. Une session ne peut pas être créée sur une fenêtre incluant `now()`. Validation au create-time.
+- **Cross-watch session** : une session = une watch. Pour comparer deux watches → deux sessions.
+- **Modification du `config_snapshot` post-création** : interdit. Une session est immutable côté config. Changement = nouvelle session.
+- **Notification de fin de session** : pas v1. Les sessions sont courtes (typiquement 24-100 bougies, soit 2-15 min de step actif), l'utilisateur est devant l'écran.
+- **Métriques agrégées sur la session** (Sharpe, profit factor, etc.) : pas v1. Le replay produit une trace observable, pas un chiffre d'optimisation. Si le besoin émerge, l'API `/performance` existante peut être étendue pour lire `replay_*`.
 
 ---
 
@@ -851,5 +905,6 @@ Points d'extension prévus (architecture le permet, code v1 ne les implémente p
 | **Telegram preview** | Le message qui *aurait* été envoyé par le notifier en prod, capturé pour affichage dans l'UI. |
 | **Cost cap** | Plafond de coût LLM par session. Atteint = session passe en COST_CAPPED. |
 | **`inputHash`** | SHA-256 de (provider, model, prompt_version, prompt rendu, image SHA). Clé du cache LLM. |
-| **Phase A / B / C** | Découpage de la livraison v1 (A=viewer post-mortem, B=interactif, C=override). |
-| **Rétro-exécution contrôlée** | Synonyme du Replay Mode. Insiste sur le fait que ce n'est pas un batch test mais une exploration step-by-step contrôlée par l'utilisateur. |
+| **Jalon 1 / Jalon 2** | Découpage de la livraison v1. Jalon 1 = squelette navigable (UI + lecture des events live d'une fenêtre passée). Jalon 2 = step interactif qui appelle réellement la pipeline LLM. |
+| **Rétro-exécution contrôlée** | Synonyme du Replay Mode. Désigne la nature step-by-step, manuelle, contrôlée par l'utilisateur, de l'exécution de la pipeline sur des bougies passées. |
+| **Side-effect neutralisé** | Un effet externe normalement présent en prod (Telegram, écriture sur tables live, démarrage de workflows Temporal) qui est explicitement désactivé en replay via injection d'un adapter substitué. |
