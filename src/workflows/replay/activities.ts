@@ -2,9 +2,15 @@ import { resolveAndCall } from "@adapters/llm/resolveAndCall";
 import { loadPrompt } from "@adapters/prompts/loadPrompt";
 import { InvalidConfigError } from "@domain/errors";
 import type { EventPayload } from "@domain/events/schemas";
+import type { CloseReason } from "@domain/feedback/closeOutcome";
+import type { LessonAction, LessonCategory } from "@domain/feedback/lessonAction";
 import { filterLessonsForReplay, type LessonLike } from "@domain/replay/lessonsLookup";
 import type { Candle } from "@domain/schemas/Candle";
 import { buildDetectorOutputSchema } from "@domain/schemas/DetectorOutput";
+import {
+  FeedbackOutputSchema,
+  type FeedbackOutput,
+} from "@domain/schemas/FeedbackOutput";
 import { buildIndicatorsSchema } from "@domain/schemas/Indicators";
 import {
   ReviewerLlmOutputSchema,
@@ -134,6 +140,33 @@ const FinalizerOutputSchema = z.object({
   stop_loss: z.number().optional(),
   take_profit: z.array(z.number()).optional(),
 });
+
+// --- Feedback analysis ------------------------------------------------------
+
+export type RunFeedbackAnalysisReplayInput = {
+  sessionId: string;
+  setupId: string;
+  /** Why the setup closed (from the replay-events projection). */
+  closeReason: CloseReason;
+  /** Whether the setup ever transitioned to CONFIRMED before closing. */
+  everConfirmed: boolean;
+  /** Setup score at the moment of close. */
+  scoreAtClose: number;
+};
+
+export type RunFeedbackAnalysisReplayResult = {
+  /** No-op marker when `feedbackMode === "skip"` — nothing was called. */
+  skipped: boolean;
+  /** Bot's textual summary of the trade post-mortem. */
+  summary: string;
+  /** Proposed lesson actions. Always empty when `skipped: true`. */
+  actions: LessonAction[];
+  costUsd: number;
+  promptVersion: string;
+  provider: string;
+  model: string;
+  cacheHit: boolean;
+};
 
 export type ReplayActivities = ReturnType<typeof buildReplayActivities>;
 
@@ -727,7 +760,255 @@ export function buildReplayActivities(deps: ReplayActivityDeps) {
         cacheHit,
       };
     },
+
+    /**
+     * Replay-mode feedback analysis on trade close. Fires only when the
+     * session's `feedbackMode === "run"` ; in `"skip"` mode this is a
+     * no-op (no LLM, no events, `skipped: true`).
+     *
+     * Mirrors the live `runFeedbackAnalysis` + `applyLessonChanges` chain
+     * with two replay-specific isolations :
+     *
+     *  - "Existing lessons" shown to the LLM are filtered via the session's
+     *    `lessonsMode` + `windowStartAt` (same isolation as detector /
+     *    reviewer / finalizer).
+     *  - Proposed actions are persisted as `FeedbackLessonProposed` events
+     *    into `replay_events`. They are NEVER written to the live
+     *    `lessons` / `lesson_events` tables ; promotion to prod is a
+     *    manual, user-driven step on the replay UI.
+     *
+     * The feedback "context" passed to the LLM is minimal in this first
+     * pass — no chart / event-stream chunks. The bare close outcome +
+     * score + existing-lessons pool is enough to exercise the feedback
+     * loop's end-to-end shape for J2 ; richer context (replay-scoped
+     * event projections, chart artifacts at close) is a J3 follow-up.
+     */
+    async runFeedbackAnalysisReplay(
+      input: RunFeedbackAnalysisReplayInput,
+    ): Promise<RunFeedbackAnalysisReplayResult> {
+      const session = await deps.sessionsRepo.get(input.sessionId);
+      if (!session) throw new Error(`Replay session ${input.sessionId} not found`);
+      const watch = session.configSnapshot;
+      const childLog = log.child({
+        sessionId: input.sessionId,
+        setupId: input.setupId,
+      });
+
+      if (session.feedbackMode === "skip") {
+        childLog.info({}, "runFeedbackAnalysisReplay skipped (feedbackMode=skip)");
+        return {
+          skipped: true,
+          summary: "",
+          actions: [],
+          costUsd: 0,
+          promptVersion: "",
+          provider: "",
+          model: "",
+          cacheHit: false,
+        };
+      }
+
+      const analyzer = watch.feedback.analyzer ?? watch.analyzers.feedback;
+      if (!analyzer) {
+        throw new Error(
+          `watch '${session.watchId}' has no feedback analyzer configured (set feedback.analyzer or analyzers.feedback)`,
+        );
+      }
+
+      const cap = watch.feedback.max_active_lessons_per_category;
+      const categories: LessonCategory[] = ["detecting", "reviewing", "finalizing"];
+      const byCategory = await Promise.all(
+        categories.map((cat) =>
+          loadLessonsForReplay({
+            watchId: session.watchId,
+            category: cat,
+            cap,
+            lessonsMode: session.lessonsMode,
+            windowStartAt: session.windowStartAt,
+            // The feedback prompt always inspects the full pool; injection
+            // toggles only gate prompt-time use at stages, not the
+            // feedback analyzer's own knowledge of the pool.
+            injection: true,
+          }).then((lessons) => ({ cat, lessons })),
+        ),
+      );
+      const existingFlat: Array<{
+        id: string;
+        category: LessonCategory;
+        title: string;
+        body: string;
+        timesReinforced: number;
+      }> = [];
+      const poolStats: Record<LessonCategory, number> = {
+        detecting: 0,
+        reviewing: 0,
+        finalizing: 0,
+      };
+      for (const { cat, lessons } of byCategory) {
+        poolStats[cat] = lessons.length;
+        for (const l of lessons) {
+          existingFlat.push({
+            id: l.id,
+            category: cat,
+            title: l.title,
+            body: l.body,
+            // Reinforcement count is irrelevant at the proposal-only stage —
+            // the LLM has no signal to grow it inside a replay session.
+            timesReinforced: 0,
+          });
+        }
+      }
+
+      const feedbackPrompt = await loadPrompt("feedback");
+      const closeOutcome = { reason: input.closeReason, everConfirmed: input.everConfirmed };
+      const userPrompt = feedbackPrompt.render({
+        closeOutcome,
+        scoreAtClose: input.scoreAtClose,
+        poolStats,
+        maxActivePerCategory: cap,
+        existingLessons: existingFlat,
+        contextChunks: [],
+      });
+
+      const wrappedProviders = wrapLlmProvidersWithCache(
+        deps.llmProviders,
+        deps.cacheStore,
+        feedbackPrompt.version,
+      );
+      const startedAt = Date.now();
+      const result = await resolveAndCall(
+        analyzer.provider,
+        {
+          systemPrompt: feedbackPrompt.systemPrompt,
+          userPrompt,
+          model: analyzer.model,
+          responseSchema: FeedbackOutputSchema,
+        },
+        wrappedProviders,
+      );
+      const latencyMs = Date.now() - startedAt;
+
+      const cacheHit = wasCacheHit(result.output);
+      const parsed = result.output.parsed as FeedbackOutput;
+
+      await deps.replayLlmCallStore.record({
+        sessionId: input.sessionId,
+        setupId: input.setupId,
+        stage: "feedback",
+        provider: result.usedProvider,
+        model: analyzer.model,
+        promptTokens: result.output.promptTokens,
+        completionTokens: result.output.completionTokens,
+        cacheReadTokens: result.output.cacheReadTokens ?? 0,
+        cacheCreateTokens: result.output.cacheWriteTokens ?? 0,
+        costUsd: result.output.costUsd,
+        latencyMs,
+        cacheHit,
+      });
+      if (!cacheHit && result.output.costUsd > 0) {
+        await deps.sessionsRepo.incrementCost(input.sessionId, result.output.costUsd);
+      }
+
+      // Persist each proposed action as a `FeedbackLessonProposed` event.
+      // Live also runs a validation step (cap/asset/pinned), but in replay
+      // we capture EVERY proposal verbatim — the user reviews them on the
+      // UI and decides what to promote.
+      for (const action of parsed.actions) {
+        await deps.replayEventStore.append(input.sessionId, {
+          setupId: input.setupId,
+          occurredAt: new Date(),
+          stage: "feedback",
+          actor: result.usedProvider,
+          type: "FeedbackLessonProposed",
+          scoreDelta: 0,
+          payload: {
+            type: "FeedbackLessonProposed",
+            data: mapActionToProposedPayload(action, input.setupId),
+          },
+          provider: result.usedProvider,
+          model: analyzer.model,
+          promptVersion: feedbackPrompt.version,
+          latencyMs,
+          cacheHit,
+        });
+      }
+
+      childLog.info(
+        {
+          actions: parsed.actions.length,
+          costUsd: result.output.costUsd,
+          cacheHit,
+        },
+        "runFeedbackAnalysisReplay complete",
+      );
+
+      return {
+        skipped: false,
+        summary: parsed.summary,
+        actions: parsed.actions,
+        costUsd: result.output.costUsd,
+        promptVersion: feedbackPrompt.version,
+        provider: result.usedProvider,
+        model: analyzer.model,
+        cacheHit,
+      };
+    },
   };
+}
+
+/**
+ * Maps a feedback `LessonAction` to the persisted `FeedbackLessonProposed`
+ * payload shape. The action discriminant defines what gets captured for
+ * later user review.
+ */
+function mapActionToProposedPayload(
+  action: LessonAction,
+  sourceTradeSetupId: string,
+): {
+  action: "CREATE" | "REINFORCE" | "REFINE" | "DEPRECATE";
+  title: string;
+  body: string;
+  rationale: string;
+  sourceTradeSetupId: string;
+  supersedesLessonId?: string;
+} {
+  switch (action.type) {
+    case "CREATE":
+      return {
+        action: "CREATE",
+        title: action.title,
+        body: action.body,
+        rationale: action.rationale,
+        sourceTradeSetupId,
+      };
+    case "REINFORCE":
+      return {
+        action: "REINFORCE",
+        title: `[REINFORCE] ${action.lessonId}`,
+        body: action.reason,
+        rationale: action.reason,
+        sourceTradeSetupId,
+        supersedesLessonId: action.lessonId,
+      };
+    case "REFINE":
+      return {
+        action: "REFINE",
+        title: action.newTitle,
+        body: action.newBody,
+        rationale: action.rationale,
+        sourceTradeSetupId,
+        supersedesLessonId: action.lessonId,
+      };
+    case "DEPRECATE":
+      return {
+        action: "DEPRECATE",
+        title: `[DEPRECATE] ${action.lessonId}`,
+        body: action.reason,
+        rationale: action.reason,
+        sourceTradeSetupId,
+        supersedesLessonId: action.lessonId,
+      };
+  }
 }
 
 function extractObservations(payload: EventPayload): unknown[] {
