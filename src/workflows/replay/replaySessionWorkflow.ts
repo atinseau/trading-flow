@@ -55,8 +55,13 @@ export type ReplaySessionWorkflowArgs = {
 };
 
 export type ReplayTickSignalArgs = {
-  /** ISO date of the candle close that this tick refers to. */
-  tickAt: string;
+  /** One or more ISO candle-close timestamps to enqueue, in order. The
+   * `tickAts` array form lets the API batch a "Step N" click into a
+   * single signal — avoiding N round-trips and N worker wake-ups. The
+   * legacy `tickAt` (singular) form is kept for backward compat and is
+   * normalized internally. */
+  tickAt?: string;
+  tickAts?: string[];
 };
 
 export const replayTickSignal = defineSignal<[ReplayTickSignalArgs]>("replayTick");
@@ -162,7 +167,8 @@ export async function replaySessionWorkflow(args: ReplaySessionWorkflowArgs): Pr
 
   setHandler(replayTickSignal, (a) => {
     if (terminated || status === "COMPLETED" || status === "FAILED") return;
-    queue.push(a.tickAt);
+    const incoming = a.tickAts ?? (a.tickAt ? [a.tickAt] : []);
+    for (const t of incoming) queue.push(t);
   });
   setHandler(pauseSignal, () => {
     paused = true;
@@ -213,7 +219,15 @@ export async function replaySessionWorkflow(args: ReplaySessionWorkflowArgs): Pr
     const tickAt = next;
     tickInProgress = true;
     try {
-      const cost = await processTick(args.sessionId, watch, tickAt, alive, lastTickAt);
+      const cost = await processTick(
+        args.sessionId,
+        watch,
+        tickAt,
+        alive,
+        lastTickAt,
+        costUsdSoFar,
+        session.costCapUsd,
+      );
       costUsdSoFar += cost;
       lastTickAt = tickAt;
 
@@ -238,17 +252,60 @@ export async function replaySessionWorkflow(args: ReplaySessionWorkflowArgs): Pr
         });
       }
     } catch (err) {
-      status = "FAILED";
+      const reason = (err as Error).message ?? "unknown";
+      // Distinguish unrecoverable domain errors from transient activity
+      // failures that have only EXHAUSTED their Temporal retries. The
+      // former (bad config, schema mismatch, no provider) belong in
+      // FAILED — the session can't make progress without user
+      // intervention. The latter shouldn't kill the session : pause it
+      // so the user can re-Step after the underlying issue clears
+      // (network, rate limit, market data outage).
+      if (isUnrecoverableError(err)) {
+        status = "FAILED";
+        await db.updateReplaySessionStatus({
+          sessionId: args.sessionId,
+          status: "FAILED",
+          failureReason: reason,
+        });
+        break;
+      }
+      // Recoverable : pause + remember reason for the UI.
+      paused = true;
+      status = "PAUSED";
       await db.updateReplaySessionStatus({
         sessionId: args.sessionId,
-        status: "FAILED",
-        failureReason: (err as Error).message ?? "unknown",
+        status: "PAUSED",
+        failureReason: `transient: ${reason}`,
       });
-      break;
+      // Stay in the main loop ; resumeSignal will re-arm processing.
     } finally {
       tickInProgress = false;
     }
   }
+}
+
+/**
+ * Classifier for the workflow's main-loop catch. Domain errors that
+ * indicate a config / schema / availability problem mark the session
+ * FAILED ; everything else is treated as transient (network exhaustion,
+ * adapter glitch, market-data hiccup) and surfaces as PAUSED so the user
+ * can resume after the underlying issue clears.
+ */
+function isUnrecoverableError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  // Temporal wraps activity errors with `ApplicationFailure.type` mirroring
+  // the original error.name when the activity threw a class instance.
+  // Inspecting `.name` is reliable across both wrappers.
+  const name = err.name;
+  return (
+    name === "InvalidConfigError" ||
+    name === "AssetNotFoundError" ||
+    name === "LLMSchemaValidationError" ||
+    name === "PromptTooLargeError" ||
+    name === "NoProviderAvailableError" ||
+    name === "CircularFallbackError" ||
+    name === "UnsupportedExchangeError"
+  );
 }
 
 // --- Tick orchestration ------------------------------------------------------
@@ -282,15 +339,29 @@ function timeframeMinutes(tf: string): number {
   }
 }
 
+/**
+ * Preventive cost-cap guard. Returns `true` once the cumulative cost
+ * (across all prior ticks + this in-flight tick) has reached the cap.
+ * Called between phases in `processTick` so we stop BEFORE firing the
+ * next LLM call, not after — the original post-tick check could burn 3+
+ * LLM calls above the cap in a single tick.
+ */
+function isOverCap(costBefore: number, tickCost: number, capUsd: number): boolean {
+  return costBefore + tickCost >= capUsd;
+}
+
 async function processTick(
   sessionId: string,
   watch: import("@domain/schemas/WatchesConfig").WatchConfig,
   tickAt: string,
   alive: Map<string, AliveSetup>,
   prevTickAt: string | null,
+  costSoFarBefore: number,
+  costCapUsd: number,
 ): Promise<number> {
   let tickCost = 0;
   const tickAtDate = new Date(tickAt);
+  const overCap = () => isOverCap(costSoFarBefore, tickCost, costCapUsd);
 
   // -------- 0. TTL expiry check (before any LLM call) --------
   // Setups whose TTL has lapsed by `tickAt` are expired without consuming
@@ -344,13 +415,17 @@ async function processTick(
     invalidationLevel: s.runtime.invalidationLevel,
   }));
 
-  // 1) Detector tick — always runs.
+  // 1) Detector tick. The cost-cap guard is checked AFTER the detector
+  //    call : we always allow at least one LLM call per tick so the user
+  //    can see the detector's reasoning on the candle they just stepped
+  //    to ; downstream phases (reviewer/finalizer/feedback) are gated.
   const det = await llm.runDetectorReplay({
     sessionId,
     tickAt,
     aliveSetups: aliveSnapshot,
   });
   tickCost += det.costUsd;
+  if (overCap()) return tickCost;
 
   const detVerdict = JSON.parse(det.verdictJson || "{}") as {
     new_setups?: Array<{
@@ -435,6 +510,7 @@ async function processTick(
   // 3) For each REVIEWING setup, run the reviewer and apply the verdict.
   for (const setup of [...alive.values()]) {
     if (setup.runtime.status !== "REVIEWING") continue;
+    if (overCap()) return tickCost;
     const r = await llm.runReviewerReplay({
       sessionId,
       tickAt,
@@ -504,6 +580,7 @@ async function processTick(
   // 4) For each FINALIZING setup, run the finalizer.
   for (const setup of [...alive.values()]) {
     if (setup.runtime.status !== "FINALIZING") continue;
+    if (overCap()) return tickCost;
     const f = await llm.runFinalizerReplay({
       sessionId,
       tickAt,

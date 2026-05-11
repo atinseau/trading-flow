@@ -583,6 +583,80 @@ describe("POST /api/replay/sessions/:id/step", () => {
     expect(res.status).toBe(400);
     expect(signaller.calls).toHaveLength(0);
   });
+
+  test("400 when tickAt is not aligned on the timeframe", async () => {
+    const id = await createTestSession();
+    // 1h timeframe, windowStartAt = 14:00 → 14:03 is misaligned by 3 min.
+    const res = await api.step(postStep(id, { tickAt: "2026-04-12T14:03:00.000Z" }), { id });
+    expect(res.status).toBe(400);
+    expect(signaller.calls).toHaveLength(0);
+  });
+
+  test("accepts tickAt at the window's exact start boundary", async () => {
+    const id = await createTestSession();
+    const res = await api.step(postStep(id, { tickAt: "2026-04-12T14:00:00.000Z" }), { id });
+    expect(res.status).toBe(200);
+    expect(signaller.calls).toEqual([
+      { kind: "step", sessionId: id, tickAt: "2026-04-12T14:00:00.000Z" },
+    ]);
+  });
+
+  test("accepts tickAt at the window's exact end boundary", async () => {
+    const id = await createTestSession();
+    // windowEnd = 2026-04-13T14:00:00 — aligned on 1h timeframe.
+    const res = await api.step(postStep(id, { tickAt: "2026-04-13T14:00:00.000Z" }), { id });
+    expect(res.status).toBe(200);
+  });
+
+  test("accepts a batched tickAts array and dispatches one signal", async () => {
+    const id = await createTestSession();
+    const res = await api.step(
+      postStep(id, {
+        tickAts: [
+          "2026-04-12T15:00:00.000Z",
+          "2026-04-12T16:00:00.000Z",
+          "2026-04-12T17:00:00.000Z",
+        ],
+      }),
+      { id },
+    );
+    expect(res.status).toBe(200);
+    expect(signaller.calls).toHaveLength(1);
+    expect(signaller.calls[0]).toEqual({
+      kind: "step",
+      sessionId: id,
+      tickAts: [
+        "2026-04-12T15:00:00.000Z",
+        "2026-04-12T16:00:00.000Z",
+        "2026-04-12T17:00:00.000Z",
+      ],
+    });
+  });
+
+  test("400 when any tickAt in the batch is misaligned", async () => {
+    const id = await createTestSession();
+    const res = await api.step(
+      postStep(id, {
+        tickAts: ["2026-04-12T15:00:00.000Z", "2026-04-12T16:03:00.000Z"],
+      }),
+      { id },
+    );
+    expect(res.status).toBe(400);
+    expect(signaller.calls).toHaveLength(0);
+  });
+
+  test("400 when both tickAt and tickAts are provided", async () => {
+    const id = await createTestSession();
+    const res = await api.step(
+      postStep(id, {
+        tickAt: "2026-04-12T15:00:00.000Z",
+        tickAts: ["2026-04-12T15:00:00.000Z"],
+      }),
+      { id },
+    );
+    expect(res.status).toBe(400);
+    expect(signaller.calls).toHaveLength(0);
+  });
 });
 
 describe("POST /api/replay/sessions/:id/pause + /resume", () => {
@@ -619,5 +693,64 @@ describe("POST /api/replay/sessions/:id/pause + /resume", () => {
     const res = await api.pause(new Request("http://x", { method: "POST" }), { id });
     expect(res.status).toBe(400);
     expect(signaller.calls).toHaveLength(0);
+  });
+});
+
+describe("POST /api/replay/sessions/:id/terminate", () => {
+  async function createTestSession(): Promise<string> {
+    const created = await api.create(
+      postCreate({
+        watchId: "btc-1h",
+        windowStartAt: "2026-04-12T14:00:00.000Z",
+        windowEndAt: "2026-04-13T14:00:00.000Z",
+      }),
+    );
+    const body = (await created.json()) as { session: { id: string } };
+    return body.session.id;
+  }
+
+  test("dispatches terminate signal with optional reason", async () => {
+    const id = await createTestSession();
+    const req = new Request("http://x", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ reason: "user_abort" }),
+    });
+    const res = await api.terminate(req, { id });
+    expect(res.status).toBe(200);
+    expect(signaller.calls).toEqual([
+      { kind: "terminate", sessionId: id, reason: "user_abort" },
+    ]);
+  });
+
+  test("400 on terminal session", async () => {
+    const id = await createTestSession();
+    const sessionsRepo = deps.sessionsRepo as InMemoryReplaySessionRepository;
+    await sessionsRepo.updateStatus(id, "COMPLETED");
+    const res = await api.terminate(new Request("http://x", { method: "POST" }), { id });
+    expect(res.status).toBe(400);
+    expect(signaller.calls).toHaveLength(0);
+  });
+});
+
+describe("DELETE /api/replay/sessions/:id with terminate side-effect", () => {
+  test("dispatches a terminate signal before deleting (best-effort)", async () => {
+    const created = await api.create(
+      postCreate({
+        watchId: "btc-1h",
+        windowStartAt: "2026-04-12T14:00:00.000Z",
+        windowEndAt: "2026-04-13T14:00:00.000Z",
+      }),
+    );
+    const { session } = (await created.json()) as { session: { id: string } };
+    const id = session.id;
+    const res = await api.delete(new Request("http://x", { method: "DELETE" }), { id });
+    expect(res.status).toBe(204);
+    expect(signaller.calls).toEqual([
+      { kind: "terminate", sessionId: id, reason: "session_deleted" },
+    ]);
+    // Session is gone from the in-memory repo.
+    const after = await deps.sessionsRepo.get(id);
+    expect(after).toBeNull();
   });
 });

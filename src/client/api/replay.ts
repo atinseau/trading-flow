@@ -38,10 +38,18 @@ export type ReplayApiDeps = {
   signaller: ReplaySignalSender;
 };
 
-const StepBodySchema = z.object({
-  /** ISO-8601 datetime — the candle close to advance the playhead to. */
-  tickAt: z.iso.datetime(),
-});
+const StepBodySchema = z
+  .object({
+    /** Single candle close (one-shot step). Mutually exclusive with `tickAts`. */
+    tickAt: z.iso.datetime().optional(),
+    /** Batch step : advance the playhead by N candles in one signal.
+     *  Bounded to 50 to keep a malicious / accidental flood from spamming
+     *  the worker (UI uses 1 or 5 in practice). */
+    tickAts: z.array(z.iso.datetime()).min(1).max(50).optional(),
+  })
+  .refine((b) => Boolean(b.tickAt) !== Boolean(b.tickAts), {
+    message: "must provide exactly one of `tickAt` or `tickAts`",
+  });
 
 const CreateBodySchema = z.object({
   watchId: z.string().min(1),
@@ -159,11 +167,25 @@ export function makeReplayApi(deps: ReplayApiDeps) {
       return Response.json(session);
     }),
 
-    /** DELETE /api/replay/sessions/:id (cascades to replay_events/llm_calls). */
+    /**
+     * DELETE /api/replay/sessions/:id — cascades to replay_events /
+     * replay_llm_calls via the FK ON DELETE CASCADE. Also asks the
+     * signaller to terminate the underlying Temporal workflow so it
+     * doesn't continue running as a zombie after the row is gone.
+     *
+     * Best-effort terminate : if the workflow doesn't exist (e.g. the
+     * session was never stepped), we swallow the error rather than
+     * fail the API call.
+     */
     delete: safeHandler(async (_req, params) => {
       const id = requireParam(params, "id");
       const existing = await deps.sessionsRepo.get(id);
       if (!existing) throw new NotFoundError(`replay session ${id} not found`);
+      try {
+        await deps.signaller.terminate({ sessionId: id, reason: "session_deleted" });
+      } catch (_err) {
+        // No workflow handle (never started) is the common case ; ignore.
+      }
       await deps.sessionsRepo.delete(id);
       return new Response(null, { status: 204 });
     }),
@@ -237,14 +259,34 @@ export function makeReplayApi(deps: ReplayApiDeps) {
         throw new ValidationError(`session is ${session.status}`);
       }
       const body = StepBodySchema.parse(await req.json());
-      const tickAt = new Date(body.tickAt);
-      if (tickAt < session.windowStartAt || tickAt > session.windowEndAt) {
-        throw new ValidationError(
-          `tickAt ${body.tickAt} outside session window [${session.windowStartAt.toISOString()}, ${session.windowEndAt.toISOString()}]`,
-        );
+      const tickAts = body.tickAts ?? (body.tickAt ? [body.tickAt] : []);
+
+      const primary = session.configSnapshot.timeframes.primary as Timeframe;
+      const tfMs = timeframeToMinutes(primary) * 60_000;
+      // Validate every tickAt : window range + timeframe alignment. We
+      // fail the whole batch on the first invalid tick so the user
+      // doesn't silently lose ticks in the middle of a "Step N" click.
+      for (const raw of tickAts) {
+        const t = new Date(raw);
+        if (t < session.windowStartAt || t > session.windowEndAt) {
+          throw new ValidationError(
+            `tickAt ${raw} outside session window [${session.windowStartAt.toISOString()}, ${session.windowEndAt.toISOString()}]`,
+          );
+        }
+        const offsetMs = t.getTime() - session.windowStartAt.getTime();
+        if (offsetMs % tfMs !== 0) {
+          throw new ValidationError(
+            `tickAt ${raw} not aligned on the ${primary} timeframe (offset from windowStartAt = ${offsetMs}ms, expected multiple of ${tfMs}ms)`,
+          );
+        }
       }
-      await deps.signaller.step({ sessionId: id, tickAt: body.tickAt });
-      return Response.json({ ok: true, tickAt: body.tickAt });
+
+      await deps.signaller.step(
+        body.tickAts
+          ? { sessionId: id, tickAts: body.tickAts }
+          : { sessionId: id, tickAt: body.tickAt },
+      );
+      return Response.json({ ok: true, tickAts });
     }),
 
     /** POST /api/replay/sessions/:id/pause — gate further tick processing. */
@@ -256,6 +298,25 @@ export function makeReplayApi(deps: ReplayApiDeps) {
         throw new ValidationError(`session is ${session.status}`);
       }
       await deps.signaller.pause({ sessionId: id });
+      return Response.json({ ok: true });
+    }),
+
+    /**
+     * POST /api/replay/sessions/:id/terminate — clean exit + FAILED
+     * status update. Used when the user wants to abort a session
+     * without deleting its data (the events / cost breakdown remain
+     * inspectable). The workflow's `terminateSignal` flips status to
+     * FAILED and stops processing further tick signals.
+     */
+    terminate: safeHandler(async (req, params) => {
+      const id = requireParam(params, "id");
+      const session = await deps.sessionsRepo.get(id);
+      if (!session) throw new NotFoundError(`replay session ${id} not found`);
+      if (session.status === "COMPLETED" || session.status === "FAILED") {
+        throw new ValidationError(`session is ${session.status}`);
+      }
+      const body = (await req.json().catch(() => ({}))) as { reason?: string };
+      await deps.signaller.terminate({ sessionId: id, reason: body.reason });
       return Response.json({ ok: true });
     }),
 

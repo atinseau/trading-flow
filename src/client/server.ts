@@ -201,6 +201,7 @@ const server = Bun.serve({
     "/api/replay/sessions/:id/step": { POST: withParams(replayApi.step) },
     "/api/replay/sessions/:id/pause": { POST: withParams(replayApi.pause) },
     "/api/replay/sessions/:id/resume": { POST: withParams(replayApi.resume) },
+    "/api/replay/sessions/:id/terminate": { POST: withParams(replayApi.terminate) },
     "/api/watches/:id/force-tick": { POST: withParams(adminApi.forceTick) },
     "/api/watches/:id/pause": { POST: withParams(adminApi.pause) },
     "/api/watches/:id/resume": { POST: withParams(adminApi.resume) },

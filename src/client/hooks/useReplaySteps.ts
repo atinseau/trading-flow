@@ -62,7 +62,7 @@ export function useReplaySteps(sessionId: string) {
   }
 
   const stepMut = useMutation({
-    mutationFn: (args: { tickAt: string }) =>
+    mutationFn: (args: { tickAt: string } | { tickAts: string[] }) =>
       api(`/api/replay/sessions/${sessionId}/step`, {
         method: "POST",
         headers: { "content-type": "application/json" },

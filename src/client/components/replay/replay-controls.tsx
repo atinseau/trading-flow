@@ -24,7 +24,9 @@ export function ReplayControls(props: {
   costCapUsd: number;
   status: "READY" | "PAUSED" | "COMPLETED" | "COST_CAPPED" | "FAILED";
   stepInFlight: boolean;
-  onStep: (tickAt: Date) => void;
+  /** Dispatch one or N ticks. The component decides the batch size ; the
+   *  parent forwards the array to the /step endpoint in a single signal. */
+  onStep: (tickAts: Date[]) => void;
   onPause: () => void;
   onResume: () => void;
 }) {
@@ -38,19 +40,15 @@ export function ReplayControls(props: {
   const capped = props.status === "COST_CAPPED";
   const stepDisabled = terminal || capped || props.stepInFlight;
 
-  function nextTickAt(): Date {
-    const candidate = new Date(props.playheadAt.getTime() + tfMs);
-    if (candidate.getTime() > end) return props.windowEndAt;
-    return candidate;
-  }
-
-  function stepN(n: number): void {
+  function buildBatch(n: number): Date[] {
+    const batch: Date[] = [];
     let next = props.playheadAt.getTime();
     for (let i = 0; i < n; i++) {
       next = Math.min(next + tfMs, end);
-      props.onStep(new Date(next));
+      batch.push(new Date(next));
       if (next >= end) break;
     }
+    return batch;
   }
 
   return (
@@ -61,7 +59,7 @@ export function ReplayControls(props: {
           variant="outline"
           disabled={stepDisabled}
           title="Step 1 bougie"
-          onClick={() => props.onStep(nextTickAt())}
+          onClick={() => props.onStep(buildBatch(1))}
         >
           {props.stepInFlight ? (
             <Loader2 className="size-3.5 animate-spin" />
@@ -74,8 +72,8 @@ export function ReplayControls(props: {
           size="sm"
           variant="outline"
           disabled={stepDisabled}
-          title="Step 5 bougies"
-          onClick={() => stepN(5)}
+          title="Step 5 bougies (batché en un signal)"
+          onClick={() => props.onStep(buildBatch(5))}
         >
           <SkipForward className="size-3.5" />
           Step 5

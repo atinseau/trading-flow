@@ -167,11 +167,17 @@ export function Component() {
         costCapUsd={cost.data?.costCapUsd ?? s.costCapUsd}
         status={s.status}
         stepInFlight={step.isPending}
-        onStep={(tickAt) => {
-          step.mutate({ tickAt: tickAt.toISOString() });
-          // Snap the playhead forward so the chart immediately reflects
-          // the requested step ; events will land asynchronously.
-          setScrubMs(tickAt.getTime());
+        onStep={(tickAts) => {
+          if (tickAts.length === 0) return;
+          const isoList = tickAts.map((t) => t.toISOString());
+          step.mutate(
+            isoList.length === 1 ? { tickAt: isoList[0] as string } : { tickAts: isoList },
+          );
+          // Snap the playhead forward to the LAST tick of the batch so the
+          // chart immediately reflects where the workflow is heading ;
+          // events will land asynchronously.
+          const last = tickAts[tickAts.length - 1];
+          if (last) setScrubMs(last.getTime());
           setFocusedEventId(null);
         }}
         onPause={() => pause.mutate()}

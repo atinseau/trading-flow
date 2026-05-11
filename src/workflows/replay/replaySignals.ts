@@ -22,7 +22,12 @@ const log = getLogger({ component: "replay-signals" });
  * surfaces.
  */
 export interface ReplaySignalSender {
-  step(args: { sessionId: string; tickAt: string }): Promise<void>;
+  /** Either `tickAt` (single candle) or `tickAts` (batch ; e.g. "Step 5"). */
+  step(args: {
+    sessionId: string;
+    tickAt?: string;
+    tickAts?: string[];
+  }): Promise<void>;
   pause(args: { sessionId: string }): Promise<void>;
   resume(args: { sessionId: string }): Promise<void>;
   terminate(args: { sessionId: string; reason?: string }): Promise<void>;
@@ -39,15 +44,26 @@ export class TemporalReplaySignalSender implements ReplaySignalSender {
     private readonly taskQueue: string,
   ) {}
 
-  async step(args: { sessionId: string; tickAt: string }): Promise<void> {
+  async step(args: {
+    sessionId: string;
+    tickAt?: string;
+    tickAts?: string[];
+  }): Promise<void> {
     await this.client.workflow.signalWithStart(replaySessionWorkflow, {
       workflowId: replaySessionWorkflowId(args.sessionId),
       taskQueue: this.taskQueue,
       args: [{ sessionId: args.sessionId }],
       signal: replayTickSignal,
-      signalArgs: [{ tickAt: args.tickAt }],
+      signalArgs: [{ tickAt: args.tickAt, tickAts: args.tickAts }],
     });
-    log.info({ sessionId: args.sessionId, tickAt: args.tickAt }, "step signal sent");
+    log.info(
+      {
+        sessionId: args.sessionId,
+        tickAt: args.tickAt,
+        tickAtsCount: args.tickAts?.length,
+      },
+      "step signal sent",
+    );
   }
 
   async pause(args: { sessionId: string }): Promise<void> {

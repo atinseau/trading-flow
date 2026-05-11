@@ -1,7 +1,7 @@
 import type { ReplaySignalSender } from "@workflows/replay/replaySignals";
 
 type SignalCall =
-  | { kind: "step"; sessionId: string; tickAt: string }
+  | { kind: "step"; sessionId: string; tickAt?: string; tickAts?: string[] }
   | { kind: "pause"; sessionId: string }
   | { kind: "resume"; sessionId: string }
   | { kind: "terminate"; sessionId: string; reason?: string };
@@ -14,7 +14,11 @@ type SignalCall =
 export class FakeReplaySignalSender implements ReplaySignalSender {
   calls: SignalCall[] = [];
 
-  async step(args: { sessionId: string; tickAt: string }): Promise<void> {
+  async step(args: {
+    sessionId: string;
+    tickAt?: string;
+    tickAts?: string[];
+  }): Promise<void> {
     this.calls.push({ kind: "step", ...args });
   }
   async pause(args: { sessionId: string }): Promise<void> {
