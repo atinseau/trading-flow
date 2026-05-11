@@ -70,7 +70,7 @@ Deux notions à distinguer :
 L'implémentation respecte strictement l'**architecture hexagonale** déjà en place :
 
 - La pipeline domain (scoring, state machine, `applyVerdict`, `inputHash`) est invoquée **sans modification**.
-- Les **activités existantes** (`runDetector`, `runReviewer`, `runFinalizer`, `persistEvent`, `markSetupClosed`, `notifyTelegram*`) sont **les mêmes** en live et en replay. Un bloc DI au début de chaque activité bascule vers les adapters replay-scopés quand `args.replayContext` est présent.
+- Les **activités existantes** (`runDetector`, `runReviewer`, `runFinalizer`, `runFeedbackAnalysis`, `persistEvent`, `markSetupClosed`, `notifyTelegram*`) sont **les mêmes** en live et en replay. Un bloc DI au début de chaque activité bascule vers les adapters replay-scopés quand `args.replayContext` est présent.
 - Adapters substitués : `CachedLLMProvider` (cache mutualisé), `NoopTelegramNotifier` (capture sans envoi), `Replay*Store` (écriture sur tables `replay_*` isolées), `FixedClock` (horloge simulée à la bougie courante).
 - **Un seul nouveau workflow Temporal** : `replaySessionWorkflow`, thin (~150 lignes), enregistré sur le worker `analysis-worker` existant. Il porte l'état durable (alive setups, score, coût) et n'utilise ni timer ni child workflow ni polling — il attend uniquement les signaux de l'API.
 - Aucune modification du schéma live ; uniquement 4 nouvelles tables (`replay_sessions`, `replay_events`, `replay_llm_calls`, `llm_response_cache`).
@@ -158,6 +158,10 @@ Le tout est persisté dans des tables `replay_*` isolées, reprenable, supprimab
 | 13 | Suppression | Une session peut être supprimée par l'utilisateur. Cascade DELETE sur `replay_events` et `replay_llm_calls` ; le workflow Temporal correspondant est terminé via `terminateWorkflow`. Le `llm_response_cache` survit (mutualisé entre sessions). |
 | 14 | Échec en cours de step | Si un LLM call échoue (timeout, rate limit, erreur provider), la session passe en `FAILED` avec le message d'erreur. Reprenable après résolution (retry idempotent grâce au cache). |
 | 15 | Telegram preview | Capture la string formatée *qu'aurait* émise le notifier, sans appeler l'API Telegram. Affichée dans l'UI à côté du verdict, en grisé `(NEUTRALISÉ)`. |
+| 16 | Lessons injectées dans la pipeline | Paramétrable au create-time via `lessons_mode` ∈ `{current, historical, disabled}`. Default `current` (les lessons actives aujourd'hui). `historical` filtre par `activated_at <= window_start_at` pour reproduire fidèlement le bot d'époque. `disabled` n'injecte aucune lesson (utile pour mesurer leur impact). |
+| 17 | Feedback loop sur fermeture | Paramétrable via `feedback_mode` ∈ `{run, skip}`. Default `run` : à chaque fermeture de trade (SL, TP final, INVALIDATED post-trade, TIME_OUT), le workflow appelle l'activité `runFeedbackAnalysis` existante avec `replayContext`. Les lessons générées sont stockées en `replay_events` (event type `FeedbackLessonProposed`), **jamais** dans la table `lessons` live. Permet d'observer ce que le bot aurait appris, et offre un futur bouton "Promouvoir en prod" (cf §14 évolutions). |
+| 18 | Convention intra-bougie | Quand le high et le low d'une bougie déclenchent **à la fois** un TP et un SL pour le même setup : convention conservatrice — **SL prioritaire**. Documenté comme limitation (pas d'access intra-bougie aux ticks WebSocket en replay). |
+| 19 | Hard cap window size | 300 bougies maximum, validé au create-time. Couvre l'usage typique (24-100) avec marge, évite les abus, garde le coût LLM dans les limites raisonnables (~$3-5 worst case). |
 
 ---
 
@@ -314,6 +318,8 @@ CREATE TABLE replay_sessions (
   window_end_at          timestamptz NOT NULL,
   workflow_id            text NOT NULL UNIQUE,          -- Temporal workflowId for this session
   config_snapshot        jsonb NOT NULL,                -- full WatchConfig at creation; immutable
+  lessons_mode           text NOT NULL DEFAULT 'current', -- current | historical | disabled (see §6)
+  feedback_mode          text NOT NULL DEFAULT 'run',     -- run | skip (see §6)
   cost_cap_usd           numeric(10, 4) NOT NULL DEFAULT 5.0,
   cost_usd_so_far        numeric(10, 4) NOT NULL DEFAULT 0,  -- updated by activities; not the source of truth
   failure_reason         text,                          -- non-null if status=FAILED
@@ -322,13 +328,21 @@ CREATE TABLE replay_sessions (
   CONSTRAINT replay_sessions_status_chk CHECK (
     status IN ('READY','PAUSED','COMPLETED','COST_CAPPED','FAILED')
   ),
-  CONSTRAINT replay_sessions_window_chk CHECK (window_end_at > window_start_at)
+  CONSTRAINT replay_sessions_window_chk CHECK (window_end_at > window_start_at),
+  CONSTRAINT replay_sessions_lessons_mode_chk CHECK (
+    lessons_mode IN ('current','historical','disabled')
+  ),
+  CONSTRAINT replay_sessions_feedback_mode_chk CHECK (
+    feedback_mode IN ('run','skip')
+  )
 );
 
 CREATE INDEX idx_replay_sessions_watch_created ON replay_sessions (watch_id, created_at DESC);
 CREATE INDEX idx_replay_sessions_status ON replay_sessions (status);
 CREATE UNIQUE INDEX ux_replay_sessions_workflow ON replay_sessions (workflow_id);
 ```
+
+**Note** : la validation du `window_end_at - window_start_at <= 300 bougies` est faite au create-time côté domain (pas en CHECK SQL car ça dépend du timeframe de la watch). Cf §10 invariant 8.
 
 Notes :
 - `current_playhead_at` n'est plus une colonne — la position courante est queryable depuis le workflow Temporal via `getStateQuery`. L'API peut aussi la dériver depuis `MAX(occurred_at)` des `replay_events` de la session, ce qui est suffisant pour l'UI.
@@ -367,6 +381,11 @@ CREATE INDEX idx_replay_events_session_setup ON replay_events (session_id, setup
 ```
 
 Note : `setup_id` est une UUID interne au workflow (générée par le workflow lui-même via `crypto.randomUUID()` du SDK Temporal pour rester déterministe). Il n'y a pas de FK car les setups n'ont pas de table dédiée — leur état vit dans le workflow state. La projection "liste des setups d'une session" est dérivée d'une requête event-sourcée sur `replay_events GROUP BY setup_id`.
+
+**Event types** étendent ceux de la prod avec :
+- `DetectorTickProcessed` : émis à chaque step, même si Detector retourne `ignore_reason`. Permet d'afficher la trace continue.
+- `ReplayMeta` : événements meta (cap atteint, pause, resume).
+- `FeedbackLessonProposed` : émis quand le feedback loop produit une lesson sur fermeture de trade. Le `payload` contient l'action (`CREATE`/`REINFORCE`/`REFINE`/`DEPRECATE`), le titre, le body, le rationale, et le `sourceTradeSetupId`. **Ces lessons ne sont jamais écrites dans la table `lessons` live** ; elles vivent uniquement dans `replay_events` jusqu'à promotion manuelle (cf §14).
 
 **Types d'events spécifiques au replay** (en plus des types existants `SetupCreated`, `Strengthened`, `Confirmed`, `TPHit`, etc.) :
 
@@ -432,7 +451,7 @@ Une seule migration ajoutée (n° 0015) qui crée les 4 tables (`replay_sessions
 
 ### Vue d'ensemble
 
-La pipeline domain reste **strictement inchangée**. Les activités existantes (`runDetector`, `runReviewer`, `runFinalizer`, `persistEvent`, `markSetupClosed`, `notifyTelegram*`) sont **les mêmes** ; elles reçoivent un nouveau paramètre optionnel `replayContext` qui, s'il est présent, fait basculer l'activité vers les adapters replay-scopés.
+La pipeline domain reste **strictement inchangée**. Les activités existantes (`runDetector`, `runReviewer`, `runFinalizer`, `runFeedbackAnalysis`, `persistEvent`, `markSetupClosed`, `notifyTelegram*`) sont **les mêmes** ; elles reçoivent un nouveau paramètre optionnel `replayContext` qui, s'il est présent, fait basculer l'activité vers les adapters replay-scopés.
 
 ### Le branchement DI dans les activités existantes
 
@@ -455,7 +474,7 @@ export function buildSchedulerActivities(deps: SchedulerActivityDeps) {
 
       // ... unchanged: snapshot creation, prompt build, LLM call, persist ...
     },
-    // ... idem for runReviewer, runFinalizer, persistEvent, markSetupClosed, notifyTelegram*
+    // ... idem for runReviewer, runFinalizer, runFeedbackAnalysis, persistEvent, markSetupClosed, notifyTelegram*
   };
 }
 ```
@@ -689,13 +708,37 @@ Deux notions à ne pas confondre :
 6. **Tracking déterministe** — pour chaque setup en `TRACKING`, le workflow lit la bougie `T` (déjà fetchée pour le Detector) et applique :
    - `LONG` : `bar.high >= TP[i]` → TPHit ; `bar.low <= currentSL` → SLHit.
    - `SHORT` : symétrique.
+   - **Convention intra-bougie** : si **dans la même bougie** la high déclenche un TP ET la low déclenche un SL, **le SL est prioritaire** (convention conservatrice — on ne sait pas l'ordre intra-bougie sans les ticks WebSocket d'époque ; mieux vaut sous-estimer les wins).
    - Premier TP hit → TrailingMoved (SL → entry).
    - SLHit ou TP final → setup passe en `CLOSED`.
 7. **TTL déterministe** — pour chaque alive setup, si `T >= setup.ttlExpiresAt` → event `Expired`, setup passe en `EXPIRED`.
-8. **`state.playheadAt = T`**, mise à jour du `state.costSoFar` cumulé.
-9. Si `T >= windowEnd` → `state.status = "COMPLETED"`.
+8. **Feedback loop sur fermeture** — pour chaque setup qui vient de passer dans un état terminal éligible (`CLOSED` après SL/TP, `INVALIDATED` post-trade, `EXPIRED` après EntryFilled — cf `shouldTriggerFeedback` dans la spec feedback-loop) ET si `feedback_mode = 'run'`, le workflow appelle `runFeedbackAnalysis` avec `replayContext`. L'activité :
+   - utilise `CachedLLMProvider` (Opus) → gratuit si déjà fait
+   - écrit les lessons produites dans `replay_events` (event type `FeedbackLessonProposed`)
+   - **n'écrit JAMAIS** dans la table `lessons` live ni dans `lesson_events`
+   - capture le Telegram preview via `NoopTelegramNotifier`
+9. **`state.playheadAt = T`**, mise à jour du `state.costSoFar` cumulé.
+10. Si `T >= windowEnd` → `state.status = "COMPLETED"`.
 
-**Aucune activité n'est appelée si le workflow ne reçoit pas de signal.** L'utilisateur clique → l'API signale → le workflow exécute les 9 étapes → retourne en idle.
+**Aucune activité n'est appelée si le workflow ne reçoit pas de signal.** L'utilisateur clique → l'API signale → le workflow exécute les 10 étapes → retourne en idle.
+
+### Lookup des lessons selon `lessons_mode`
+
+Avant l'étape 3 (Detector), l'activité construit le prompt en injectant des lessons selon le mode de la session :
+
+- **`current`** (default) — query `lessons WHERE watch_id = ? AND status = 'ACTIVE' AND deprecated_at IS NULL` (comme la prod live). Le bot replayé "voit" les lessons d'aujourd'hui même si elles n'existaient pas à l'époque.
+- **`historical`** — query `lessons WHERE watch_id = ? AND activated_at <= ? AND (deprecated_at IS NULL OR deprecated_at > ?)` avec `?` = `window_start_at`. Reproduit fidèlement le bot d'époque.
+- **`disabled`** — liste vide. Utile pour mesurer l'impact des lessons (lancer 2 sessions identiques `current` vs `disabled` et comparer).
+
+Le mode est immutable après création de session (porté par `config_snapshot` + colonne `lessons_mode`).
+
+### Convention intra-bougie : pourquoi cette limitation
+
+En production, le `priceMonitorWorkflow` reçoit des ticks WebSocket pendant la formation d'une bougie. Si dans une bougie le prix monte d'abord à TP1 puis redescend à SL=BE, la prod sait dans quel **ordre** ces niveaux ont été touchés et émet le bon event.
+
+En replay, on n'a que l'OHLC final de la bougie. On ne peut pas reconstruire la séquence intra-bougie. **Quand TP et SL sont tous les deux dans le range high–low d'une même bougie, le replay choisit le SL** (convention conservatrice).
+
+Conséquence : sur les setups serrés (TP et SL proches dans le range typique d'une bougie), le replay peut **sous-estimer** le R-multiple par rapport à la réalité. Ce biais est documenté dans l'UI ("résultat conservateur, peut différer du live sur les setups serrés").
 
 ### Step multiple (count > 1)
 
@@ -772,8 +815,10 @@ Lazy-loaded via `react-router-dom` à la sauce du projet (`src/client/frontend.t
 Champs :
 - `watchId` (Select des watches enabled).
 - `name` (Input, optionnel).
-- `windowStartAt`, `windowEndAt` (date pickers, default = 7 derniers jours).
+- `windowStartAt`, `windowEndAt` (date pickers, default = 7 derniers jours). Validation client : window size ≤ 300 bougies (selon timeframe de la watch), `windowEndAt < now()`.
 - `costCapUsd` (Input number, default 5).
+- `lessons_mode` (Radio group) : `current` (default) / `historical` / `disabled`. Description courte sous chaque option pour guider le choix.
+- `feedback_mode` (Toggle) : `run` (default) / `skip`. Hint : *"Si activé, le bot analyse les pertes pendant le replay et propose des lessons à promouvoir en prod."*
 - (Hors scope v1, prévu comme évolution future) : section "Avancé" pour overrider prompts/modèles/seuils/indicateurs.
 
 À la validation : POST `/api/replay/sessions`, redirect → `/replay/:id`.
@@ -813,6 +858,7 @@ Layout 3 zones :
   - Le telegram preview (`(NEUTRALISÉ)` en grisé).
   - Le coût + cache hit/miss.
 - **Decisions log** (en bas, scrollable) : tous les events de la session par ordre chronologique, filtré par le tab actif. Chaque ligne tagguée `[Setup A]` / `[Setup B]` selon son `setup_id`. Click sur un event → focus dans la phase courante.
+- **Feedback analysis card** : apparaît automatiquement quand un setup se ferme et que `feedback_mode = 'run'`. Affiche les lessons proposées par le LLM Opus : titre, action (CREATE/REINFORCE/REFINE/DEPRECATE), body, rationale, source trade. Chaque lesson a un bouton `[Promouvoir en prod]` (désactivé en v1 avec badge "Coming soon" — l'archi le supporte mais le flux de validation cross-watch sera implémenté post-v1).
 
 **Zone 4 — Step controls (sous le chart)** :
 - `[⏮]` reset à window_start (avec confirm).
@@ -841,6 +887,7 @@ src/client/components/replay/
 ├── current-phase-card.tsx      # detail of latest event
 ├── decisions-log.tsx           # chronological list (filtré par tab)
 ├── telegram-preview.tsx        # neutralized telegram message rendering
+├── feedback-analysis-card.tsx  # lessons proposées par le feedback loop (avec bouton Promouvoir disabled v1)
 └── replay-marker-config.ts     # mapping event type → marker shape/color (avec couleur par setup)
 ```
 
@@ -937,6 +984,22 @@ Vérifié AVANT chaque appel d'activité LLM dans le workflow. Si dépassement, 
 
 Le workflow est déterministe (pas de `Date.now()`, pas de `Math.random()` non-Temporal). Les activités utilisent `FixedClock` quand `replayContext` est présent. Donc rejouer la même fenêtre avec la même config produit les mêmes events (modulo cache miss → la première fois facture le LLM, les suivantes hit le cache).
 
+### Invariant 8 : window size cappée
+
+Validé au create-time : `(window_end_at - window_start_at) / timeframe.primary <= 300`. Refus de créer la session sinon, avec message clair. Évite les sessions à coût LLM ingérable.
+
+### Invariant 9 : lessons générées en replay ne polluent JAMAIS la prod
+
+Les lessons proposées par le feedback loop en mode replay (`FeedbackLessonProposed` dans `replay_events`) **ne sont jamais écrites** dans la table `lessons` live ni dans `lesson_events`. La pipeline live continue à fonctionner sur son propre pool, indifférente aux sessions de replay.
+
+**Mécanisme** : l'activité `runFeedbackAnalysis` avec `replayContext` utilise un `ReplayLessonStore` qui écrit dans `replay_events` au lieu de `lessons`. Le port `LessonStore` live n'est pas accessible depuis ce code path (DI strict).
+
+La seule façon pour une lesson de replay d'arriver en prod sera **une action manuelle explicite** de l'utilisateur via un futur bouton "Promouvoir en prod" (hors scope v1, mais l'archi le supporte).
+
+### Invariant 10 : convention intra-bougie documentée
+
+Quand la bougie courante remplit à la fois la condition TP et la condition SL, le workflow choisit SL (cf §6 Convention intra-bougie). Cette convention est testée explicitement (cf §11) et affichée dans l'UI comme limitation transparente.
+
 ---
 
 ## 11. Stratégie de tests
@@ -968,6 +1031,12 @@ L'avantage de réutiliser activités + domain : on **hérite des tests existants
 - TTL deterministic : setup créé à T+0 avec `ttl_candles=5`, vérifier qu'à T+5 il passe en EXPIRED.
 - Cost cap : mock LLM à $0.05/call, cap=$0.10, vérifier que le 3e call ne se fait pas et le workflow passe en COST_CAPPED.
 - Pause/resume : signal Pause → status PAUSED → tick suivant ignoré → signal Resume → tick suivant exécuté.
+- **Intra-bougie SL prioritaire** : bougie où high touche TP1 et low touche SL → vérifier que SLHit est émis, pas TPHit.
+- **`lessons_mode=current`** : injection des lessons ACTIVE du jour. Vérifier le contenu du prompt.
+- **`lessons_mode=historical`** : injection filtrée par `activated_at <= window_start`. Mock 3 lessons (1 ancienne, 2 récentes) → seule l'ancienne est injectée.
+- **`lessons_mode=disabled`** : aucune lesson dans le prompt.
+- **Feedback loop sur fermeture** : SLHit déclenche `runFeedbackAnalysis`, lessons écrites dans `replay_events` (pas dans `lessons` live). Vérifier qu'aucun row n'apparaît dans la table `lessons`.
+- **`feedback_mode=skip`** : SLHit ne déclenche PAS de feedback analysis.
 
 Tests exécutés via `TestWorkflowEnvironment` du SDK Temporal (déjà utilisé dans `test/workflows/`).
 
@@ -1021,7 +1090,7 @@ Objectif : le bouton "Step" déclenche réellement la pipeline LLM via le workfl
 Livrables :
 
 - Adapters de neutralisation : `CachedLLMProvider`, `NoopTelegramNotifier`, `FixedClock`.
-- Branchement DI dans les activités existantes : `runDetector`, `runReviewer`, `runFinalizer`, `persistEvent`, `markSetupClosed`, `notifyTelegram*`. Une seule modification par activité (le bloc `if (args.replayContext) ...` au début).
+- Branchement DI dans les activités existantes : `runDetector`, `runReviewer`, `runFinalizer`, `runFeedbackAnalysis`, `persistEvent`, `markSetupClosed`, `notifyTelegram*`. Une seule modification par activité (le bloc `if (args.replayContext) ...` au début). Pour `runFeedbackAnalysis` en mode replay : les lessons générées sont écrites dans `replay_events.payload` (event type `FeedbackLessonProposed`) au lieu de la table `lessons` / `lesson_events` live.
 - Workflow Temporal `replaySessionWorkflow` (~150 lignes).
 - Enregistrement du workflow + activités sur le worker `analysis-worker` existant (pas de nouveau worker process).
 - Endpoint `/api/replay/sessions/:id/step` qui signale le workflow.
@@ -1065,6 +1134,10 @@ Points d'extension prévus (architecture le permet, code v1 ne les implémente p
 
 5. **Export d'une session** : JSON/CSV pour analyse externe. Endpoint `/api/replay/sessions/:id/export`.
 
+6. **Promotion d'une lesson replay vers la prod** : bouton dans la `feedback-analysis-card`. Workflow proposé : click → crée une row dans `lessons` live avec status `PENDING` + `source: 'replay_session_id_xxx'` → flux standard de validation par Telegram (réutilise la lesson approval pipeline existante). Cas d'usage : faire émerger des lessons en replay sur historique, valider seulement les meilleures, peupler le pool de prod sans attendre des pertes live. Désactivé en v1 (badge "Coming soon"), l'archi le supporte.
+
+7. **Bootstrap d'une nouvelle watch** : lancer une série de replays sur les N derniers mois pour générer un corpus initial de lessons avant déploiement live. Repose intégralement sur les capacités v1, ne demande pas de code supplémentaire.
+
 ---
 
 ## 14. Décisions consciemment écartées (out-of-scope v1)
@@ -1082,6 +1155,9 @@ Points d'extension prévus (architecture le permet, code v1 ne les implémente p
 - **Modification du `config_snapshot` post-création** : interdit. Une session est immutable côté config. Changement = nouvelle session.
 - **Notification de fin de session** : pas v1. Les sessions sont courtes (typiquement 24-100 bougies, soit 2-15 min de step actif), l'utilisateur est devant l'écran.
 - **Métriques agrégées sur la session** (Sharpe, profit factor, etc.) : pas v1. Le replay produit une trace observable, pas un chiffre d'optimisation. Si le besoin émerge, l'API `/performance` existante peut être étendue pour lire `replay_*`.
+- **Auto-promotion des lessons replay → prod** : INTERDIT. Les lessons générées en replay ne peuvent jamais arriver automatiquement dans la table `lessons` live. Un bouton "Promouvoir en prod" est prévu (visible dans l'UI v1 mais désactivé avec badge "Coming soon"), avec un flux de validation manuelle plus tard. L'architecture est prête, l'UX validation reste à concevoir post-v1.
+- **Reconstruction intra-bougie via ticks WebSocket historiques** : Binance / Yahoo ne fournissent pas un access stable aux ticks d'époque pour le retail. Le replay reste donc OHLC-only, avec la convention SL prioritaire documentée.
+- **Hot reload du `lessons_mode` ou `feedback_mode`** : non. Ces modes sont fixés à la création de session. Changement = nouvelle session.
 
 ---
 
@@ -1102,3 +1178,8 @@ Points d'extension prévus (architecture le permet, code v1 ne les implémente p
 | **Jalon 1 / Jalon 2** | Découpage de la livraison v1. Jalon 1 = fondations DB + UI sans LLM (lecture des events live d'une fenêtre passée). Jalon 2 = workflow + step interactif avec vrais LLM calls. |
 | **Rétro-exécution contrôlée** | Synonyme du Replay Mode. Désigne la nature step-by-step, manuelle, contrôlée par l'utilisateur, de l'exécution de la pipeline sur des bougies passées. |
 | **Side-effect neutralisé** | Un effet externe normalement présent en prod (Telegram, écriture sur tables live, démarrage de workflows Temporal long-running) qui est explicitement désactivé en replay via injection d'un adapter substitué. |
+| **`lessons_mode`** | Paramètre de session ∈ `{current, historical, disabled}` qui contrôle quelles lessons sont injectées dans les prompts du replay. `current` (default) = lessons actives aujourd'hui ; `historical` = lessons qui existaient à `window_start_at` ; `disabled` = aucune. |
+| **`feedback_mode`** | Paramètre de session ∈ `{run, skip}` qui contrôle si le feedback loop (analyse rétroactive via Opus à la fermeture d'un trade) tourne. Default `run`. |
+| **`FeedbackLessonProposed`** | Type d'event spécifique au replay, émis par l'activité `runFeedbackAnalysis` quand elle produit une lesson. Le payload contient l'action proposée (CREATE/REINFORCE/REFINE/DEPRECATE), le title, le body, le rationale, et le `sourceTradeSetupId`. Ces lessons vivent dans `replay_events` uniquement, **jamais** dans la table `lessons` live. |
+| **Convention intra-bougie** | Quand le high et le low d'une même bougie déclenchent à la fois un TP et un SL pour un setup en tracking, le replay choisit SL (convention conservatrice). Approximation imposée par l'absence d'access aux ticks WebSocket d'époque. |
+| **Promouvoir en prod** | Action manuelle prévue (v2) permettant de copier une `FeedbackLessonProposed` de `replay_events` vers la table `lessons` live en status PENDING, où elle suivra le flux de validation Telegram standard. Bouton visible mais désactivé en v1. |
