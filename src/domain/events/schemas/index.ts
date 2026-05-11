@@ -1,3 +1,8 @@
+import {
+  DetectorTickProcessedPayload,
+  FeedbackLessonProposedPayload,
+  ReplayMetaPayload,
+} from "@domain/events/replay/replayEventTypes";
 import { ObservationSchema } from "@domain/schemas/Verdict";
 import { z } from "zod";
 
@@ -115,6 +120,10 @@ export const EventPayloadSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("Expired"), data: ExpiredPayload }),
   z.object({ type: z.literal("PriceInvalidated"), data: PriceInvalidatedPayload }),
   z.object({ type: z.literal("Killed"), data: KilledPayload }),
+  // Replay-only event types — appear in replay_events, never in live events.
+  z.object({ type: z.literal("DetectorTickProcessed"), data: DetectorTickProcessedPayload }),
+  z.object({ type: z.literal("ReplayMeta"), data: ReplayMetaPayload }),
+  z.object({ type: z.literal("FeedbackLessonProposed"), data: FeedbackLessonProposedPayload }),
 ]);
 
 export type EventPayload = z.infer<typeof EventPayloadSchema>;
