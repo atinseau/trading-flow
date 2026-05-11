@@ -3,6 +3,7 @@ import { makeReplayApi, type ReplayApiDeps } from "@client/api/replay";
 import type { WatchRepository, WatchValidationResult } from "@domain/ports/WatchRepository";
 import type { WatchConfig } from "@domain/schemas/WatchesConfig";
 import { FakeClock } from "../../fakes/FakeClock";
+import { FakeMarketDataFetcher } from "../../fakes/FakeMarketDataFetcher";
 import { InMemoryLiveEventQueryByWindow } from "../../fakes/InMemoryLiveEventQueryByWindow";
 import { InMemoryLLMResponseCacheStore } from "../../fakes/InMemoryLLMResponseCacheStore";
 import { InMemoryReplayEventStore } from "../../fakes/InMemoryReplayEventStore";
@@ -32,7 +33,9 @@ class FakeWatchRepository implements WatchRepository {
 
 const minimalConfig = {
   id: "btc-1h",
+  asset: { symbol: "BTCUSDT", source: "fake" },
   timeframes: { primary: "1h", higher: [] },
+  candles: { detector_lookback: 200, reviewer_chart_window: 60 },
 } as unknown as WatchConfig;
 
 let deps: ReplayApiDeps;
@@ -42,6 +45,8 @@ let api: ReturnType<typeof makeReplayApi>;
 beforeEach(() => {
   watchRepo = new FakeWatchRepository();
   watchRepo.add("btc-1h", minimalConfig);
+  const marketDataFetchers = new Map();
+  marketDataFetchers.set("fake", new FakeMarketDataFetcher());
   deps = {
     sessionsRepo: new InMemoryReplaySessionRepository(),
     replayEventStore: new InMemoryReplayEventStore(),
@@ -49,6 +54,7 @@ beforeEach(() => {
     cacheStore: new InMemoryLLMResponseCacheStore(),
     liveEventQuery: new InMemoryLiveEventQueryByWindow(),
     watchRepo,
+    marketDataFetchers,
     clock: new FakeClock(new Date("2026-05-08T12:00:00.000Z")),
   };
   api = makeReplayApi(deps);
@@ -267,6 +273,7 @@ describe("GET /api/replay/sessions", () => {
     watchRepo.add("eth-4h", {
       ...minimalConfig,
       id: "eth-4h",
+      asset: { symbol: "ETHUSDT", source: "fake" },
       timeframes: { primary: "4h", higher: [] },
     } as unknown as WatchConfig);
     await api.create(
@@ -375,5 +382,140 @@ describe("GET /api/replay/sessions/:id/cost-breakdown", () => {
     expect(out.costCapUsd).toBe(5);
     expect(out.costUsdSoFar).toBe(0);
     expect(out.byStage).toEqual([]);
+  });
+});
+
+describe("GET /api/replay/sessions/:id/setups (projection)", () => {
+  test("session with no events → []", async () => {
+    const created = await api.create(
+      postCreate({
+        watchId: "btc-1h",
+        windowStartAt: "2026-04-12T14:00:00.000Z",
+        windowEndAt: "2026-04-13T14:00:00.000Z",
+      }),
+    );
+    const body = (await created.json()) as { session: { id: string } };
+    const res = await api.setupsProjection(new Request("http://x"), { id: body.session.id });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual([]);
+  });
+
+  test("session with SetupCreated event → 1 projection", async () => {
+    const liveQuery = deps.liveEventQuery as InMemoryLiveEventQueryByWindow;
+    const setupId = crypto.randomUUID();
+    liveQuery.events.push({
+      setupId,
+      watchId: "btc-1h",
+      occurredAt: new Date("2026-04-12T15:00:00.000Z"),
+      sequence: 1,
+      stage: "detector",
+      actor: "detector_v3",
+      type: "SetupCreated",
+      scoreDelta: 32,
+      scoreAfter: 32,
+      statusBefore: "CANDIDATE",
+      statusAfter: "REVIEWING",
+      payload: {
+        type: "SetupCreated",
+        data: {
+          pattern: "bos_reaction",
+          direction: "LONG",
+          keyLevels: { invalidation: 41950, entry: 42350, target: 42850 },
+          initialScore: 32,
+          rawObservation: "BOS bullish",
+        },
+      },
+      provider: "claude_max",
+      model: "claude-sonnet-4-6",
+      promptVersion: "detector_v3",
+      inputHash: "abc",
+      latencyMs: 4200,
+    });
+    const created = await api.create(
+      postCreate({
+        watchId: "btc-1h",
+        windowStartAt: "2026-04-12T14:00:00.000Z",
+        windowEndAt: "2026-04-13T14:00:00.000Z",
+      }),
+    );
+    const body = (await created.json()) as { session: { id: string } };
+    const res = await api.setupsProjection(new Request("http://x"), { id: body.session.id });
+    const projections = (await res.json()) as Array<{
+      setupId: string;
+      direction: string;
+      patternHint: string;
+    }>;
+    expect(projections.length).toBe(1);
+    expect(projections[0]?.setupId).toBe(setupId);
+    expect(projections[0]?.direction).toBe("LONG");
+    expect(projections[0]?.patternHint).toBe("bos_reaction");
+  });
+});
+
+describe("GET /api/replay/sessions/:id/ohlcv", () => {
+  test("returns candles + window metadata", async () => {
+    const created = await api.create(
+      postCreate({
+        watchId: "btc-1h",
+        windowStartAt: "2026-04-12T14:00:00.000Z",
+        windowEndAt: "2026-04-13T14:00:00.000Z",
+      }),
+    );
+    const body = (await created.json()) as { session: { id: string } };
+    const res = await api.ohlcv(new Request("http://x"), { id: body.session.id });
+    expect(res.status).toBe(200);
+    const out = (await res.json()) as {
+      symbol: string;
+      source: string;
+      timeframe: string;
+      from: string;
+      to: string;
+      windowStartAt: string;
+      windowEndAt: string;
+      candles: unknown[];
+    };
+    expect(out.symbol).toBe("BTCUSDT");
+    expect(out.source).toBe("fake");
+    expect(out.timeframe).toBe("1h");
+    expect(out.windowStartAt).toBe("2026-04-12T14:00:00.000Z");
+    expect(out.windowEndAt).toBe("2026-04-13T14:00:00.000Z");
+    // 200 lookback candles * 60 minutes = 12000 minutes before window start
+    const expectedFrom = new Date("2026-04-12T14:00:00.000Z").getTime() - 200 * 60 * 60_000;
+    expect(new Date(out.from).getTime()).toBe(expectedFrom);
+  });
+
+  test("unknown source → 404", async () => {
+    watchRepo.add("unsupported-1h", {
+      id: "unsupported-1h",
+      asset: { symbol: "FOO", source: "doesnt-exist" },
+      timeframes: { primary: "1h", higher: [] },
+      candles: { detector_lookback: 200, reviewer_chart_window: 60 },
+    } as unknown as WatchConfig);
+    const created = await api.create(
+      postCreate({
+        watchId: "unsupported-1h",
+        windowStartAt: "2026-04-12T14:00:00.000Z",
+        windowEndAt: "2026-04-13T14:00:00.000Z",
+      }),
+    );
+    const body = (await created.json()) as { session: { id: string } };
+    const res = await api.ohlcv(new Request("http://x"), { id: body.session.id });
+    expect(res.status).toBe(404);
+  });
+});
+
+describe("GET /api/replay/sessions/:id/llm-calls", () => {
+  test("empty session → []", async () => {
+    const created = await api.create(
+      postCreate({
+        watchId: "btc-1h",
+        windowStartAt: "2026-04-12T14:00:00.000Z",
+        windowEndAt: "2026-04-13T14:00:00.000Z",
+      }),
+    );
+    const body = (await created.json()) as { session: { id: string } };
+    const res = await api.llmCalls(new Request("http://x"), { id: body.session.id });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual([]);
   });
 });

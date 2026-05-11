@@ -2,15 +2,19 @@ import { NotFoundError, requireParam, safeHandler, ValidationError } from "@clie
 import type { Clock } from "@domain/ports/Clock";
 import type { LiveEventQueryByWindow } from "@domain/ports/LiveEventQueryByWindow";
 import type { LLMResponseCacheStore } from "@domain/ports/LLMResponseCacheStore";
+import type { MarketDataFetcher } from "@domain/ports/MarketDataFetcher";
 import type { ReplayEventStore } from "@domain/ports/ReplayEventStore";
 import type { ReplayLLMCallStore } from "@domain/ports/ReplayLLMCallStore";
 import type { ListFilter, ReplaySessionRepository } from "@domain/ports/ReplaySessionRepository";
 import type { WatchRepository } from "@domain/ports/WatchRepository";
 import { copyLiveEventsToReplay } from "@domain/replay/copyLiveEvents";
+import { projectSetupsFromEvents } from "@domain/replay/projectSetups";
 import type { ReplaySessionStatus } from "@domain/replay/ReplaySession";
 import {
   buildWorkflowId,
   DEFAULT_COST_CAP_USD,
+  type Timeframe,
+  timeframeToMinutes,
   validateCreateSession,
 } from "@domain/replay/replaySessionRules";
 import { z } from "zod";
@@ -22,6 +26,7 @@ export type ReplayApiDeps = {
   cacheStore: LLMResponseCacheStore;
   liveEventQuery: LiveEventQueryByWindow;
   watchRepo: WatchRepository;
+  marketDataFetchers: Map<string, MarketDataFetcher>;
   clock: Clock;
 };
 
@@ -177,6 +182,67 @@ export function makeReplayApi(deps: ReplayApiDeps) {
       });
     }),
 
-    // Task 4.5 (setups projection) and 4.6 (ohlcv) will be added next.
+    /** GET /api/replay/sessions/:id/setups — event-sourced projection. */
+    setupsProjection: safeHandler(async (_req, params) => {
+      const id = requireParam(params, "id");
+      const session = await deps.sessionsRepo.get(id);
+      if (!session) throw new NotFoundError(`replay session ${id} not found`);
+      const events = await deps.replayEventStore.listBySession(id);
+      const projection = projectSetupsFromEvents(events);
+      return Response.json(projection);
+    }),
+
+    /** GET /api/replay/sessions/:id/llm-calls — raw LLM call audit list. */
+    llmCalls: safeHandler(async (_req, params) => {
+      const id = requireParam(params, "id");
+      const session = await deps.sessionsRepo.get(id);
+      if (!session) throw new NotFoundError(`replay session ${id} not found`);
+      // For the raw list we just return the cost breakdown rows; if more
+      // detail is needed later, the store can be extended with a
+      // listBySession() method.
+      const breakdown = await deps.replayLlmCallStore.costBreakdown(id);
+      return Response.json(breakdown);
+    }),
+
+    /** GET /api/replay/sessions/:id/ohlcv — OHLCV covering window + lookback. */
+    ohlcv: safeHandler(async (_req, params) => {
+      const id = requireParam(params, "id");
+      const session = await deps.sessionsRepo.get(id);
+      if (!session) throw new NotFoundError(`replay session ${id} not found`);
+
+      const watch = session.configSnapshot;
+      const source = watch.asset.source;
+      const fetcher = deps.marketDataFetchers.get(source);
+      if (!fetcher) {
+        throw new NotFoundError(`no MarketDataFetcher registered for source ${source}`);
+      }
+
+      // Render bougies covering both the lookback (so the bot's full
+      // historical context is visible) and the window. detector_lookback
+      // is in candles ; convert to ms via the primary timeframe.
+      const primary = watch.timeframes.primary as Timeframe;
+      const lookbackCandles = watch.candles?.detector_lookback ?? 200;
+      const lookbackMs = lookbackCandles * timeframeToMinutes(primary) * 60_000;
+      const from = new Date(session.windowStartAt.getTime() - lookbackMs);
+      const to = session.windowEndAt;
+
+      const candles = await fetcher.fetchRange({
+        asset: watch.asset.symbol,
+        timeframe: primary,
+        from,
+        to,
+      });
+
+      return Response.json({
+        symbol: watch.asset.symbol,
+        source,
+        timeframe: primary,
+        from: from.toISOString(),
+        to: to.toISOString(),
+        windowStartAt: session.windowStartAt.toISOString(),
+        windowEndAt: session.windowEndAt.toISOString(),
+        candles,
+      });
+    }),
   };
 }
