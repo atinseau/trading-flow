@@ -547,10 +547,7 @@ describe("POST /api/replay/sessions/:id/step", () => {
 
   test("dispatches a step signal with the body tickAt", async () => {
     const id = await createTestSession();
-    const res = await api.step(
-      postStep(id, { tickAt: "2026-04-12T16:00:00.000Z" }),
-      { id },
-    );
+    const res = await api.step(postStep(id, { tickAt: "2026-04-12T16:00:00.000Z" }), { id });
     expect(res.status).toBe(200);
     expect(signaller.calls).toHaveLength(1);
     expect(signaller.calls[0]).toEqual({
@@ -573,10 +570,7 @@ describe("POST /api/replay/sessions/:id/step", () => {
 
   test("400 when tickAt falls outside the session window", async () => {
     const id = await createTestSession();
-    const res = await api.step(
-      postStep(id, { tickAt: "2026-04-15T12:00:00.000Z" }),
-      { id },
-    );
+    const res = await api.step(postStep(id, { tickAt: "2026-04-15T12:00:00.000Z" }), { id });
     expect(res.status).toBe(400);
     expect(signaller.calls).toHaveLength(0);
   });
@@ -585,10 +579,7 @@ describe("POST /api/replay/sessions/:id/step", () => {
     const id = await createTestSession();
     const sessionsRepo = deps.sessionsRepo as InMemoryReplaySessionRepository;
     await sessionsRepo.updateStatus(id, "COMPLETED");
-    const res = await api.step(
-      postStep(id, { tickAt: "2026-04-12T16:00:00.000Z" }),
-      { id },
-    );
+    const res = await api.step(postStep(id, { tickAt: "2026-04-12T16:00:00.000Z" }), { id });
     expect(res.status).toBe(400);
     expect(signaller.calls).toHaveLength(0);
   });

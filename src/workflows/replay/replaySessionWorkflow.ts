@@ -1,8 +1,15 @@
-import { condition, defineQuery, defineSignal, proxyActivities, setHandler, uuid4 } from "@temporalio/workflow";
-import { applyVerdict, type SetupRuntimeState } from "@domain/scoring/applyVerdict";
 import type { Verdict } from "@domain/schemas/Verdict";
+import { applyVerdict, type SetupRuntimeState } from "@domain/scoring/applyVerdict";
 import type { SetupStatus } from "@domain/state-machine/setupTransitions";
 import { isTerminal } from "@domain/state-machine/setupTransitions";
+import {
+  condition,
+  defineQuery,
+  defineSignal,
+  proxyActivities,
+  setHandler,
+  uuid4,
+} from "@temporalio/workflow";
 import type * as replayActivities from "./activities";
 import type { ReplaySetupSnapshot } from "./activities";
 
@@ -178,9 +185,7 @@ export async function replaySessionWorkflow(args: ReplaySessionWorkflowArgs): Pr
   // ----- main loop: drain the tick queue, respecting pause/terminate ----
 
   while (!terminated && status !== "COMPLETED" && status !== "FAILED") {
-    await condition(
-      () => terminated || (queue.length > 0 && !paused && status !== "COST_CAPPED"),
-    );
+    await condition(() => terminated || (queue.length > 0 && !paused && status !== "COST_CAPPED"));
     if (terminated) break;
     const next = queue.shift();
     if (!next) continue;
@@ -323,7 +328,11 @@ async function processTick(
     const r = await llm.runReviewerReplay({
       sessionId,
       tickAt,
-      setup: { ...setup.snapshot, currentScore: setup.runtime.score, invalidationLevel: setup.runtime.invalidationLevel },
+      setup: {
+        ...setup.snapshot,
+        currentScore: setup.runtime.score,
+        invalidationLevel: setup.runtime.invalidationLevel,
+      },
       chartUri: det.chartUri,
       indicatorsJson: det.indicatorsJson,
       lastClose: det.lastClose,
@@ -337,7 +346,11 @@ async function processTick(
       scoreThresholdDead: watch.setup_lifecycle.score_threshold_dead,
     });
     setup.runtime = next;
-    setup.snapshot = { ...setup.snapshot, currentScore: next.score, invalidationLevel: next.invalidationLevel };
+    setup.snapshot = {
+      ...setup.snapshot,
+      currentScore: next.score,
+      invalidationLevel: next.invalidationLevel,
+    };
 
     const { type, payload } = verdictToEvent(verdict);
     await db.appendReplayEvent({
@@ -372,7 +385,11 @@ async function processTick(
     const f = await llm.runFinalizerReplay({
       sessionId,
       tickAt,
-      setup: { ...setup.snapshot, currentScore: setup.runtime.score, invalidationLevel: setup.runtime.invalidationLevel },
+      setup: {
+        ...setup.snapshot,
+        currentScore: setup.runtime.score,
+        invalidationLevel: setup.runtime.invalidationLevel,
+      },
       latestIndicatorsJson: det.indicatorsJson,
       latestLastClose: det.lastClose,
     });
@@ -384,7 +401,12 @@ async function processTick(
       stop_loss?: number;
       take_profit?: number[];
     };
-    if (decision.go && decision.entry !== undefined && decision.stop_loss !== undefined && decision.take_profit) {
+    if (
+      decision.go &&
+      decision.entry !== undefined &&
+      decision.stop_loss !== undefined &&
+      decision.take_profit
+    ) {
       const before = { ...setup.runtime };
       setup.runtime = { ...setup.runtime, status: "TRACKING" };
       await db.appendReplayEvent({
@@ -450,9 +472,10 @@ async function processTick(
   return tickCost;
 }
 
-function verdictToEvent(
-  verdict: Verdict,
-): { type: string; payload: import("@domain/events/schemas").EventPayload } {
+function verdictToEvent(verdict: Verdict): {
+  type: string;
+  payload: import("@domain/events/schemas").EventPayload;
+} {
   switch (verdict.type) {
     case "STRENGTHEN":
       return {

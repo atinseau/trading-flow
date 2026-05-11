@@ -43,7 +43,7 @@ export function Component() {
   const sessionId = params.id ?? "";
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { session, events, setups, ohlcv, cost } = useReplaySteps(sessionId);
+  const { session, events, setups, ohlcv, cost, step, pause, resume } = useReplaySteps(sessionId);
 
   const [activeSetupId, setActiveSetupId] = useState<string | null>(null);
   const [focusedEventId, setFocusedEventId] = useState<string | null>(null);
@@ -155,6 +155,7 @@ export function Component() {
 
       {/* Controls */}
       <ReplayControls
+        timeframe={ohlcv.data?.timeframe ?? "1h"}
         windowStartAt={windowStartAt}
         windowEndAt={windowEndAt}
         playheadAt={playheadAt}
@@ -164,7 +165,17 @@ export function Component() {
         }}
         costUsdSoFar={cost.data?.costUsdSoFar ?? s.costUsdSoFar}
         costCapUsd={cost.data?.costCapUsd ?? s.costCapUsd}
-        stepDisabled={true}
+        status={s.status}
+        stepInFlight={step.isPending}
+        onStep={(tickAt) => {
+          step.mutate({ tickAt: tickAt.toISOString() });
+          // Snap the playhead forward so the chart immediately reflects
+          // the requested step ; events will land asynchronously.
+          setScrubMs(tickAt.getTime());
+          setFocusedEventId(null);
+        }}
+        onPause={() => pause.mutate()}
+        onResume={() => resume.mutate()}
       />
 
       {/* Two-column: left = chart already above; below: tabs/list + log */}

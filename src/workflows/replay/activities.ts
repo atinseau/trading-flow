@@ -9,16 +9,10 @@ import { filterLessonsForReplay, type LessonLike } from "@domain/replay/lessonsL
 import type { ReplaySession } from "@domain/replay/ReplaySession";
 import type { Candle } from "@domain/schemas/Candle";
 import { buildDetectorOutputSchema } from "@domain/schemas/DetectorOutput";
-import {
-  FeedbackOutputSchema,
-  type FeedbackOutput,
-} from "@domain/schemas/FeedbackOutput";
+import { type FeedbackOutput, FeedbackOutputSchema } from "@domain/schemas/FeedbackOutput";
 import { buildIndicatorsSchema } from "@domain/schemas/Indicators";
-import {
-  ReviewerLlmOutputSchema,
-  type ReviewerLlmOutput,
-} from "@domain/schemas/ReviewerOutput";
-import { VerdictSchema, type Verdict } from "@domain/schemas/Verdict";
+import { type ReviewerLlmOutput, ReviewerLlmOutputSchema } from "@domain/schemas/ReviewerOutput";
+import { type Verdict, VerdictSchema } from "@domain/schemas/Verdict";
 import { summarizeHtf } from "@domain/services/htfContext";
 import { inferImageMimeType } from "@domain/services/imageMimeType";
 import { classifyRegime } from "@domain/services/marketRegime";
@@ -339,8 +333,13 @@ export function buildReplayActivities(deps: ReplayActivityDeps) {
       const enabledIds = plugins.map((p) => p.id);
       const naked = enabledIds.length === 0;
       const secondaryPaneCount = plugins.filter((p) => p.chartPane === "secondary").length;
-      const height =
-        naked ? 900 : secondaryPaneCount >= 3 ? 1080 : secondaryPaneCount >= 1 ? 720 : 900;
+      const height = naked
+        ? 900
+        : secondaryPaneCount >= 3
+          ? 1080
+          : secondaryPaneCount >= 1
+            ? 720
+            : 900;
       const tempUri = `file:///tmp/replay-chart-${crypto.randomUUID()}.png`;
       const rendered = await deps.chartRenderer.render({
         candles: slice,
@@ -418,9 +417,10 @@ export function buildReplayActivities(deps: ReplayActivityDeps) {
         await deps.sessionsRepo.incrementCost(input.sessionId, result.output.costUsd);
       }
 
-      const parsed = (result.output.parsed ?? null) as
-        | { ignore_reason?: string | null; new_setups?: unknown[] }
-        | null;
+      const parsed = (result.output.parsed ?? null) as {
+        ignore_reason?: string | null;
+        new_setups?: unknown[];
+      } | null;
       const ignoreReason = parsed?.ignore_reason ?? null;
       await deps.replayEventStore.append(input.sessionId, {
         setupId: null,
@@ -630,9 +630,7 @@ export function buildReplayActivities(deps: ReplayActivityDeps) {
      *  - HTF context + chart are rendered with `endTime = tickAt`.
      *  - No market-hours guard (see `runReviewerReplay`).
      */
-    async runFinalizerReplay(
-      input: RunFinalizerReplayInput,
-    ): Promise<RunFinalizerReplayResult> {
+    async runFinalizerReplay(input: RunFinalizerReplayInput): Promise<RunFinalizerReplayResult> {
       const tickAt = new Date(input.tickAt);
       const session = await deps.sessionsRepo.get(input.sessionId);
       if (!session) throw new Error(`Replay session ${input.sessionId} not found`);

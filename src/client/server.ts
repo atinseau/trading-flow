@@ -31,7 +31,10 @@ import { applyReload } from "@config/applyReload";
 import { bootstrapWatch } from "@config/bootstrapWatch";
 import { tearDownWatch } from "@config/tearDownWatch";
 import { forceTick, killSetup, pauseWatch, resumeWatch } from "@config/watchOps";
-import { TemporalReplaySignalSender, type ReplaySignalSender } from "@workflows/replay/replaySignals";
+import {
+  type ReplaySignalSender,
+  TemporalReplaySignalSender,
+} from "@workflows/replay/replaySignals";
 import index from "./index.html";
 
 const port = Number(process.env.WEB_PORT ?? 8084);

@@ -1,58 +1,112 @@
 import { Badge } from "@client/components/ui/badge";
 import { Button } from "@client/components/ui/button";
 import { Slider } from "@client/components/ui/slider";
-import { Pause, Play, SkipForward, StepForward } from "lucide-react";
+import { timeframeToMinutes } from "@client/lib/timeframe";
+import { Loader2, Pause, Play, SkipForward, StepForward } from "lucide-react";
 
 /**
  * Step controls for a replay session.
  *
- * Jalon 1 mode: `stepDisabled` is true. Buttons render with a badge
- * "Jalon 2 — Coming soon" and are not clickable. The scrubber however
- * IS active in Jalon 1 — it lets the user navigate visually through
- * events that were copied from the live baseline.
+ * Step 1 / Step 5 dispatch one (or five sequential) step signals, each
+ * advancing the playhead by one candle of the session's primary
+ * timeframe. The workflow processes them serially.
+ *
+ * Pause and Resume signal the workflow to gate further tick processing.
+ * They are session-status aware (disabled in terminal states).
  */
 export function ReplayControls(props: {
+  timeframe: string;
   windowStartAt: Date;
   windowEndAt: Date;
   playheadAt: Date;
   onScrub: (date: Date) => void;
   costUsdSoFar: number;
   costCapUsd: number;
-  stepDisabled: boolean;
+  status: "READY" | "PAUSED" | "COMPLETED" | "COST_CAPPED" | "FAILED";
+  stepInFlight: boolean;
+  onStep: (tickAt: Date) => void;
+  onPause: () => void;
+  onResume: () => void;
 }) {
   const start = props.windowStartAt.getTime();
   const end = props.windowEndAt.getTime();
   const span = Math.max(1, end - start);
   const sliderValue = Math.round(((props.playheadAt.getTime() - start) / span) * 1000);
 
-  function onSliderChange(value: number[]): void {
-    const v = value[0] ?? 0;
-    const t = start + (v / 1000) * span;
-    props.onScrub(new Date(t));
+  const tfMs = timeframeToMinutes(props.timeframe) * 60_000;
+  const terminal = props.status === "COMPLETED" || props.status === "FAILED";
+  const capped = props.status === "COST_CAPPED";
+  const stepDisabled = terminal || capped || props.stepInFlight;
+
+  function nextTickAt(): Date {
+    const candidate = new Date(props.playheadAt.getTime() + tfMs);
+    if (candidate.getTime() > end) return props.windowEndAt;
+    return candidate;
+  }
+
+  function stepN(n: number): void {
+    let next = props.playheadAt.getTime();
+    for (let i = 0; i < n; i++) {
+      next = Math.min(next + tfMs, end);
+      props.onStep(new Date(next));
+      if (next >= end) break;
+    }
   }
 
   return (
     <div className="rounded-md border bg-card p-3 space-y-3">
       <div className="flex items-center gap-2 flex-wrap">
-        <Button size="sm" variant="outline" disabled={props.stepDisabled} title="Step 1 bougie">
-          <StepForward className="size-3.5" />
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={stepDisabled}
+          title="Step 1 bougie"
+          onClick={() => props.onStep(nextTickAt())}
+        >
+          {props.stepInFlight ? (
+            <Loader2 className="size-3.5 animate-spin" />
+          ) : (
+            <StepForward className="size-3.5" />
+          )}
           Step 1
         </Button>
-        <Button size="sm" variant="outline" disabled={props.stepDisabled} title="Step 5 bougies">
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={stepDisabled}
+          title="Step 5 bougies"
+          onClick={() => stepN(5)}
+        >
           <SkipForward className="size-3.5" />
           Step 5
         </Button>
-        <Button size="sm" variant="outline" disabled={props.stepDisabled} title="Auto-step">
-          <Play className="size-3.5" />
-          Auto
-        </Button>
-        <Button size="sm" variant="outline" disabled={props.stepDisabled}>
-          <Pause className="size-3.5" />
-          Pause
-        </Button>
-        {props.stepDisabled && (
-          <Badge variant="outline" className="text-[10px] border-amber-500/40 text-amber-300">
-            Jalon 2 — Coming soon
+        {props.status === "PAUSED" ? (
+          <Button size="sm" variant="outline" disabled={terminal} onClick={props.onResume}>
+            <Play className="size-3.5" />
+            Reprendre
+          </Button>
+        ) : (
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={terminal || capped || props.status !== "READY"}
+            onClick={props.onPause}
+          >
+            <Pause className="size-3.5" />
+            Pause
+          </Button>
+        )}
+        {capped && (
+          <Badge variant="outline" className="text-[10px] border-orange-500/40 text-orange-300">
+            Cost cap atteint
+          </Badge>
+        )}
+        {terminal && (
+          <Badge
+            variant="outline"
+            className="text-[10px] border-muted-foreground/40 text-muted-foreground"
+          >
+            {props.status}
           </Badge>
         )}
         <div className="ml-auto text-xs text-muted-foreground font-mono">
@@ -63,7 +117,16 @@ export function ReplayControls(props: {
         <div className="text-[10px] text-muted-foreground uppercase tracking-wide">
           Scrubber — playhead
         </div>
-        <Slider value={[sliderValue]} min={0} max={1000} step={1} onValueChange={onSliderChange} />
+        <Slider
+          value={[sliderValue]}
+          min={0}
+          max={1000}
+          step={1}
+          onValueChange={(value: number[]) => {
+            const v = value[0] ?? 0;
+            props.onScrub(new Date(start + (v / 1000) * span));
+          }}
+        />
         <div className="flex justify-between text-[10px] text-muted-foreground font-mono">
           <span>{props.windowStartAt.toLocaleString()}</span>
           <span>{props.playheadAt.toLocaleString()}</span>

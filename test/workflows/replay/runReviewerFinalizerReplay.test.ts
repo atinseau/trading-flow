@@ -15,11 +15,8 @@ import { InMemoryLLMResponseCacheStore } from "@test-fakes/InMemoryLLMResponseCa
 import { InMemoryReplayEventStore } from "@test-fakes/InMemoryReplayEventStore";
 import { InMemoryReplayLLMCallStore } from "@test-fakes/InMemoryReplayLLMCallStore";
 import { InMemoryReplaySessionRepository } from "@test-fakes/InMemoryReplaySessionRepository";
+import { buildReplayActivities, type ReplaySetupSnapshot } from "@workflows/replay/activities";
 import type { ReplayActivityDeps } from "@workflows/replay/activityDependencies";
-import {
-  buildReplayActivities,
-  type ReplaySetupSnapshot,
-} from "@workflows/replay/activities";
 
 const watchId = "btc-1h";
 const sessionId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
