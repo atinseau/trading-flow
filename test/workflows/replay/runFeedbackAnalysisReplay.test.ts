@@ -8,7 +8,6 @@ import { PromptBuilder } from "@domain/services/PromptBuilder";
 import { FakeChartRenderer } from "@test-fakes/FakeChartRenderer";
 import { FakeIndicatorCalculator } from "@test-fakes/FakeIndicatorCalculator";
 import { FakeLLMProvider } from "@test-fakes/FakeLLMProvider";
-import { FakeMarketDataFetcher } from "@test-fakes/FakeMarketDataFetcher";
 import { InMemoryArtifactStore } from "@test-fakes/InMemoryArtifactStore";
 import { InMemoryLessonStore } from "@test-fakes/InMemoryLessonStore";
 import { InMemoryLLMResponseCacheStore } from "@test-fakes/InMemoryLLMResponseCacheStore";

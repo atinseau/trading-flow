@@ -4,7 +4,9 @@ import { InvalidConfigError } from "@domain/errors";
 import type { EventPayload } from "@domain/events/schemas";
 import type { CloseReason } from "@domain/feedback/closeOutcome";
 import type { LessonAction, LessonCategory } from "@domain/feedback/lessonAction";
+import type { NewReplayEvent, StoredReplayEvent } from "@domain/ports/ReplayEventStore";
 import { filterLessonsForReplay, type LessonLike } from "@domain/replay/lessonsLookup";
+import type { ReplaySession } from "@domain/replay/ReplaySession";
 import type { Candle } from "@domain/schemas/Candle";
 import { buildDetectorOutputSchema } from "@domain/schemas/DetectorOutput";
 import {
@@ -166,6 +168,17 @@ export type RunFeedbackAnalysisReplayResult = {
   provider: string;
   model: string;
   cacheHit: boolean;
+};
+
+// --- Workflow plumbing -------------------------------------------------------
+
+export type AppendReplayEventInput = {
+  sessionId: string;
+  event: NewReplayEvent;
+};
+
+export type LoadReplaySessionResult = {
+  session: ReplaySession;
 };
 
 export type ReplayActivities = ReturnType<typeof buildReplayActivities>;
@@ -952,6 +965,43 @@ export function buildReplayActivities(deps: ReplayActivityDeps) {
         model: analyzer.model,
         cacheHit,
       };
+    },
+
+    /**
+     * Workflow plumbing: append a single event to `replay_events`. The
+     * replay workflow uses this to persist setup-level domain events
+     * (SetupCreated, Strengthened, Confirmed, ...) that the activities
+     * themselves don't emit, since per-stage activities only persist their
+     * own tick-trace event (DetectorTickProcessed, FeedbackLessonProposed).
+     *
+     * Returns the stored event so the workflow can echo `sequence` /
+     * `id` into its in-memory state if needed.
+     */
+    async appendReplayEvent(input: AppendReplayEventInput): Promise<StoredReplayEvent> {
+      return deps.replayEventStore.append(input.sessionId, input.event);
+    },
+
+    /**
+     * Workflow plumbing: load the session row so the workflow can read its
+     * config snapshot, mode flags, and window bounds in one shot rather
+     * than threading them through every activity input.
+     */
+    async loadReplaySession(input: { sessionId: string }): Promise<LoadReplaySessionResult> {
+      const session = await deps.sessionsRepo.get(input.sessionId);
+      if (!session) throw new Error(`Replay session ${input.sessionId} not found`);
+      return { session };
+    },
+
+    /**
+     * Workflow plumbing: update the session status (READY / PAUSED /
+     * COMPLETED / COST_CAPPED / FAILED). Atomic for concurrent writes.
+     */
+    async updateReplaySessionStatus(input: {
+      sessionId: string;
+      status: "READY" | "PAUSED" | "COMPLETED" | "COST_CAPPED" | "FAILED";
+      failureReason?: string;
+    }): Promise<void> {
+      await deps.sessionsRepo.updateStatus(input.sessionId, input.status, input.failureReason);
     },
   };
 }
