@@ -4,6 +4,7 @@ import type { WatchRepository, WatchValidationResult } from "@domain/ports/Watch
 import type { WatchConfig } from "@domain/schemas/WatchesConfig";
 import { FakeClock } from "../../fakes/FakeClock";
 import { FakeMarketDataFetcher } from "../../fakes/FakeMarketDataFetcher";
+import { FakeReplaySignalSender } from "../../fakes/FakeReplaySignalSender";
 import { InMemoryLiveEventQueryByWindow } from "../../fakes/InMemoryLiveEventQueryByWindow";
 import { InMemoryLLMResponseCacheStore } from "../../fakes/InMemoryLLMResponseCacheStore";
 import { InMemoryReplayEventStore } from "../../fakes/InMemoryReplayEventStore";
@@ -40,6 +41,7 @@ const minimalConfig = {
 
 let deps: ReplayApiDeps;
 let watchRepo: FakeWatchRepository;
+let signaller: FakeReplaySignalSender;
 let api: ReturnType<typeof makeReplayApi>;
 
 beforeEach(() => {
@@ -47,6 +49,7 @@ beforeEach(() => {
   watchRepo.add("btc-1h", minimalConfig);
   const marketDataFetchers = new Map();
   marketDataFetchers.set("fake", new FakeMarketDataFetcher());
+  signaller = new FakeReplaySignalSender();
   deps = {
     sessionsRepo: new InMemoryReplaySessionRepository(),
     replayEventStore: new InMemoryReplayEventStore(),
@@ -56,6 +59,7 @@ beforeEach(() => {
     watchRepo,
     marketDataFetchers,
     clock: new FakeClock(new Date("2026-05-08T12:00:00.000Z")),
+    signaller,
   };
   api = makeReplayApi(deps);
 });
@@ -517,5 +521,112 @@ describe("GET /api/replay/sessions/:id/llm-calls", () => {
     const res = await api.llmCalls(new Request("http://x"), { id: body.session.id });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual([]);
+  });
+});
+
+describe("POST /api/replay/sessions/:id/step", () => {
+  function postStep(id: string, body: unknown): Request {
+    return new Request(`http://x/api/replay/sessions/${id}/step`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  }
+
+  async function createTestSession(): Promise<string> {
+    const created = await api.create(
+      postCreate({
+        watchId: "btc-1h",
+        windowStartAt: "2026-04-12T14:00:00.000Z",
+        windowEndAt: "2026-04-13T14:00:00.000Z",
+      }),
+    );
+    const body = (await created.json()) as { session: { id: string } };
+    return body.session.id;
+  }
+
+  test("dispatches a step signal with the body tickAt", async () => {
+    const id = await createTestSession();
+    const res = await api.step(
+      postStep(id, { tickAt: "2026-04-12T16:00:00.000Z" }),
+      { id },
+    );
+    expect(res.status).toBe(200);
+    expect(signaller.calls).toHaveLength(1);
+    expect(signaller.calls[0]).toEqual({
+      kind: "step",
+      sessionId: id,
+      tickAt: "2026-04-12T16:00:00.000Z",
+    });
+  });
+
+  test("404 when session does not exist", async () => {
+    const res = await api.step(
+      postStep("00000000-0000-4000-8000-000000000000", {
+        tickAt: "2026-04-12T16:00:00.000Z",
+      }),
+      { id: "00000000-0000-4000-8000-000000000000" },
+    );
+    expect(res.status).toBe(404);
+    expect(signaller.calls).toHaveLength(0);
+  });
+
+  test("400 when tickAt falls outside the session window", async () => {
+    const id = await createTestSession();
+    const res = await api.step(
+      postStep(id, { tickAt: "2026-04-15T12:00:00.000Z" }),
+      { id },
+    );
+    expect(res.status).toBe(400);
+    expect(signaller.calls).toHaveLength(0);
+  });
+
+  test("400 when session is COMPLETED", async () => {
+    const id = await createTestSession();
+    const sessionsRepo = deps.sessionsRepo as InMemoryReplaySessionRepository;
+    await sessionsRepo.updateStatus(id, "COMPLETED");
+    const res = await api.step(
+      postStep(id, { tickAt: "2026-04-12T16:00:00.000Z" }),
+      { id },
+    );
+    expect(res.status).toBe(400);
+    expect(signaller.calls).toHaveLength(0);
+  });
+});
+
+describe("POST /api/replay/sessions/:id/pause + /resume", () => {
+  async function createTestSession(): Promise<string> {
+    const created = await api.create(
+      postCreate({
+        watchId: "btc-1h",
+        windowStartAt: "2026-04-12T14:00:00.000Z",
+        windowEndAt: "2026-04-13T14:00:00.000Z",
+      }),
+    );
+    const body = (await created.json()) as { session: { id: string } };
+    return body.session.id;
+  }
+
+  test("pause dispatches a pause signal", async () => {
+    const id = await createTestSession();
+    const res = await api.pause(new Request("http://x", { method: "POST" }), { id });
+    expect(res.status).toBe(200);
+    expect(signaller.calls).toEqual([{ kind: "pause", sessionId: id }]);
+  });
+
+  test("resume dispatches a resume signal", async () => {
+    const id = await createTestSession();
+    const res = await api.resume(new Request("http://x", { method: "POST" }), { id });
+    expect(res.status).toBe(200);
+    expect(signaller.calls).toEqual([{ kind: "resume", sessionId: id }]);
+  });
+
+  test("pause refuses on terminal status", async () => {
+    const id = await createTestSession();
+    const sessionsRepo = deps.sessionsRepo as InMemoryReplaySessionRepository;
+    await sessionsRepo.updateStatus(id, "FAILED");
+    const res = await api.pause(new Request("http://x", { method: "POST" }), { id });
+    expect(res.status).toBe(400);
+    expect(signaller.calls).toHaveLength(0);
   });
 });

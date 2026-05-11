@@ -17,6 +17,7 @@ import {
   timeframeToMinutes,
   validateCreateSession,
 } from "@domain/replay/replaySessionRules";
+import type { ReplaySignalSender } from "@workflows/replay/replaySignals";
 import { z } from "zod";
 
 export type ReplayApiDeps = {
@@ -28,7 +29,19 @@ export type ReplayApiDeps = {
   watchRepo: WatchRepository;
   marketDataFetchers: Map<string, MarketDataFetcher>;
   clock: Clock;
+  /**
+   * Workflow signaller. Step/pause/resume endpoints dispatch through this
+   * to wake the `replaySessionWorkflow` Temporal workflow. Defined as a
+   * port so the API can be tested with a fake without spinning up a
+   * Temporal server.
+   */
+  signaller: ReplaySignalSender;
 };
+
+const StepBodySchema = z.object({
+  /** ISO-8601 datetime — the candle close to advance the playhead to. */
+  tickAt: z.iso.datetime(),
+});
 
 const CreateBodySchema = z.object({
   watchId: z.string().min(1),
@@ -202,6 +215,60 @@ export function makeReplayApi(deps: ReplayApiDeps) {
       // listBySession() method.
       const breakdown = await deps.replayLlmCallStore.costBreakdown(id);
       return Response.json(breakdown);
+    }),
+
+    /**
+     * POST /api/replay/sessions/:id/step
+     *
+     * Advances the playhead by one candle. The body's `tickAt` becomes the
+     * next simulated tick. Uses `signalWithStart` under the hood, so the
+     * first step also starts the workflow ; subsequent steps signal the
+     * already-running workflow.
+     *
+     * Refuses to send when the session is in a terminal state — calling
+     * step on a COMPLETED/FAILED session is a user error worth surfacing
+     * instead of silently warming up a dead workflow.
+     */
+    step: safeHandler(async (req, params) => {
+      const id = requireParam(params, "id");
+      const session = await deps.sessionsRepo.get(id);
+      if (!session) throw new NotFoundError(`replay session ${id} not found`);
+      if (session.status === "COMPLETED" || session.status === "FAILED") {
+        throw new ValidationError(`session is ${session.status}`);
+      }
+      const body = StepBodySchema.parse(await req.json());
+      const tickAt = new Date(body.tickAt);
+      if (tickAt < session.windowStartAt || tickAt > session.windowEndAt) {
+        throw new ValidationError(
+          `tickAt ${body.tickAt} outside session window [${session.windowStartAt.toISOString()}, ${session.windowEndAt.toISOString()}]`,
+        );
+      }
+      await deps.signaller.step({ sessionId: id, tickAt: body.tickAt });
+      return Response.json({ ok: true, tickAt: body.tickAt });
+    }),
+
+    /** POST /api/replay/sessions/:id/pause — gate further tick processing. */
+    pause: safeHandler(async (_req, params) => {
+      const id = requireParam(params, "id");
+      const session = await deps.sessionsRepo.get(id);
+      if (!session) throw new NotFoundError(`replay session ${id} not found`);
+      if (session.status === "COMPLETED" || session.status === "FAILED") {
+        throw new ValidationError(`session is ${session.status}`);
+      }
+      await deps.signaller.pause({ sessionId: id });
+      return Response.json({ ok: true });
+    }),
+
+    /** POST /api/replay/sessions/:id/resume — un-gate tick processing. */
+    resume: safeHandler(async (_req, params) => {
+      const id = requireParam(params, "id");
+      const session = await deps.sessionsRepo.get(id);
+      if (!session) throw new NotFoundError(`replay session ${id} not found`);
+      if (session.status === "COMPLETED" || session.status === "FAILED") {
+        throw new ValidationError(`session is ${session.status}`);
+      }
+      await deps.signaller.resume({ sessionId: id });
+      return Response.json({ ok: true });
     }),
 
     /** GET /api/replay/sessions/:id/ohlcv — OHLCV covering window + lookback. */
