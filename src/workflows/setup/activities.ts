@@ -3,7 +3,7 @@ import { encodeSetupCallback } from "@adapters/notify/setupCallbackFormat";
 import { loadPrompt } from "@adapters/prompts/loadPrompt";
 import { InvalidConfigError } from "@domain/errors";
 // loadPrompt is still used for finalizer (not managed by PromptBuilder)
-import type { EventPayload } from "@domain/events/schemas";
+import { extractObservations, extractReasoning } from "@domain/events/payloadAccessors";
 import type { NewEvent, SetupStateUpdate } from "@domain/ports/EventStore";
 import type { ReviewerLlmOutput } from "@domain/schemas/ReviewerOutput";
 import { ReviewerLlmOutputSchema } from "@domain/schemas/ReviewerOutput";
@@ -904,20 +904,3 @@ export function buildSetupActivities(deps: ActivityDeps) {
   };
 }
 
-function extractObservations(payload: EventPayload): unknown[] {
-  if (
-    payload.type === "Strengthened" ||
-    payload.type === "Weakened" ||
-    payload.type === "Neutral"
-  ) {
-    return payload.data.observations;
-  }
-  return [];
-}
-
-function extractReasoning(payload: EventPayload): string | null {
-  if (payload.type === "Strengthened" || payload.type === "Weakened") {
-    return payload.data.reasoning;
-  }
-  return null;
-}

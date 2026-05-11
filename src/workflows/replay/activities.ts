@@ -1,19 +1,20 @@
 import { resolveAndCall } from "@adapters/llm/resolveAndCall";
 import { loadPrompt } from "@adapters/prompts/loadPrompt";
+import { FixedClock } from "@adapters/time/FixedClock";
 import { InvalidConfigError } from "@domain/errors";
-import type { EventPayload } from "@domain/events/schemas";
+import { extractObservations, extractReasoning } from "@domain/events/payloadAccessors";
 import type { CloseReason } from "@domain/feedback/closeOutcome";
 import type { LessonAction, LessonCategory } from "@domain/feedback/lessonAction";
 import type { NewReplayEvent, StoredReplayEvent } from "@domain/ports/ReplayEventStore";
 import { filterLessonsForReplay, type LessonLike } from "@domain/replay/lessonsLookup";
 import type { ReplaySession } from "@domain/replay/ReplaySession";
-import type { Candle } from "@domain/schemas/Candle";
 import { buildDetectorOutputSchema } from "@domain/schemas/DetectorOutput";
 import { type FeedbackOutput, FeedbackOutputSchema } from "@domain/schemas/FeedbackOutput";
 import { buildIndicatorsSchema } from "@domain/schemas/Indicators";
 import { type ReviewerLlmOutput, ReviewerLlmOutputSchema } from "@domain/schemas/ReviewerOutput";
 import { type Verdict, VerdictSchema } from "@domain/schemas/Verdict";
-import { summarizeHtf } from "@domain/services/htfContext";
+import { computeHtfContext } from "@domain/services/htfContext";
+import { renderHtfChart } from "@domain/services/htfChartRenderer";
 import { inferImageMimeType } from "@domain/services/imageMimeType";
 import { classifyRegime } from "@domain/services/marketRegime";
 import { getTradingSession } from "@domain/services/tradingSession";
@@ -142,6 +143,12 @@ const FinalizerOutputSchema = z.object({
 export type RunFeedbackAnalysisReplayInput = {
   sessionId: string;
   setupId: string;
+  /**
+   * Simulated time at which the setup closed. Used as `occurredAt` for
+   * the persisted `FeedbackLessonProposed` events so the timeline stays
+   * deterministic — same input → same event timestamps → cache friendly.
+   */
+  tickAt: string;
   /** Why the setup closed (from the replay-events projection). */
   closeReason: CloseReason;
   /** Whether the setup ever transitioned to CONFIRMED before closing. */
@@ -209,77 +216,6 @@ export function buildReplayActivities(deps: ReplayActivityDeps) {
       .map((l) => byId.get(l.id))
       .filter((l): l is NonNullable<typeof l> => l !== undefined)
       .map((l) => ({ id: l.id, title: l.title, body: l.body }));
-  }
-
-  /**
-   * Fetches a historical HTF (daily) candle slice ending at `tickAt`. Used
-   * by reviewer and finalizer when computing HTF context in replay mode.
-   * Live `computeHtfContext` doesn't accept an endTime — duplicating the
-   * thin fetch + summarize chain here is the cheapest way to keep replay
-   * deterministic without touching the live signature.
-   */
-  async function fetchHtfContextAt(args: {
-    source: string;
-    asset: string;
-    livePrice: number;
-    endTime: Date;
-  }) {
-    const fetcher = deps.marketDataFetchers.get(args.source);
-    if (!fetcher) return null;
-    const dailies = await fetcher.fetchOHLCV({
-      asset: args.asset,
-      timeframe: "1d",
-      limit: 30,
-      endTime: args.endTime,
-    });
-    return summarizeHtf(dailies as Candle[], args.livePrice);
-  }
-
-  /**
-   * Renders a HTF chart from a `tickAt`-anchored daily slice. Mirrors
-   * `renderHtfChart` but threads the `endTime` so we don't leak future
-   * candles into the replay.
-   */
-  async function renderHtfChartAt(args: {
-    source: string;
-    asset: string;
-    endTime: Date;
-  }): Promise<string | null> {
-    const fetcher = deps.marketDataFetchers.get(args.source);
-    if (!fetcher) return null;
-    const dailies = await fetcher.fetchOHLCV({
-      asset: args.asset,
-      timeframe: "1d",
-      limit: 200,
-      endTime: args.endTime,
-    });
-    if (dailies.length === 0) return null;
-    const slice = dailies.slice(-60);
-    const tempUri = `file:///tmp/replay-htf-${crypto.randomUUID()}.png`;
-    const plugins = deps.indicatorRegistry.resolveActive({});
-    const paramsByPlugin: Record<string, Record<string, unknown>> = {};
-    for (const p of plugins) {
-      paramsByPlugin[p.id] = (p.defaultParams as Record<string, unknown>) ?? {};
-    }
-    const series =
-      plugins.length > 0 && dailies.length >= 60
-        ? await deps.indicatorCalculator.computeSeries(slice, plugins, paramsByPlugin)
-        : {};
-    const enabledIds = plugins.length > 0 && dailies.length >= 60 ? plugins.map((p) => p.id) : [];
-    const result = await deps.chartRenderer.render({
-      candles: slice,
-      series,
-      enabledIndicatorIds: enabledIds,
-      width: 1280,
-      height: 900,
-      outputUri: tempUri,
-    });
-    const stored = await deps.artifactStore.put({
-      kind: "chart_image",
-      content: result.content,
-      mimeType: result.mimeType,
-    });
-    return stored.uri;
   }
 
   return {
@@ -511,12 +447,15 @@ export function buildReplayActivities(deps: ReplayActivityDeps) {
       });
 
       const indicators = JSON.parse(input.indicatorsJson) as Record<string, unknown>;
-      const htf = await fetchHtfContextAt({
-        source: watch.asset.source,
-        asset: watch.asset.symbol,
-        livePrice: input.lastClose,
-        endTime: tickAt,
-      });
+      const reviewerFetcher = deps.marketDataFetchers.get(watch.asset.source);
+      const htf = reviewerFetcher
+        ? await computeHtfContext({
+            marketDataFetcher: reviewerFetcher,
+            asset: watch.asset.symbol,
+            livePrice: input.lastClose,
+            endTime: tickAt,
+          })
+        : null;
 
       const fundingProvider = deps.fundingRateProviders.get(watch.asset.source);
       const funding = fundingProvider
@@ -655,17 +594,32 @@ export function buildReplayActivities(deps: ReplayActivityDeps) {
         injection: watch.feedback.injection.finalizer,
       });
 
-      const htf = await fetchHtfContextAt({
-        source: watch.asset.source,
-        asset: watch.asset.symbol,
-        livePrice: input.latestLastClose,
-        endTime: tickAt,
-      });
-      const htfChartUri = await renderHtfChartAt({
-        source: watch.asset.source,
-        asset: watch.asset.symbol,
-        endTime: tickAt,
-      });
+      const finalizerFetcher = deps.marketDataFetchers.get(watch.asset.source);
+      const htf = finalizerFetcher
+        ? await computeHtfContext({
+            marketDataFetcher: finalizerFetcher,
+            asset: watch.asset.symbol,
+            livePrice: input.latestLastClose,
+            endTime: tickAt,
+          })
+        : null;
+      let htfChartUri: string | null = null;
+      if (finalizerFetcher) {
+        try {
+          htfChartUri = await renderHtfChart({
+            chartRenderer: deps.chartRenderer,
+            indicatorCalculator: deps.indicatorCalculator,
+            indicatorRegistry: deps.indicatorRegistry,
+            artifactStore: deps.artifactStore,
+            fetcher: finalizerFetcher,
+            asset: watch.asset.symbol,
+            endTime: tickAt,
+          });
+        } catch (_err) {
+          // Same defensive handling as the live finalizer.
+          htfChartUri = null;
+        }
+      }
 
       const fundingProvider = deps.fundingRateProviders.get(watch.asset.source);
       const funding = fundingProvider
@@ -924,10 +878,14 @@ export function buildReplayActivities(deps: ReplayActivityDeps) {
       // Live also runs a validation step (cap/asset/pinned), but in replay
       // we capture EVERY proposal verbatim — the user reviews them on the
       // UI and decides what to promote.
+      // Anchor `occurredAt` to the simulated close instant via FixedClock
+      // (spec §2 #6 + §10 invariant 7 — reproducibility). Wall-clock
+      // `new Date()` would make the timestamps drift on retry.
+      const simulatedClock = new FixedClock(new Date(input.tickAt));
       for (const action of parsed.actions) {
         await deps.replayEventStore.append(input.sessionId, {
           setupId: input.setupId,
-          occurredAt: new Date(),
+          occurredAt: simulatedClock.now(),
           stage: "feedback",
           actor: result.usedProvider,
           type: "FeedbackLessonProposed",
@@ -1059,20 +1017,3 @@ function mapActionToProposedPayload(
   }
 }
 
-function extractObservations(payload: EventPayload): unknown[] {
-  if (
-    payload.type === "Strengthened" ||
-    payload.type === "Weakened" ||
-    payload.type === "Neutral"
-  ) {
-    return payload.data.observations;
-  }
-  return [];
-}
-
-function extractReasoning(payload: EventPayload): string | null {
-  if (payload.type === "Strengthened" || payload.type === "Weakened") {
-    return payload.data.reasoning;
-  }
-  return null;
-}

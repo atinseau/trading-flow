@@ -11,12 +11,9 @@ import type { LessonEventStore } from "@domain/ports/LessonEventStore";
 import type { LessonStore } from "@domain/ports/LessonStore";
 import type { LLMCallStore } from "@domain/ports/LLMCallStore";
 import type { LLMProvider } from "@domain/ports/LLMProvider";
-import type { LLMResponseCacheStore } from "@domain/ports/LLMResponseCacheStore";
 import type { MarketDataFetcher } from "@domain/ports/MarketDataFetcher";
 import type { Notifier } from "@domain/ports/Notifier";
 import type { PriceFeed } from "@domain/ports/PriceFeed";
-import type { ReplayEventStore } from "@domain/ports/ReplayEventStore";
-import type { ReplayLLMCallStore } from "@domain/ports/ReplayLLMCallStore";
 import type { ScheduleController } from "@domain/ports/ScheduleController";
 import type { SetupRepository } from "@domain/ports/SetupRepository";
 import type { TickSnapshotStore } from "@domain/ports/TickSnapshotStore";
@@ -38,25 +35,6 @@ export type NotifyLessonPendingInput = {
   before?: { title: string; body: string };
   triggerSetupId: string;
   triggerCloseReason: string;
-};
-
-/**
- * Replay-scoped dependencies. Present only when the worker is wired for
- * replay sessions (Jalon 2+). Activities that receive a `replayContext`
- * arg branch to these stores instead of the live ones.
- *
- * - `replayEventStore` : writes go to replay_events scoped by session_id.
- * - `replayLlmCallStore` : audit of every LLM call (including cache hits).
- * - `cacheStore` : mutualized cache; CachedLLMProvider wraps llmProviders
- *   on the fly per tick.
- *
- * Optional on `ActivityDeps` so live workers without replay configured
- * still type-check.
- */
-export type ReplayActivityDeps = {
-  replayEventStore: ReplayEventStore;
-  replayLlmCallStore: ReplayLLMCallStore;
-  cacheStore: LLMResponseCacheStore;
 };
 
 export type ActivityDeps = {
@@ -99,10 +77,4 @@ export type ActivityDeps = {
    * capture stub.
    */
   notifyLessonPending: (input: NotifyLessonPendingInput) => Promise<void>;
-  /**
-   * Replay-scoped dependencies. Only present when the worker is wired for
-   * replay sessions; activities branch to these when `args.replayContext`
-   * is set.
-   */
-  replay?: ReplayActivityDeps;
 };

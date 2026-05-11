@@ -179,6 +179,7 @@ describe("runFeedbackAnalysisReplay", () => {
     const result = await activities.runFeedbackAnalysisReplay({
       sessionId,
       setupId,
+      tickAt: "2026-04-29T18:00:00Z",
       closeReason: "sl_hit_direct",
       everConfirmed: true,
       scoreAtClose: 75,
@@ -200,6 +201,7 @@ describe("runFeedbackAnalysisReplay", () => {
     const result = await activities.runFeedbackAnalysisReplay({
       sessionId,
       setupId,
+      tickAt: "2026-04-29T18:00:00Z",
       closeReason: "sl_hit_direct",
       everConfirmed: true,
       scoreAtClose: 75,
@@ -256,6 +258,7 @@ describe("runFeedbackAnalysisReplay", () => {
     await activities.runFeedbackAnalysisReplay({
       sessionId,
       setupId,
+      tickAt: "2026-04-29T18:30:00Z",
       closeReason: "sl_hit_direct",
       everConfirmed: true,
       scoreAtClose: 75,

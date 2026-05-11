@@ -1,3 +1,9 @@
+import {
+  formatConfirmedPreview,
+  formatRejectedPreview,
+  formatReviewerVerdictPreview,
+  formatSetupCreatedPreview,
+} from "@domain/notify/formatReplayTelegramPreview";
 import type { Verdict } from "@domain/schemas/Verdict";
 import { applyVerdict, type SetupRuntimeState } from "@domain/scoring/applyVerdict";
 import type { SetupStatus } from "@domain/state-machine/setupTransitions";
@@ -274,6 +280,16 @@ async function processTick(
   // 2) Persist SetupCreated for each new setup, register in alive map.
   for (const ns of newSetups) {
     const setupId = uuid4();
+    const setupCreatedPreview = formatSetupCreatedPreview({
+      watchId: watch.id,
+      asset: watch.asset.symbol,
+      timeframe: watch.timeframes.primary,
+      patternHint: ns.type,
+      direction: ns.direction,
+      initialScore: ns.initial_score,
+      invalidationLevel: ns.key_levels.invalidation,
+      rawObservation: ns.raw_observation ?? "",
+    });
     await db.appendReplayEvent({
       sessionId,
       event: {
@@ -294,6 +310,7 @@ async function processTick(
             keyLevels: { invalidation: ns.key_levels.invalidation },
             initialScore: ns.initial_score,
             rawObservation: ns.raw_observation ?? "",
+            telegramPreview: setupCreatedPreview,
           },
         },
       },
@@ -353,6 +370,18 @@ async function processTick(
     };
 
     const { type, payload } = verdictToEvent(verdict);
+    // Attach a Telegram preview for the verdict types that would have
+    // notified the user in live (STRENGTHEN / WEAKEN). NEUTRAL is silent
+    // in live and stays silent in replay ; INVALIDATE has its own
+    // post-confirmation preview but we don't synthesize one in the
+    // pre-confirmation phase.
+    const reviewerPayload = withReviewerPreview(payload, {
+      asset: setup.snapshot.asset,
+      timeframe: setup.snapshot.timeframe,
+      scoreBefore: before.score,
+      scoreAfter: next.score,
+      includeReasoning: watch.include_reasoning,
+    });
     await db.appendReplayEvent({
       sessionId,
       event: {
@@ -365,7 +394,7 @@ async function processTick(
         scoreAfter: next.score,
         statusBefore: before.status,
         statusAfter: next.status,
-        payload,
+        payload: reviewerPayload,
         provider: r.provider,
         model: r.model,
         promptVersion: r.promptVersion,
@@ -409,6 +438,18 @@ async function processTick(
     ) {
       const before = { ...setup.runtime };
       setup.runtime = { ...setup.runtime, status: "TRACKING" };
+      const confirmedPreview = setup.snapshot.direction
+        ? formatConfirmedPreview({
+            asset: setup.snapshot.asset,
+            timeframe: setup.snapshot.timeframe,
+            direction: setup.snapshot.direction,
+            entry: decision.entry,
+            stopLoss: decision.stop_loss,
+            takeProfit: decision.take_profit,
+            reasoning: decision.reasoning,
+            includeReasoning: watch.include_reasoning,
+          })
+        : undefined;
       await db.appendReplayEvent({
         sessionId,
         event: {
@@ -429,6 +470,7 @@ async function processTick(
               stopLoss: decision.stop_loss,
               takeProfit: decision.take_profit,
               reasoning: decision.reasoning,
+              telegramPreview: confirmedPreview,
             },
           },
           provider: f.provider,
@@ -443,6 +485,11 @@ async function processTick(
     } else {
       const before = { ...setup.runtime };
       setup.runtime = { ...setup.runtime, status: "REJECTED" };
+      const rejectedPreview = formatRejectedPreview({
+        asset: setup.snapshot.asset,
+        timeframe: setup.snapshot.timeframe,
+        reasoning: decision.reasoning,
+      });
       await db.appendReplayEvent({
         sessionId,
         event: {
@@ -457,7 +504,11 @@ async function processTick(
           statusAfter: "REJECTED",
           payload: {
             type: "Rejected",
-            data: { decision: "NO_GO", reasoning: decision.reasoning },
+            data: {
+              decision: "NO_GO",
+              reasoning: decision.reasoning,
+              telegramPreview: rejectedPreview,
+            },
           },
           provider: f.provider,
           model: f.model,
@@ -511,6 +562,50 @@ function verdictToEvent(verdict: Verdict): {
         },
       };
   }
+}
+
+/**
+ * Returns a copy of the reviewer event payload with `telegramPreview`
+ * attached when the verdict type would have triggered a Telegram
+ * notification in live (Strengthened / Weakened). NEUTRAL and
+ * Invalidated stay untouched — live emits no message for the former,
+ * and the latter has its own preview path when fired post-confirmation.
+ */
+function withReviewerPreview(
+  payload: import("@domain/events/schemas").EventPayload,
+  ctx: {
+    asset: string;
+    timeframe: string;
+    scoreBefore: number;
+    scoreAfter: number;
+    includeReasoning: boolean;
+  },
+): import("@domain/events/schemas").EventPayload {
+  if (payload.type === "Strengthened") {
+    const preview = formatReviewerVerdictPreview({
+      asset: ctx.asset,
+      timeframe: ctx.timeframe,
+      verdict: "STRENGTHEN",
+      scoreBefore: ctx.scoreBefore,
+      scoreAfter: ctx.scoreAfter,
+      reasoning: payload.data.reasoning,
+      includeReasoning: ctx.includeReasoning,
+    });
+    return { type: "Strengthened", data: { ...payload.data, telegramPreview: preview } };
+  }
+  if (payload.type === "Weakened") {
+    const preview = formatReviewerVerdictPreview({
+      asset: ctx.asset,
+      timeframe: ctx.timeframe,
+      verdict: "WEAKEN",
+      scoreBefore: ctx.scoreBefore,
+      scoreAfter: ctx.scoreAfter,
+      reasoning: payload.data.reasoning,
+      includeReasoning: ctx.includeReasoning,
+    });
+    return { type: "Weakened", data: { ...payload.data, telegramPreview: preview } };
+  }
+  return payload;
 }
 
 export const replaySessionWorkflowId = (sessionId: string) => `replay-session-${sessionId}`;

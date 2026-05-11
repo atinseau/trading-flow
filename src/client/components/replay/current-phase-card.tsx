@@ -20,12 +20,12 @@ function extractReasoning(event: ReplayEventRow): string | null {
 }
 
 function extractTelegramText(event: ReplayEventRow): string | null {
-  // NoopTelegramNotifier captures the formatted text inside the event
-  // payload under `data.telegram_preview` (Jalon 2). For Jalon 1 the
-  // events come from the live copy and have no preview attached, so
-  // this returns null.
-  const payload = event.payload as { data?: { telegram_preview?: string } };
-  return payload.data?.telegram_preview ?? null;
+  // The replay workflow attaches the formatted Telegram preview to
+  // `data.telegramPreview` whenever it persists an event that would
+  // have triggered a notification in live. Events copied from the live
+  // baseline (Jalon 1 path) have no preview attached → returns null.
+  const payload = event.payload as { data?: { telegramPreview?: string } };
+  return payload.data?.telegramPreview ?? null;
 }
 
 export function CurrentPhaseCard({ event }: { event: ReplayEventRow | null }) {

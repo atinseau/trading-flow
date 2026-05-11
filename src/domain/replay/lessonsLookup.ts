@@ -37,7 +37,10 @@ export function filterLessonsForReplay(
   if (mode === "current") {
     return allLessons.filter((l) => l.status === "ACTIVE" && l.deprecatedAt === null);
   }
-  // historical
+  // historical — must have been ACTIVE at windowStartAt :
+  //   activatedAt <= windowStartAt AND (deprecatedAt null OR > windowStartAt).
+  // PENDING and REJECTED lessons are filtered out because they never set
+  // `activatedAt` ; the `activatedAt === null` guard handles both.
   return allLessons.filter((l) => {
     if (l.activatedAt === null) return false;
     if (l.activatedAt > windowStartAt) return false;
