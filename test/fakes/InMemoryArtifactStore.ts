@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import type { ArtifactStore, StoredArtifact } from "@domain/ports/ArtifactStore";
 
 export class InMemoryArtifactStore implements ArtifactStore {
@@ -10,11 +10,13 @@ export class InMemoryArtifactStore implements ArtifactStore {
     mimeType: string;
     eventId?: string;
   }): Promise<StoredArtifact> {
-    const id = randomUUID();
+    // Content-addressable: identical bytes produce identical URI. Mirrors
+    // the assumption CachedLLMProvider relies on (its cache key includes
+    // the image sourceUri, which must be stable across repeats for hits).
     const sha256 = createHash("sha256").update(args.content).digest("hex");
-    const uri = `mem://${id}`;
+    const uri = `mem://${sha256}`;
     this.blobs.set(uri, { content: args.content, sha256, mimeType: args.mimeType });
-    return { id, uri, sha256, bytes: args.content.length, mimeType: args.mimeType };
+    return { id: sha256, uri, sha256, bytes: args.content.length, mimeType: args.mimeType };
   }
 
   async get(uri: string): Promise<Buffer> {
