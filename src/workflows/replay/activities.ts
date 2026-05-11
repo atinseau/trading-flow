@@ -1,9 +1,22 @@
 import { resolveAndCall } from "@adapters/llm/resolveAndCall";
+import { loadPrompt } from "@adapters/prompts/loadPrompt";
 import { InvalidConfigError } from "@domain/errors";
+import type { EventPayload } from "@domain/events/schemas";
 import { filterLessonsForReplay, type LessonLike } from "@domain/replay/lessonsLookup";
+import type { Candle } from "@domain/schemas/Candle";
 import { buildDetectorOutputSchema } from "@domain/schemas/DetectorOutput";
 import { buildIndicatorsSchema } from "@domain/schemas/Indicators";
+import {
+  ReviewerLlmOutputSchema,
+  type ReviewerLlmOutput,
+} from "@domain/schemas/ReviewerOutput";
+import { VerdictSchema, type Verdict } from "@domain/schemas/Verdict";
+import { summarizeHtf } from "@domain/services/htfContext";
+import { inferImageMimeType } from "@domain/services/imageMimeType";
+import { classifyRegime } from "@domain/services/marketRegime";
+import { getTradingSession } from "@domain/services/tradingSession";
 import { getLogger } from "@observability/logger";
+import { z } from "zod";
 import type { ReplayActivityDeps } from "./activityDependencies";
 import { wrapLlmProvidersWithCache } from "./wrapLlmProvidersWithCache";
 
@@ -18,6 +31,27 @@ const log = getLogger({ component: "replay-activities" });
 function wasCacheHit(out: { costUsd: number; latencyMs: number }): boolean {
   return out.costUsd === 0 && out.latencyMs === 0;
 }
+
+/**
+ * Plain-JSON view of a `Setup` the replay workflow can hand to an activity
+ * without depending on the live `setups` table. Subset of the entity
+ * containing only fields the reviewer/finalizer prompts need. Workflow
+ * builds this from the replay-events projection.
+ */
+export type ReplaySetupSnapshot = {
+  id: string;
+  watchId: string;
+  asset: string;
+  timeframe: string;
+  patternHint: string | null;
+  patternCategory: "event" | "accumulation" | null;
+  expectedMaturationTicks: number | null;
+  direction: "LONG" | "SHORT" | null;
+  currentScore: number;
+  invalidationLevel: number | null;
+};
+
+// --- Detector ----------------------------------------------------------------
 
 export type RunDetectorReplayInput = {
   sessionId: string;
@@ -47,35 +81,170 @@ export type RunDetectorReplayResult = {
   cacheHit: boolean;
 };
 
+// --- Reviewer ----------------------------------------------------------------
+
+export type RunReviewerReplayInput = {
+  sessionId: string;
+  tickAt: string;
+  setup: ReplaySetupSnapshot;
+  /** Chart artifact URI captured at the detector tick. */
+  chartUri: string;
+  /** Indicators captured at the detector tick. */
+  indicatorsJson: string;
+  /** Last close at the detector tick — used as the live price for HTF context. */
+  lastClose: number;
+};
+
+export type RunReviewerReplayResult = {
+  /** JSON-encoded `Verdict` (post strip of `request_additional`). */
+  verdictJson: string;
+  costUsd: number;
+  promptVersion: string;
+  provider: string;
+  model: string;
+  cacheHit: boolean;
+};
+
+// --- Finalizer ---------------------------------------------------------------
+
+export type RunFinalizerReplayInput = {
+  sessionId: string;
+  tickAt: string;
+  setup: ReplaySetupSnapshot;
+  /** Most recent indicators (same tick used for reviewer). */
+  latestIndicatorsJson: string;
+  /** Live price at the finalizer tick. */
+  latestLastClose: number;
+};
+
+export type RunFinalizerReplayResult = {
+  /** JSON-encoded `{ go: boolean; reasoning: string; entry?, stop_loss?, take_profit? }`. */
+  decisionJson: string;
+  costUsd: number;
+  promptVersion: string;
+  provider: string;
+  model: string;
+  cacheHit: boolean;
+};
+
+const FinalizerOutputSchema = z.object({
+  go: z.boolean(),
+  reasoning: z.string(),
+  entry: z.number().optional(),
+  stop_loss: z.number().optional(),
+  take_profit: z.array(z.number()).optional(),
+});
+
 export type ReplayActivities = ReturnType<typeof buildReplayActivities>;
 
 export function buildReplayActivities(deps: ReplayActivityDeps) {
+  /**
+   * Shared helper — fetches active lessons for a given category and applies
+   * the session's `lessonsMode` filter without mutating live usage stats.
+   */
+  async function loadLessonsForReplay(args: {
+    watchId: string;
+    category: "detecting" | "reviewing" | "finalizing";
+    cap: number;
+    lessonsMode: "current" | "historical" | "disabled";
+    windowStartAt: Date;
+    injection: boolean;
+  }): Promise<Array<{ id: string; title: string; body: string }>> {
+    if (!args.injection || args.lessonsMode === "disabled") return [];
+    const raw = await deps.lessonStore.listByStatus({
+      watchId: args.watchId,
+      category: args.category,
+    });
+    const compat: LessonLike[] = raw.map((l) => ({
+      id: l.id,
+      watchId: l.watchId,
+      status: l.status,
+      activatedAt: l.activatedAt,
+      deprecatedAt: l.deprecatedAt,
+    }));
+    const filtered = filterLessonsForReplay(compat, args.lessonsMode, args.windowStartAt);
+    const byId = new Map(raw.map((l) => [l.id, l]));
+    return filtered
+      .slice(0, args.cap)
+      .map((l) => byId.get(l.id))
+      .filter((l): l is NonNullable<typeof l> => l !== undefined)
+      .map((l) => ({ id: l.id, title: l.title, body: l.body }));
+  }
+
+  /**
+   * Fetches a historical HTF (daily) candle slice ending at `tickAt`. Used
+   * by reviewer and finalizer when computing HTF context in replay mode.
+   * Live `computeHtfContext` doesn't accept an endTime — duplicating the
+   * thin fetch + summarize chain here is the cheapest way to keep replay
+   * deterministic without touching the live signature.
+   */
+  async function fetchHtfContextAt(args: {
+    source: string;
+    asset: string;
+    livePrice: number;
+    endTime: Date;
+  }) {
+    const fetcher = deps.marketDataFetchers.get(args.source);
+    if (!fetcher) return null;
+    const dailies = await fetcher.fetchOHLCV({
+      asset: args.asset,
+      timeframe: "1d",
+      limit: 30,
+      endTime: args.endTime,
+    });
+    return summarizeHtf(dailies as Candle[], args.livePrice);
+  }
+
+  /**
+   * Renders a HTF chart from a `tickAt`-anchored daily slice. Mirrors
+   * `renderHtfChart` but threads the `endTime` so we don't leak future
+   * candles into the replay.
+   */
+  async function renderHtfChartAt(args: {
+    source: string;
+    asset: string;
+    endTime: Date;
+  }): Promise<string | null> {
+    const fetcher = deps.marketDataFetchers.get(args.source);
+    if (!fetcher) return null;
+    const dailies = await fetcher.fetchOHLCV({
+      asset: args.asset,
+      timeframe: "1d",
+      limit: 200,
+      endTime: args.endTime,
+    });
+    if (dailies.length === 0) return null;
+    const slice = dailies.slice(-60);
+    const tempUri = `file:///tmp/replay-htf-${crypto.randomUUID()}.png`;
+    const plugins = deps.indicatorRegistry.resolveActive({});
+    const paramsByPlugin: Record<string, Record<string, unknown>> = {};
+    for (const p of plugins) {
+      paramsByPlugin[p.id] = (p.defaultParams as Record<string, unknown>) ?? {};
+    }
+    const series =
+      plugins.length > 0 && dailies.length >= 60
+        ? await deps.indicatorCalculator.computeSeries(slice, plugins, paramsByPlugin)
+        : {};
+    const enabledIds = plugins.length > 0 && dailies.length >= 60 ? plugins.map((p) => p.id) : [];
+    const result = await deps.chartRenderer.render({
+      candles: slice,
+      series,
+      enabledIndicatorIds: enabledIds,
+      width: 1280,
+      height: 900,
+      outputUri: tempUri,
+    });
+    const stored = await deps.artifactStore.put({
+      kind: "chart_image",
+      content: result.content,
+      mimeType: result.mimeType,
+    });
+    return stored.uri;
+  }
+
   return {
     /**
-     * Replay-mode detector tick.
-     *
-     * Mirrors the live `fetchOHLCV → computeIndicators → renderChart →
-     * runDetector` chain in a single deterministic call, parameterized by
-     * the session's `tickAt`. Differences vs. live :
-     *
-     *  - OHLCV is fetched with `endTime = tickAt` (historical slice).
-     *  - The chart artifact and OHLCV artifact are stored in the shared
-     *    `artifactStore`. The store is content-addressable, so identical
-     *    inputs across sessions hit the same artifact rows for free.
-     *  - Lessons are filtered through `filterLessonsForReplay` with the
-     *    session's `lessonsMode` ; we DO NOT mutate `lesson_usage_stats`.
-     *  - LLM providers are wrapped in `CachedLLMProvider` before the call,
-     *    keyed by the detector prompt version. Cache hits cost $0.
-     *  - The LLM call is recorded into `replay_llm_calls` (scoped by
-     *    `sessionId`), not the live `llm_calls`.
-     *  - A `DetectorTickProcessed` event is appended to `replay_events`,
-     *    regardless of whether new setups were detected — gives the UI a
-     *    continuous trace of the bot's reasoning across the playhead.
-     *  - Session cost is incremented atomically on a miss only.
-     *
-     * The activity does NOT decide whether to spawn child workflows for new
-     * setups — it returns the raw verdict ; the orchestrating workflow
-     * deduplicates and creates setups itself.
+     * Replay-mode detector tick — see file header for the full contract.
      */
     async runDetectorReplay(input: RunDetectorReplayInput): Promise<RunDetectorReplayResult> {
       const tickAt = new Date(input.tickAt);
@@ -119,7 +288,6 @@ export function buildReplayActivities(deps: ReplayActivityDeps) {
       const scalars = await deps.indicatorCalculator.compute(candles, plugins, paramsByPlugin);
       const indicators = buildIndicatorsSchema(plugins).parse(scalars);
 
-      // Chart slice + render
       const slice = candles.slice(-watch.candles.reviewer_chart_window);
       const series = await deps.indicatorCalculator.computeSeries(slice, plugins, paramsByPlugin);
       const enabledIds = plugins.map((p) => p.id);
@@ -142,37 +310,15 @@ export function buildReplayActivities(deps: ReplayActivityDeps) {
         mimeType: rendered.mimeType,
       });
 
-      // Lesson filtering — read live store, filter by mode + window start
-      let activeLessons: ReadonlyArray<{ id: string; title: string; body: string }> = [];
-      if (watch.feedback.injection.detector && session.lessonsMode !== "disabled") {
-        const raw = await deps.lessonStore.listByStatus({
-          watchId: session.watchId,
-          category: "detecting",
-        });
-        const compat: LessonLike[] = raw.map((l) => ({
-          id: l.id,
-          watchId: l.watchId,
-          status: l.status,
-          activatedAt: l.activatedAt,
-          deprecatedAt: l.deprecatedAt,
-        }));
-        const filtered = filterLessonsForReplay(
-          compat,
-          session.lessonsMode,
-          session.windowStartAt,
-        );
-        const cap = watch.feedback.max_active_lessons_per_category;
-        const byId = new Map(raw.map((l) => [l.id, l]));
-        activeLessons = filtered
-          .slice(0, cap)
-          .map((l) => byId.get(l.id))
-          .filter((l): l is NonNullable<typeof l> => l !== undefined)
-          .map((l) => ({ id: l.id, title: l.title, body: l.body }));
-        // NOTE: deliberately NOT calling `lessonStore.incrementUsage` —
-        // replay must leave live lesson usage stats untouched.
-      }
+      const activeLessons = await loadLessonsForReplay({
+        watchId: session.watchId,
+        category: "detecting",
+        cap: watch.feedback.max_active_lessons_per_category,
+        lessonsMode: session.lessonsMode,
+        windowStartAt: session.windowStartAt,
+        injection: watch.feedback.injection.detector,
+      });
 
-      // Build prompt and call LLM (wrapped with cache)
       await deps.promptBuilder.warmUp();
       const htfEnabled = watch.timeframes.higher.length > 0;
       const detectorOutputSchema = buildDetectorOutputSchema(plugins, htfEnabled);
@@ -269,6 +415,335 @@ export function buildReplayActivities(deps: ReplayActivityDeps) {
         cacheHit,
       };
     },
+
+    /**
+     * Replay-mode reviewer tick. The orchestrating workflow has already
+     * decided this setup is alive and reviewable; the activity just builds
+     * the prompt, calls the LLM, and returns the verdict.
+     *
+     * Differences vs. live `runReviewer`:
+     *  - No market-hours guard. Replay = user-controlled stepping; we don't
+     *    skip "closed market" ticks because the user explicitly picked
+     *    them.
+     *  - History is sourced from `replay_events` filtered by setup.id, not
+     *    the live event store.
+     *  - HTF context is fetched with `endTime = tickAt` to keep the replay
+     *    deterministic.
+     *  - HTF round-2 chart reload (the tool-call pattern) is intentionally
+     *    NOT implemented yet — the wire field `request_additional` is
+     *    discarded just like in live. Adding the second round is a future
+     *    follow-up; not blocking for J2 first-pass.
+     *  - Returns the persisted verdict only; the workflow handles event
+     *    persistence to `replay_events` (mirrors live separation).
+     */
+    async runReviewerReplay(input: RunReviewerReplayInput): Promise<RunReviewerReplayResult> {
+      const tickAt = new Date(input.tickAt);
+      const session = await deps.sessionsRepo.get(input.sessionId);
+      if (!session) throw new Error(`Replay session ${input.sessionId} not found`);
+      const watch = session.configSnapshot;
+      const childLog = log.child({
+        sessionId: input.sessionId,
+        setupId: input.setup.id,
+        tickAt: tickAt.toISOString(),
+      });
+
+      await deps.promptBuilder.warmUp();
+
+      // History scoped to this setup, in sequence order.
+      const allEvents = await deps.replayEventStore.listBySession(input.sessionId);
+      const history = allEvents
+        .filter((e) => e.setupId === input.setup.id)
+        .sort((a, b) => a.sequence - b.sequence);
+
+      const activeLessons = await loadLessonsForReplay({
+        watchId: session.watchId,
+        category: "reviewing",
+        cap: watch.feedback.max_active_lessons_per_category,
+        lessonsMode: session.lessonsMode,
+        windowStartAt: session.windowStartAt,
+        injection: watch.feedback.injection.reviewer,
+      });
+
+      const indicators = JSON.parse(input.indicatorsJson) as Record<string, unknown>;
+      const htf = await fetchHtfContextAt({
+        source: watch.asset.source,
+        asset: watch.asset.symbol,
+        livePrice: input.lastClose,
+        endTime: tickAt,
+      });
+
+      const fundingProvider = deps.fundingRateProviders.get(watch.asset.source);
+      const funding = fundingProvider
+        ? await fundingProvider.fetchSnapshot(watch.asset.symbol).catch(() => null)
+        : null;
+
+      const userPrompt = await deps.promptBuilder.buildReviewerPrompt({
+        setup: {
+          id: input.setup.id,
+          patternHint: input.setup.patternHint,
+          direction: input.setup.direction,
+          currentScore: input.setup.currentScore,
+          invalidationLevel: input.setup.invalidationLevel,
+          ageInCandles: 0,
+        },
+        history: history.map((e) => ({
+          sequence: e.sequence,
+          occurredAt: e.occurredAt.toISOString(),
+          scoreAfter: e.scoreAfter,
+          type: e.type,
+          observations: extractObservations(e.payload),
+          reasoning: extractReasoning(e.payload),
+        })),
+        fresh: { lastClose: input.lastClose, scalars: indicators, tickAt },
+        htf,
+        funding,
+        activeLessons: activeLessons.map((l) => ({ title: l.title, body: l.body })),
+        indicatorsMatrix: watch.indicators,
+      });
+
+      const wrappedProviders = wrapLlmProvidersWithCache(
+        deps.llmProviders,
+        deps.cacheStore,
+        deps.promptBuilder.reviewerVersion,
+      );
+      const round1Images = [
+        { sourceUri: input.chartUri, mimeType: inferImageMimeType(input.chartUri) },
+      ];
+      const round1 = await resolveAndCall(
+        watch.analyzers.reviewer.provider,
+        {
+          systemPrompt: deps.promptBuilder.reviewerSystemPrompt,
+          userPrompt,
+          images: round1Images,
+          model: watch.analyzers.reviewer.model,
+          maxTokens: watch.analyzers.reviewer.max_tokens,
+          responseSchema: ReviewerLlmOutputSchema,
+        },
+        wrappedProviders,
+      );
+
+      const cacheHit = wasCacheHit(round1.output);
+      const promptVersion = deps.promptBuilder.reviewerVersion;
+
+      await deps.replayLlmCallStore.record({
+        sessionId: input.sessionId,
+        setupId: input.setup.id,
+        stage: "reviewer",
+        provider: round1.usedProvider,
+        model: watch.analyzers.reviewer.model,
+        promptTokens: round1.output.promptTokens,
+        completionTokens: round1.output.completionTokens,
+        cacheReadTokens: round1.output.cacheReadTokens ?? 0,
+        cacheCreateTokens: round1.output.cacheWriteTokens ?? 0,
+        costUsd: round1.output.costUsd,
+        latencyMs: round1.output.latencyMs,
+        cacheHit,
+      });
+      if (!cacheHit && round1.output.costUsd > 0) {
+        await deps.sessionsRepo.incrementCost(input.sessionId, round1.output.costUsd);
+      }
+
+      // Strip request_additional before persisting — the HTF round-2 reload
+      // is not yet implemented in replay (see method docstring). Live mirrors
+      // this strip after the optional round-2 run.
+      const llmOut = round1.output.parsed as ReviewerLlmOutput;
+      const { request_additional: _unused, ...persistedFields } = llmOut;
+      const verdict = VerdictSchema.parse(persistedFields) as Verdict;
+
+      childLog.info(
+        {
+          verdict: verdict.type,
+          costUsd: round1.output.costUsd,
+          cacheHit,
+        },
+        "runReviewerReplay complete",
+      );
+
+      return {
+        verdictJson: JSON.stringify(verdict),
+        costUsd: round1.output.costUsd,
+        promptVersion,
+        provider: round1.usedProvider,
+        model: watch.analyzers.reviewer.model,
+        cacheHit,
+      };
+    },
+
+    /**
+     * Replay-mode finalizer tick. The gatekeeper that turns a high-confidence
+     * setup into a GO/NO_GO decision. Mirrors live `runFinalizer` ; the
+     * workflow persists `Confirmed`/`Rejected` to `replay_events` from the
+     * returned decision.
+     *
+     * Differences vs. live `runFinalizer`:
+     *  - Setup state is provided by the workflow as a snapshot (no
+     *    `setupRepo` access in replay).
+     *  - History is sourced from `replay_events` filtered by setup.id.
+     *  - "Latest indicators" come from the most recent detector tick (workflow
+     *    threads them through), not a live `tick_snapshots` row.
+     *  - HTF context + chart are rendered with `endTime = tickAt`.
+     *  - No market-hours guard (see `runReviewerReplay`).
+     */
+    async runFinalizerReplay(
+      input: RunFinalizerReplayInput,
+    ): Promise<RunFinalizerReplayResult> {
+      const tickAt = new Date(input.tickAt);
+      const session = await deps.sessionsRepo.get(input.sessionId);
+      if (!session) throw new Error(`Replay session ${input.sessionId} not found`);
+      const watch = session.configSnapshot;
+      const childLog = log.child({
+        sessionId: input.sessionId,
+        setupId: input.setup.id,
+        tickAt: tickAt.toISOString(),
+      });
+
+      const allEvents = await deps.replayEventStore.listBySession(input.sessionId);
+      const history = allEvents
+        .filter((e) => e.setupId === input.setup.id)
+        .sort((a, b) => a.sequence - b.sequence);
+
+      const activeLessons = await loadLessonsForReplay({
+        watchId: session.watchId,
+        category: "finalizing",
+        cap: watch.feedback.max_active_lessons_per_category,
+        lessonsMode: session.lessonsMode,
+        windowStartAt: session.windowStartAt,
+        injection: watch.feedback.injection.finalizer,
+      });
+
+      const htf = await fetchHtfContextAt({
+        source: watch.asset.source,
+        asset: watch.asset.symbol,
+        livePrice: input.latestLastClose,
+        endTime: tickAt,
+      });
+      const htfChartUri = await renderHtfChartAt({
+        source: watch.asset.source,
+        asset: watch.asset.symbol,
+        endTime: tickAt,
+      });
+
+      const fundingProvider = deps.fundingRateProviders.get(watch.asset.source);
+      const funding = fundingProvider
+        ? await fundingProvider.fetchSnapshot(watch.asset.symbol).catch(() => null)
+        : null;
+
+      const latestIndicators = JSON.parse(input.latestIndicatorsJson) as Record<string, unknown>;
+      const regime = classifyRegime(latestIndicators, htf);
+      const tradingSession = getTradingSession(tickAt);
+
+      const finalizerPrompt = await loadPrompt("finalizer");
+      const actualReviewerTicks = history.filter((e) =>
+        ["Strengthened", "Weakened", "Neutral"].includes(e.type),
+      ).length;
+
+      const minRR = watch.setup_lifecycle.min_risk_reward_ratio;
+      const costs = {
+        fees_pct: watch.costs.fees_pct,
+        slippage_pct: watch.costs.slippage_pct,
+        totalPct: (watch.costs.fees_pct + watch.costs.slippage_pct).toFixed(3),
+      };
+
+      const userPrompt = finalizerPrompt.render({
+        setup: {
+          id: input.setup.id,
+          asset: input.setup.asset,
+          timeframe: input.setup.timeframe,
+          patternHint: input.setup.patternHint,
+          patternCategory: input.setup.patternCategory,
+          expectedMaturationTicks: input.setup.expectedMaturationTicks ?? "(not declared)",
+          direction: input.setup.direction,
+          currentScore: input.setup.currentScore,
+          invalidationLevel: input.setup.invalidationLevel,
+        },
+        minRiskRewardRatio: minRR,
+        costs,
+        historyCount: history.length,
+        actualReviewerTicks,
+        history: history.map((e) => ({
+          sequence: e.sequence,
+          type: e.type,
+          scoreAfter: e.scoreAfter,
+        })),
+        htf,
+        funding,
+        regime,
+        session: tradingSession,
+        activeLessons: activeLessons.map((l) => ({ title: l.title, body: l.body })),
+      });
+
+      const wrappedProviders = wrapLlmProvidersWithCache(
+        deps.llmProviders,
+        deps.cacheStore,
+        finalizerPrompt.version,
+      );
+      const images = htfChartUri
+        ? [{ sourceUri: htfChartUri, mimeType: inferImageMimeType(htfChartUri) }]
+        : undefined;
+      const result = await resolveAndCall(
+        watch.analyzers.finalizer.provider,
+        {
+          systemPrompt: finalizerPrompt.systemPrompt,
+          userPrompt,
+          images,
+          model: watch.analyzers.finalizer.model,
+          maxTokens: watch.analyzers.finalizer.max_tokens,
+          responseSchema: FinalizerOutputSchema,
+        },
+        wrappedProviders,
+      );
+
+      const cacheHit = wasCacheHit(result.output);
+      await deps.replayLlmCallStore.record({
+        sessionId: input.sessionId,
+        setupId: input.setup.id,
+        stage: "finalizer",
+        provider: result.usedProvider,
+        model: watch.analyzers.finalizer.model,
+        promptTokens: result.output.promptTokens,
+        completionTokens: result.output.completionTokens,
+        cacheReadTokens: result.output.cacheReadTokens ?? 0,
+        cacheCreateTokens: result.output.cacheWriteTokens ?? 0,
+        costUsd: result.output.costUsd,
+        latencyMs: result.output.latencyMs,
+        cacheHit,
+      });
+      if (!cacheHit && result.output.costUsd > 0) {
+        await deps.sessionsRepo.incrementCost(input.sessionId, result.output.costUsd);
+      }
+
+      const decision = result.output.parsed as { go: boolean };
+      childLog.info(
+        { go: decision.go, costUsd: result.output.costUsd, cacheHit },
+        "runFinalizerReplay complete",
+      );
+
+      return {
+        decisionJson: JSON.stringify(result.output.parsed),
+        costUsd: result.output.costUsd,
+        promptVersion: finalizerPrompt.version,
+        provider: result.usedProvider,
+        model: watch.analyzers.finalizer.model,
+        cacheHit,
+      };
+    },
   };
 }
 
+function extractObservations(payload: EventPayload): unknown[] {
+  if (
+    payload.type === "Strengthened" ||
+    payload.type === "Weakened" ||
+    payload.type === "Neutral"
+  ) {
+    return payload.data.observations;
+  }
+  return [];
+}
+
+function extractReasoning(payload: EventPayload): string | null {
+  if (payload.type === "Strengthened" || payload.type === "Weakened") {
+    return payload.data.reasoning;
+  }
+  return null;
+}
