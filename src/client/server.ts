@@ -1,3 +1,11 @@
+import { BinanceFetcher } from "@adapters/market-data/BinanceFetcher";
+import { YahooFinanceFetcher } from "@adapters/market-data/YahooFinanceFetcher";
+import { PostgresLiveEventQueryByWindow } from "@adapters/persistence/PostgresLiveEventQueryByWindow";
+import { PostgresLLMResponseCacheStore } from "@adapters/persistence/PostgresLLMResponseCacheStore";
+import { PostgresReplayEventStore } from "@adapters/persistence/PostgresReplayEventStore";
+import { PostgresReplayLLMCallStore } from "@adapters/persistence/PostgresReplayLLMCallStore";
+import { PostgresReplaySessionRepository } from "@adapters/persistence/PostgresReplaySessionRepository";
+import { PostgresWatchRepository } from "@adapters/persistence/PostgresWatchRepository";
 import { TemporalScheduleController } from "@adapters/temporal/TemporalScheduleController";
 import { SystemClock } from "@adapters/time/SystemClock";
 import { makeAdminApi } from "@client/api/admin";
@@ -7,6 +15,7 @@ import { makeEventsApi } from "@client/api/events";
 import { health } from "@client/api/health";
 import { makeLessonsApi } from "@client/api/lessons";
 import { makePerfApi } from "@client/api/perf";
+import { makeReplayApi } from "@client/api/replay";
 import { search } from "@client/api/search";
 import { makeSetupsApi } from "@client/api/setups";
 import { makeStreamHandler } from "@client/api/stream";
@@ -59,6 +68,26 @@ const ticksApi = makeTicksApi({ db });
 const costsApi = makeCostsApi({ db });
 const lessonsApi = makeLessonsApi({ db });
 const perfApi = makePerfApi({ db });
+
+// Replay API — Jalon 1: no Temporal client wired yet (step/pause/resume
+// endpoints will be added in Jalon 2). Activities and adapters are
+// composed here from the shared `db` to keep the wiring single-shot.
+const replayMarketDataFetchers = new Map<
+  string,
+  import("@domain/ports/MarketDataFetcher").MarketDataFetcher
+>();
+replayMarketDataFetchers.set("binance", new BinanceFetcher());
+replayMarketDataFetchers.set("yahoo", new YahooFinanceFetcher());
+const replayApi = makeReplayApi({
+  sessionsRepo: new PostgresReplaySessionRepository(db),
+  replayEventStore: new PostgresReplayEventStore(db),
+  replayLlmCallStore: new PostgresReplayLLMCallStore(db),
+  cacheStore: new PostgresLLMResponseCacheStore(db),
+  liveEventQuery: new PostgresLiveEventQueryByWindow(db),
+  watchRepo: new PostgresWatchRepository(db),
+  marketDataFetchers: replayMarketDataFetchers,
+  clock: new SystemClock(),
+});
 
 const adminApi = makeAdminApi({
   ops: {
@@ -124,6 +153,19 @@ const server = Bun.serve({
     "/api/ticks/:id/chart.png": { GET: withParams(ticksApi.chartPng) },
     "/api/costs": { GET: (req) => costsApi.aggregations(req) },
     "/api/perf": { GET: (req) => perfApi.perf(req) },
+    "/api/replay/sessions": {
+      GET: (req) => replayApi.list(req),
+      POST: (req) => replayApi.create(req),
+    },
+    "/api/replay/sessions/:id": {
+      GET: withParams(replayApi.get),
+      DELETE: withParams(replayApi.delete),
+    },
+    "/api/replay/sessions/:id/events": { GET: withParams(replayApi.events) },
+    "/api/replay/sessions/:id/setups": { GET: withParams(replayApi.setupsProjection) },
+    "/api/replay/sessions/:id/ohlcv": { GET: withParams(replayApi.ohlcv) },
+    "/api/replay/sessions/:id/cost-breakdown": { GET: withParams(replayApi.costBreakdown) },
+    "/api/replay/sessions/:id/llm-calls": { GET: withParams(replayApi.llmCalls) },
     "/api/watches/:id/force-tick": { POST: withParams(adminApi.forceTick) },
     "/api/watches/:id/pause": { POST: withParams(adminApi.pause) },
     "/api/watches/:id/resume": { POST: withParams(adminApi.resume) },
