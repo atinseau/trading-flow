@@ -1,9 +1,18 @@
 import {
   formatConfirmedPreview,
+  formatExpiredPreview,
   formatRejectedPreview,
   formatReviewerVerdictPreview,
+  formatSLHitPreview,
   formatSetupCreatedPreview,
+  formatTPHitPreview,
 } from "@domain/notify/formatReplayTelegramPreview";
+import {
+  closeReasonFromState,
+  initialTrackingState,
+  simulateCandleTracking,
+  type TrackingState,
+} from "@domain/replay/simulateTracking";
 import type { Verdict } from "@domain/schemas/Verdict";
 import { applyVerdict, type SetupRuntimeState } from "@domain/scoring/applyVerdict";
 import type { SetupStatus } from "@domain/state-machine/setupTransitions";
@@ -119,6 +128,12 @@ type AliveSetup = {
   id: string;
   snapshot: ReplaySetupSnapshot;
   runtime: SetupRuntimeState;
+  /** Wall-clock deadline at which this setup expires (TTL in candles × timeframe ms). */
+  ttlExpiresAt: Date;
+  /** Trade tracker state — set when the setup is confirmed (status === TRACKING). */
+  tracking?: TrackingState;
+  /** Captured when Confirmed fires so feedback knows the score-at-close. */
+  scoreAtConfirmation?: number;
 };
 
 export async function replaySessionWorkflow(args: ReplaySessionWorkflowArgs): Promise<void> {
@@ -198,7 +213,7 @@ export async function replaySessionWorkflow(args: ReplaySessionWorkflowArgs): Pr
     const tickAt = next;
     tickInProgress = true;
     try {
-      const cost = await processTick(args.sessionId, watch, tickAt, alive);
+      const cost = await processTick(args.sessionId, watch, tickAt, alive, lastTickAt);
       costUsdSoFar += cost;
       lastTickAt = tickAt;
 
@@ -238,13 +253,86 @@ export async function replaySessionWorkflow(args: ReplaySessionWorkflowArgs): Pr
 
 // --- Tick orchestration ------------------------------------------------------
 
+/**
+ * Timeframe → minutes lookup, mirrors `domain/replay/replaySessionRules`.
+ * Inlined here so the workflow bundle stays free of the schema tree.
+ */
+function timeframeMinutes(tf: string): number {
+  switch (tf) {
+    case "1m":
+      return 1;
+    case "5m":
+      return 5;
+    case "15m":
+      return 15;
+    case "30m":
+      return 30;
+    case "1h":
+      return 60;
+    case "2h":
+      return 120;
+    case "4h":
+      return 240;
+    case "1d":
+      return 1440;
+    case "1w":
+      return 10080;
+    default:
+      return 60;
+  }
+}
+
 async function processTick(
   sessionId: string,
   watch: import("@domain/schemas/WatchesConfig").WatchConfig,
   tickAt: string,
   alive: Map<string, AliveSetup>,
+  prevTickAt: string | null,
 ): Promise<number> {
   let tickCost = 0;
+  const tickAtDate = new Date(tickAt);
+
+  // -------- 0. TTL expiry check (before any LLM call) --------
+  // Setups whose TTL has lapsed by `tickAt` are expired without consuming
+  // detector / reviewer budget. Walk a snapshot of values because we mutate
+  // the map during the loop.
+  for (const setup of [...alive.values()]) {
+    if (isTerminal(setup.runtime.status)) {
+      alive.delete(setup.id);
+      continue;
+    }
+    if (tickAtDate >= setup.ttlExpiresAt) {
+      const before = { ...setup.runtime };
+      setup.runtime = { ...setup.runtime, status: "EXPIRED" };
+      const preview = formatExpiredPreview({
+        asset: setup.snapshot.asset,
+        timeframe: setup.snapshot.timeframe,
+      });
+      await db.appendReplayEvent({
+        sessionId,
+        event: {
+          setupId: setup.id,
+          occurredAt: tickAtDate,
+          stage: "system",
+          actor: "replay-workflow",
+          type: "Expired",
+          scoreDelta: 0,
+          scoreAfter: setup.runtime.score,
+          statusBefore: before.status,
+          statusAfter: "EXPIRED",
+          payload: {
+            type: "Expired",
+            data: {
+              reason: "ttl_reached",
+              ttlExpiresAt: setup.ttlExpiresAt.toISOString(),
+              telegramPreview: preview,
+            },
+          },
+        },
+      });
+      alive.delete(setup.id);
+    }
+  }
 
   // Snapshot of alive setups passed to the detector for cross-reference.
   const aliveSnapshot = [...alive.values()].map((s) => ({
@@ -327,6 +415,10 @@ async function processTick(
       currentScore: ns.initial_score,
       invalidationLevel: ns.key_levels.invalidation,
     };
+    const tfMs = timeframeMinutes(watch.timeframes.primary) * 60_000;
+    const ttlExpiresAt = new Date(
+      tickAtDate.getTime() + watch.setup_lifecycle.ttl_candles * tfMs,
+    );
     alive.set(setupId, {
       id: setupId,
       snapshot: snap,
@@ -336,6 +428,7 @@ async function processTick(
         invalidationLevel: ns.key_levels.invalidation,
         direction: ns.direction,
       },
+      ttlExpiresAt,
     });
   }
 
@@ -434,10 +527,18 @@ async function processTick(
       decision.go &&
       decision.entry !== undefined &&
       decision.stop_loss !== undefined &&
-      decision.take_profit
+      decision.take_profit &&
+      setup.snapshot.direction
     ) {
       const before = { ...setup.runtime };
       setup.runtime = { ...setup.runtime, status: "TRACKING" };
+      setup.tracking = initialTrackingState({
+        direction: setup.snapshot.direction,
+        entry: decision.entry,
+        stopLoss: decision.stop_loss,
+        takeProfit: decision.take_profit,
+      });
+      setup.scoreAtConfirmation = setup.runtime.score;
       const confirmedPreview = setup.snapshot.direction
         ? formatConfirmedPreview({
             asset: setup.snapshot.asset,
@@ -520,7 +621,174 @@ async function processTick(
     }
   }
 
+  // 5) Intra-candle tracking simulation for TRACKING setups.
+  //    Fetches the candles in (prevTickAt, tickAt] and applies the
+  //    deterministic SL-prioritaire convention via simulateCandleTracking.
+  //    Setups that just transitioned to TRACKING in step 4 of the SAME tick
+  //    are included — `prevTickAt` defines the window left bound, and the
+  //    tracking state was set at finalizer time before this phase runs.
+  const trackingSetups = [...alive.values()].filter(
+    (s): s is AliveSetup & { tracking: TrackingState } =>
+      s.runtime.status === "TRACKING" && s.tracking !== undefined,
+  );
+  if (trackingSetups.length > 0) {
+    const from = prevTickAt ?? new Date(tickAtDate.getTime() - 1).toISOString();
+    const { candles } = await db.fetchRangeCandles({ sessionId, from, to: tickAt });
+    for (const candle of candles) {
+      const parsedCandle = {
+        timestamp: new Date(candle.timestamp),
+        open: candle.open,
+        high: candle.high,
+        low: candle.low,
+        close: candle.close,
+        volume: candle.volume,
+      };
+      for (const setup of trackingSetups) {
+        if (setup.tracking.closed) continue;
+        const events = simulateCandleTracking(setup.tracking, parsedCandle);
+        for (const evt of events) {
+          await persistTrackerEvent(sessionId, setup, evt);
+        }
+        if (setup.tracking.closed) {
+          // Mark setup as CLOSED in the runtime state ; finalize the close.
+          setup.runtime = { ...setup.runtime, status: "CLOSED" };
+          const reason = closeReasonFromState(setup.tracking);
+          if (reason !== null) {
+            // Trigger feedback analysis (Wiring 4). The activity itself
+            // honors `feedbackMode === "skip"` and short-circuits.
+            const feedback = await llm.runFeedbackAnalysisReplay({
+              sessionId,
+              setupId: setup.id,
+              tickAt: parsedCandle.timestamp.toISOString(),
+              closeReason: reason,
+              everConfirmed: true,
+              scoreAtClose: setup.scoreAtConfirmation ?? setup.runtime.score,
+            });
+            if (!feedback.skipped) tickCost += feedback.costUsd;
+          }
+          alive.delete(setup.id);
+        }
+      }
+    }
+  }
+
   return tickCost;
+}
+
+/**
+ * Persists a single tracker event (EntryFilled/TPHit/SLHit/TrailingMoved)
+ * with the right discriminated-union shape + Telegram preview. Helper
+ * extracted so `processTick` stays scannable.
+ */
+async function persistTrackerEvent(
+  sessionId: string,
+  setup: AliveSetup,
+  evt: import("@domain/replay/simulateTracking").TrackerEvent,
+): Promise<void> {
+  const beforeStatus = setup.runtime.status;
+  if (evt.kind === "EntryFilled") {
+    await db.appendReplayEvent({
+      sessionId,
+      event: {
+        setupId: setup.id,
+        occurredAt: evt.observedAt,
+        stage: "tracker",
+        actor: "replay-tracker",
+        type: "EntryFilled",
+        scoreDelta: 0,
+        scoreAfter: setup.runtime.score,
+        statusBefore: beforeStatus,
+        statusAfter: "TRACKING",
+        payload: {
+          type: "EntryFilled",
+          data: { fillPrice: evt.fillPrice, observedAt: evt.observedAt.toISOString() },
+        },
+      },
+    });
+    return;
+  }
+  if (evt.kind === "TPHit") {
+    const preview = formatTPHitPreview({
+      asset: setup.snapshot.asset,
+      timeframe: setup.snapshot.timeframe,
+      level: evt.level,
+      index: evt.index,
+      isFinal: evt.isFinal,
+    });
+    await db.appendReplayEvent({
+      sessionId,
+      event: {
+        setupId: setup.id,
+        occurredAt: evt.observedAt,
+        stage: "tracker",
+        actor: "replay-tracker",
+        type: "TPHit",
+        scoreDelta: 0,
+        scoreAfter: setup.runtime.score,
+        statusBefore: beforeStatus,
+        statusAfter: evt.isFinal ? "CLOSED" : "TRACKING",
+        payload: {
+          type: "TPHit",
+          data: {
+            level: evt.level,
+            index: evt.index,
+            observedAt: evt.observedAt.toISOString(),
+            telegramPreview: preview,
+          },
+        },
+      },
+    });
+    return;
+  }
+  if (evt.kind === "SLHit") {
+    const preview = formatSLHitPreview({
+      asset: setup.snapshot.asset,
+      timeframe: setup.snapshot.timeframe,
+      level: evt.level,
+    });
+    await db.appendReplayEvent({
+      sessionId,
+      event: {
+        setupId: setup.id,
+        occurredAt: evt.observedAt,
+        stage: "tracker",
+        actor: "replay-tracker",
+        type: "SLHit",
+        scoreDelta: 0,
+        scoreAfter: setup.runtime.score,
+        statusBefore: beforeStatus,
+        statusAfter: "CLOSED",
+        payload: {
+          type: "SLHit",
+          data: {
+            level: evt.level,
+            observedAt: evt.observedAt.toISOString(),
+            telegramPreview: preview,
+          },
+        },
+      },
+    });
+    return;
+  }
+  // TrailingMoved — no Telegram in live, no preview here.
+  await db.appendReplayEvent({
+    sessionId,
+    event: {
+      setupId: setup.id,
+      occurredAt: new Date(),
+      stage: "tracker",
+      actor: "replay-tracker",
+      type: "TrailingMoved",
+      scoreDelta: 0,
+      scoreAfter: setup.runtime.score,
+      statusBefore: beforeStatus,
+      statusAfter: "TRACKING",
+      payload: {
+        type: "TrailingMoved",
+        data: { newStopLoss: evt.newStopLoss, reason: evt.reason },
+      },
+    },
+  });
 }
 
 function verdictToEvent(verdict: Verdict): {

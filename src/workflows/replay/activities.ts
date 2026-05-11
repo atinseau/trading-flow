@@ -959,6 +959,47 @@ export function buildReplayActivities(deps: ReplayActivityDeps) {
     }): Promise<void> {
       await deps.sessionsRepo.updateStatus(input.sessionId, input.status, input.failureReason);
     },
+
+    /**
+     * Workflow plumbing: fetches the candles inside `(from, to]` for the
+     * session's watch. Used by `processTick` to feed the intra-candle
+     * tracking simulation between two consecutive ticks. The window is
+     * half-open on the left so consecutive calls don't double-process
+     * the boundary candle.
+     */
+    async fetchRangeCandles(input: {
+      sessionId: string;
+      from: string;
+      to: string;
+    }): Promise<{ candles: Array<{ timestamp: string; open: number; high: number; low: number; close: number; volume: number }> }> {
+      const session = await deps.sessionsRepo.get(input.sessionId);
+      if (!session) throw new Error(`Replay session ${input.sessionId} not found`);
+      const watch = session.configSnapshot;
+      const fetcher = deps.marketDataFetchers.get(watch.asset.source);
+      if (!fetcher) throw new InvalidConfigError(`No fetcher for source ${watch.asset.source}`);
+      const from = new Date(input.from);
+      const to = new Date(input.to);
+      const raw = await fetcher.fetchRange({
+        asset: watch.asset.symbol,
+        timeframe: watch.timeframes.primary,
+        from,
+        to,
+      });
+      // Half-open left, inclusive right : the candle whose timestamp ==
+      // `from` was already processed by the previous tick.
+      return {
+        candles: raw
+          .filter((c) => c.timestamp.getTime() > from.getTime())
+          .map((c) => ({
+            timestamp: c.timestamp.toISOString(),
+            open: c.open,
+            high: c.high,
+            low: c.low,
+            close: c.close,
+            volume: c.volume,
+          })),
+      };
+    },
   };
 }
 
