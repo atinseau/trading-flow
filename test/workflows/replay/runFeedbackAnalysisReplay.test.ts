@@ -279,4 +279,78 @@ describe("runFeedbackAnalysisReplay", () => {
     expect(payload.data.action).toBe("REINFORCE");
     expect(payload.data.supersedesLessonId).toBe(existingLessonId);
   });
+
+  test("REFINE proposal maps to FeedbackLessonProposed with supersedesLessonId + new title/body", async () => {
+    const existing = "22222222-2222-4222-8222-222222222222";
+    const h = await buildHarness({
+      feedbackMode: "run",
+      feedbackOutput: {
+        summary: "Existing lesson must be sharpened around volume confirmation.",
+        actions: [
+          {
+            type: "REFINE",
+            lessonId: existing,
+            newTitle: "Require uptick volume above the prior swing high before entry",
+            newBody:
+              "Refined wording — require relative volume above 1.5× the 20-period avg before treating a break as valid. Otherwise downgrade the confluence.",
+            rationale:
+              "The previous wording allowed marginal breaks ; the refined version is stricter.",
+          },
+        ],
+      },
+    });
+    const activities = buildReplayActivities(h.deps);
+    await activities.runFeedbackAnalysisReplay({
+      sessionId,
+      setupId,
+      tickAt: "2026-04-29T18:00:00Z",
+      closeReason: "sl_hit_direct",
+      everConfirmed: true,
+      scoreAtClose: 60,
+    });
+    const events = await h.replayEventStore.listBySession(sessionId);
+    const payload = events[0]?.payload as {
+      data: {
+        action: string;
+        title: string;
+        body: string;
+        supersedesLessonId?: string;
+      };
+    };
+    expect(payload.data.action).toBe("REFINE");
+    expect(payload.data.title).toContain("uptick volume");
+    expect(payload.data.supersedesLessonId).toBe(existing);
+  });
+
+  test("DEPRECATE proposal maps to FeedbackLessonProposed with supersedesLessonId", async () => {
+    const existing = "33333333-3333-4333-8333-333333333333";
+    const h = await buildHarness({
+      feedbackMode: "run",
+      feedbackOutput: {
+        summary: "An older lesson contradicts recent observations and should be retired.",
+        actions: [
+          {
+            type: "DEPRECATE",
+            lessonId: existing,
+            reason: "Recent failed trades show the lesson's premise no longer holds.",
+          },
+        ],
+      },
+    });
+    const activities = buildReplayActivities(h.deps);
+    await activities.runFeedbackAnalysisReplay({
+      sessionId,
+      setupId,
+      tickAt: "2026-04-29T18:00:00Z",
+      closeReason: "sl_hit_direct",
+      everConfirmed: true,
+      scoreAtClose: 60,
+    });
+    const events = await h.replayEventStore.listBySession(sessionId);
+    const payload = events[0]?.payload as {
+      data: { action: string; supersedesLessonId?: string };
+    };
+    expect(payload.data.action).toBe("DEPRECATE");
+    expect(payload.data.supersedesLessonId).toBe(existing);
+  });
 });

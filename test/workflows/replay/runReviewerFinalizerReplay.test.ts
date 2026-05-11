@@ -401,4 +401,74 @@ describe("runFinalizerReplay", () => {
     expect(h.replayLlmCallStore.calls).toHaveLength(2);
     expect(h.replayLlmCallStore.calls[1]?.cacheHit).toBe(true);
   });
+
+  test("NO_GO decision returns go=false with reasoning", async () => {
+    const h = await buildHarness({
+      finalizerParsed: { go: false, reasoning: "Risk-reward below minimum threshold." },
+    });
+    const activities = buildReplayActivities(h.deps);
+    const result = await activities.runFinalizerReplay({
+      sessionId,
+      tickAt: h.tickAt.toISOString(),
+      setup: makeSetup(),
+      latestIndicatorsJson: JSON.stringify({}),
+      latestLastClose: 30_500,
+    });
+    const decision = JSON.parse(result.decisionJson);
+    expect(decision.go).toBe(false);
+    expect(decision.reasoning).toContain("Risk-reward");
+    expect(decision.entry).toBeUndefined();
+  });
+});
+
+describe("runReviewerReplay verdict types", () => {
+  beforeEach(() => {
+    clearPromptCache();
+  });
+
+  test("NEUTRAL verdict survives strict VerdictSchema parse", async () => {
+    const h = await buildHarness({
+      reviewerParsed: { type: "NEUTRAL", observations: [{ kind: "trend", text: "no change" }] },
+    });
+    const activities = buildReplayActivities(h.deps);
+    const chart = await h.deps.artifactStore.put({
+      kind: "chart_image",
+      content: Buffer.from("ck-neutral"),
+      mimeType: "image/png",
+    });
+    const r = await activities.runReviewerReplay({
+      sessionId,
+      tickAt: h.tickAt.toISOString(),
+      setup: makeSetup(),
+      chartUri: chart.uri,
+      indicatorsJson: JSON.stringify({}),
+      lastClose: 30_500,
+    });
+    const verdict = JSON.parse(r.verdictJson);
+    expect(verdict.type).toBe("NEUTRAL");
+    expect(verdict.observations).toHaveLength(1);
+  });
+
+  test("INVALIDATE verdict survives strict VerdictSchema parse", async () => {
+    const h = await buildHarness({
+      reviewerParsed: { type: "INVALIDATE", reason: "Price broke the invalidation level." },
+    });
+    const activities = buildReplayActivities(h.deps);
+    const chart = await h.deps.artifactStore.put({
+      kind: "chart_image",
+      content: Buffer.from("ck-invalidate"),
+      mimeType: "image/png",
+    });
+    const r = await activities.runReviewerReplay({
+      sessionId,
+      tickAt: h.tickAt.toISOString(),
+      setup: makeSetup(),
+      chartUri: chart.uri,
+      indicatorsJson: JSON.stringify({}),
+      lastClose: 30_500,
+    });
+    const verdict = JSON.parse(r.verdictJson);
+    expect(verdict.type).toBe("INVALIDATE");
+    expect(verdict.reason).toContain("invalidation");
+  });
 });

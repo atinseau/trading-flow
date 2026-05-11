@@ -6,6 +6,7 @@ import {
 } from "@client/components/ui/accordion";
 import { Badge } from "@client/components/ui/badge";
 import { cn } from "@client/lib/utils";
+import { FeedbackAnalysisCard } from "./feedback-analysis-card";
 import type { ReplayEventRow } from "./replay-types";
 import { TelegramPreview } from "./telegram-preview";
 
@@ -86,13 +87,18 @@ export function CurrentPhaseCard({ event }: { event: ReplayEventRow | null }) {
         {event.latencyMs !== null && <> · {event.latencyMs}ms</>}
       </div>
 
-      {reasoning && (
-        <div className="text-xs leading-relaxed whitespace-pre-wrap border-l-2 border-primary/30 pl-3">
-          {reasoning}
-        </div>
+      {event.type === "FeedbackLessonProposed" ? (
+        <FeedbackAnalysisCard event={event} />
+      ) : (
+        <>
+          {reasoning && (
+            <div className="text-xs leading-relaxed whitespace-pre-wrap border-l-2 border-primary/30 pl-3">
+              {reasoning}
+            </div>
+          )}
+          {telegram && <TelegramPreview text={telegram} />}
+        </>
       )}
-
-      {telegram && <TelegramPreview text={telegram} />}
 
       <Accordion type="single" collapsible>
         <AccordionItem value="raw">

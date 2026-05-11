@@ -1,8 +1,33 @@
 # Replay Mode — Design Document
 
 **Date** : 2026-05-08
-**Status** : Draft (en attente de validation utilisateur)
+**Status** : Implémenté (J2) — pivot d'archi acté ci-dessous
 **Auteur** : brainstorming Arthur + Claude
+
+---
+
+## ⚠️ Note d'implémentation (post-spec, 2026-05-11)
+
+Cette spec décrit la **Stratégie 1** envisagée à l'époque du brainstorm : un seul code path métier, deux comportements via un paramètre `replayContext` injecté à toutes les activités live. Au moment d'implémenter §5 ("Branchement DI"), on a constaté que :
+
+- Le couplage des activités live à `tickSnapshotStore`, `setupRepo`, `lessonStore` (mutations) et `eventStore` est plus profond que ce que la spec laissait entendre — chaque activité aurait demandé un bloc `if (args.replayContext) ...` non trivial sur 5-10 sites.
+- Le risque de drift live/replay sur une zone aussi critique (Detector → Reviewer → Finalizer → tracking) justifiait une isolation plus stricte.
+
+**Décision Arthur (2026-05-09)** : pivoter vers la **Stratégie 3** — duplication contrôlée. Les activités live restent **strictement inchangées** ; un nouveau module `src/workflows/replay/activities.ts` fournit les variantes replay-scopées (`runDetectorReplay`, `runReviewerReplay`, `runFinalizerReplay`, `runFeedbackAnalysisReplay`). Le workflow Temporal `src/workflows/replay/replaySessionWorkflow.ts` les orchestre.
+
+Ce que la spec dit toujours juste :
+- Les **4 tables** (`replay_sessions`, `replay_events`, `replay_llm_calls`, `llm_response_cache`) — implémentées telles quelles.
+- Les **10 invariants d'isolation** (§10) — respectés.
+- Les **3 modes lessons** + **2 modes feedback** — implémentés.
+- L'**API endpoints** (§7) — implémentée + endpoints `step`/`pause`/`resume`/`terminate` ajoutés.
+- Le **hard cap 300 bougies** (§19) + **règle d'or** (§1) — respectés.
+
+Ce que la spec décrit mais qui n'existe pas comme tel dans le code :
+- Pas de paramètre `replayContext` sur les activités live. Lire `src/workflows/replay/activities.ts` à la place de §5.
+- `FixedClock` est instancié **dans** chaque activité replay (`new FixedClock(input.tickAt)`) plutôt que injecté via DI — pour notre Stratégie 3 sans deps partagés.
+- `NoopTelegramNotifier` n'est pas injecté comme adapter ; le workflow attache directement un champ `telegramPreview?: string` aux payloads pertinents via `domain/notify/formatReplayTelegramPreview.ts`.
+
+Les sections §3, §5, §6 ci-dessous décrivent la Stratégie 1 originelle — gardées pour archéologie. Pour comprendre ce qui tourne en prod, lire le code source + cette note.
 
 ---
 

@@ -100,6 +100,36 @@ export function NewSessionModal(props: { open: boolean; onClose: () => void }) {
     return { ok: true as const, candles, cap };
   }, [watchId, selectedWatch, startStr, endStr, costCap]);
 
+  /**
+   * Rough cost estimate for the user before they hit Create. Based on
+   * representative per-stage costs from the live cost-breakdown :
+   *   detector ≈ $0.05 / tick (always fires)
+   *   reviewer ≈ $0.05 / setup-tick (fires on REVIEWING setups)
+   *   finalizer ≈ $0.08 / setup-tick (fires only when score crosses
+   *     the threshold ; rare)
+   *   feedback ≈ $0.18 / close (fires only when a confirmed setup closes
+   *     and feedback_mode === "run")
+   * We can't predict how many setups the detector will spawn, so we
+   * present a "best case" (detector only) and "high" (detector + a
+   * reviewer per tick + occasional finalizer). The cost cap remains the
+   * hard ceiling regardless.
+   */
+  const estimate = useMemo(() => {
+    if (!validation.ok) return null;
+    const det = 0.05;
+    const rev = 0.05;
+    const fin = 0.08;
+    const feedback = feedbackMode === "run" ? 0.18 : 0;
+    const ticks = validation.candles;
+    // Best case : detector only on every tick, no setups spawned.
+    const best = det * ticks;
+    // High case : detector + 1 reviewer/tick + 1 finalizer every 10 ticks
+    //   + 1 feedback every 20 ticks (very rough).
+    const high =
+      det * ticks + rev * ticks + fin * (ticks / 10) + feedback * (ticks / 20);
+    return { best, high };
+  }, [validation, feedbackMode]);
+
   async function submit() {
     if (!validation.ok) return;
     setSubmitting(true);
@@ -235,8 +265,18 @@ export function NewSessionModal(props: { open: boolean; onClose: () => void }) {
           </div>
 
           {validation.ok && (
-            <div className="text-xs text-muted-foreground">
-              {validation.candles} bougies · cap ${validation.cap.toFixed(2)}
+            <div className="space-y-1">
+              <div className="text-xs text-muted-foreground">
+                {validation.candles} bougies · cap ${validation.cap.toFixed(2)}
+              </div>
+              {estimate && (
+                <div className="text-[11px] text-muted-foreground">
+                  Estimation LLM : ${estimate.best.toFixed(2)} – ${estimate.high.toFixed(2)}{" "}
+                  <span className="opacity-60">
+                    (ordre de grandeur ; le cost cap reste la limite dure)
+                  </span>
+                </div>
+              )}
             </div>
           )}
           {!validation.ok && watchId && (
