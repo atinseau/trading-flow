@@ -15,17 +15,24 @@ Cette spec décrit la **Stratégie 1** envisagée à l'époque du brainstorm : u
 
 **Décision Arthur (2026-05-09)** : pivoter vers la **Stratégie 3** — duplication contrôlée. Les activités live restent **strictement inchangées** ; un nouveau module `src/workflows/replay/activities.ts` fournit les variantes replay-scopées (`runDetectorReplay`, `runReviewerReplay`, `runFinalizerReplay`, `runFeedbackAnalysisReplay`). Le workflow Temporal `src/workflows/replay/replaySessionWorkflow.ts` les orchestre.
 
-Ce que la spec dit toujours juste :
-- Les **4 tables** (`replay_sessions`, `replay_events`, `replay_llm_calls`, `llm_response_cache`) — implémentées telles quelles.
-- Les **10 invariants d'isolation** (§10) — respectés.
-- Les **3 modes lessons** + **2 modes feedback** — implémentés.
-- L'**API endpoints** (§7) — implémentée + endpoints `step`/`pause`/`resume`/`terminate` ajoutés.
+Ce que la spec dit toujours juste (tout est implémenté) :
+- Les **4 tables** (`replay_sessions`, `replay_events`, `replay_llm_calls`, `llm_response_cache`) — telles quelles.
+- Les **10 invariants d'isolation** (§10) — respectés (y compris l'inv. 10 SL prioritaire intra-bougie).
+- Les **3 modes lessons** + **2 modes feedback** — opérationnels (le mode `feedback=run` déclenche `runFeedbackAnalysisReplay` sur fermeture de trade avec contexte riche : timeline d'events + OHLCV post-mortem + chart post-mortem, parité avec live).
+- L'**API endpoints** (§7) — implémentée. Endpoints supplémentaires ajoutés :
+  - `POST /step` (avec batch `tickAts[]`), `pause`, `resume`, `terminate`
+  - `POST /events/:eventId/promote` (matérialisation `FeedbackLessonProposed` → `lessons` live, idempotent)
 - Le **hard cap 300 bougies** (§19) + **règle d'or** (§1) — respectés.
+- **Cost cap préventif** (§9) — vérifié entre phases dans `processTick`, pas après tick.
+- **HTF round-2 chart reload** reviewer — implémenté (stage `reviewer_htf_chart` séparé dans audit).
+- **Tracking intra-bougie** : EntryFilled / TPHit (séquentiel + breakeven sur TP1) / SLHit / PriceInvalidated / Expired (TTL).
+- **`ReplayMeta` events** — émis sur paused/resumed/cost_capped/failed.
+- **UI** : page `/replay`, session viewer, scrubber, auto-step, feedback-analysis-card avec bouton "Promouvoir en prod", estimation de coût pré-création.
 
-Ce que la spec décrit mais qui n'existe pas comme tel dans le code :
+Ce que la spec décrit mais qui diverge dans le code (changements de stratégie, pas de gap fonctionnel) :
 - Pas de paramètre `replayContext` sur les activités live. Lire `src/workflows/replay/activities.ts` à la place de §5.
 - `FixedClock` est instancié **dans** chaque activité replay (`new FixedClock(input.tickAt)`) plutôt que injecté via DI — pour notre Stratégie 3 sans deps partagés.
-- `NoopTelegramNotifier` n'est pas injecté comme adapter ; le workflow attache directement un champ `telegramPreview?: string` aux payloads pertinents via `domain/notify/formatReplayTelegramPreview.ts`.
+- `NoopTelegramNotifier` n'est pas injecté comme adapter ; le workflow attache directement un champ `telegramPreview?: string` aux payloads pertinents via `domain/notify/formatReplayTelegramPreview.ts`. Le résultat fonctionnel (preview capturée + UI badge NEUTRALISÉ) est identique.
 
 Les sections §3, §5, §6 ci-dessous décrivent la Stratégie 1 originelle — gardées pour archéologie. Pour comprendre ce qui tourne en prod, lire le code source + cette note.
 
