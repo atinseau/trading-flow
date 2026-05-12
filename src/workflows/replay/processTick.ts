@@ -8,7 +8,7 @@ import {
   formatSLHitPreview,
   formatSetupCreatedPreview,
   formatTPHitPreview,
-} from "@domain/notify/formatReplayTelegramPreview";
+} from "@domain/notify/formatTelegramText";
 import {
   closeReasonFromState,
   initialTrackingState,
@@ -19,6 +19,7 @@ import {
 import type { Verdict } from "@domain/schemas/Verdict";
 import type { WatchConfig } from "@domain/schemas/WatchesConfig";
 import { applyVerdict, type SetupRuntimeState } from "@domain/scoring/applyVerdict";
+import { verdictToEvent } from "@domain/scoring/verdictToEvent";
 import type { SetupStatus } from "@domain/state-machine/setupTransitions";
 import { isTerminal } from "@domain/state-machine/setupTransitions";
 import type { ReplaySetupSnapshot } from "./activities";
@@ -646,47 +647,6 @@ export async function persistTrackerEvent(
     },
   });
 }
-
-export function verdictToEvent(
-  verdict: Verdict,
-): { type: string; payload: EventPayload } {
-  switch (verdict.type) {
-    case "STRENGTHEN":
-      return {
-        type: "Strengthened",
-        payload: {
-          type: "Strengthened",
-          data: {
-            reasoning: verdict.reasoning,
-            observations: verdict.observations,
-            source: "reviewer_full",
-          },
-        },
-      };
-    case "WEAKEN":
-      return {
-        type: "Weakened",
-        payload: {
-          type: "Weakened",
-          data: { reasoning: verdict.reasoning, observations: verdict.observations },
-        },
-      };
-    case "NEUTRAL":
-      return {
-        type: "Neutral",
-        payload: { type: "Neutral", data: { observations: verdict.observations } },
-      };
-    case "INVALIDATE":
-      return {
-        type: "Invalidated",
-        payload: {
-          type: "Invalidated",
-          data: { reason: verdict.reason, trigger: "reviewer_verdict", deterministic: false },
-        },
-      };
-  }
-}
-
 /**
  * Returns a copy of the reviewer event payload with `telegramPreview`
  * attached when the verdict type would have triggered a notification in

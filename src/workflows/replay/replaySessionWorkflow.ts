@@ -1,3 +1,4 @@
+import { isUnrecoverableErrorName, UNRECOVERABLE_ERROR_NAMES } from "@domain/errors";
 import type { SetupStatus } from "@domain/state-machine/setupTransitions";
 import {
   condition,
@@ -79,14 +80,6 @@ export const getReplayStateQuery = defineQuery<ReplayWorkflowState>("getReplaySt
 
 // --- Activity proxies --------------------------------------------------------
 
-const NON_RETRYABLE = [
-  "InvalidConfigError",
-  "AssetNotFoundError",
-  "LLMSchemaValidationError",
-  "NoProviderAvailableError",
-  "CircularFallbackError",
-];
-
 const llm = proxyActivities<ReturnType<typeof replayActivities.buildReplayActivities>>({
   startToCloseTimeout: "180s",
   retry: {
@@ -94,7 +87,7 @@ const llm = proxyActivities<ReturnType<typeof replayActivities.buildReplayActivi
     initialInterval: "2s",
     maximumInterval: "60s",
     backoffCoefficient: 2,
-    nonRetryableErrorTypes: NON_RETRYABLE,
+    nonRetryableErrorTypes: [...UNRECOVERABLE_ERROR_NAMES],
   },
 });
 
@@ -105,7 +98,7 @@ const db = proxyActivities<ReturnType<typeof replayActivities.buildReplayActivit
     initialInterval: "200ms",
     maximumInterval: "5s",
     backoffCoefficient: 2,
-    nonRetryableErrorTypes: NON_RETRYABLE,
+    nonRetryableErrorTypes: [...UNRECOVERABLE_ERROR_NAMES],
   },
 });
 
@@ -309,28 +302,18 @@ export async function replaySessionWorkflow(args: ReplaySessionWorkflowArgs): Pr
 }
 
 /**
- * Classifier for the workflow's main-loop catch. Domain errors that
- * indicate a config / schema / availability problem mark the session
- * FAILED ; everything else is treated as transient (network exhaustion,
- * adapter glitch, market-data hiccup) and surfaces as PAUSED so the user
- * can resume after the underlying issue clears.
+ * Classifier for the workflow's main-loop catch. Delegates to the
+ * project-wide `isUnrecoverableErrorName` so the retry policy
+ * (`UNRECOVERABLE_ERROR_NAMES` on the proxies above) and the
+ * catch classification stay in lockstep.
+ *
+ * Temporal wraps activity errors with `ApplicationFailure.type` mirroring
+ * the original error.name when the activity threw a class instance —
+ * `.name` is therefore reliable across both wrappers.
  */
 function isUnrecoverableError(err: unknown): boolean {
   if (!(err instanceof Error)) return false;
-  // Temporal wraps activity errors with `ApplicationFailure.type` mirroring
-  // the original error.name when the activity threw a class instance.
-  // Inspecting `.name` is reliable across both wrappers.
-  const name = err.name;
-  return (
-    name === "InvalidConfigError" ||
-    name === "AssetNotFoundError" ||
-    name === "LLMSchemaValidationError" ||
-    name === "PromptTooLargeError" ||
-    name === "NoProviderAvailableError" ||
-    name === "CircularFallbackError" ||
-    name === "UnsupportedExchangeError"
-  );
+  return isUnrecoverableErrorName(err.name);
 }
-
 
 export const replaySessionWorkflowId = (sessionId: string) => `replay-session-${sessionId}`;

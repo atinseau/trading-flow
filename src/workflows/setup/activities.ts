@@ -4,6 +4,16 @@ import { loadPrompt } from "@adapters/prompts/loadPrompt";
 import { InvalidConfigError } from "@domain/errors";
 // loadPrompt is still used for finalizer (not managed by PromptBuilder)
 import { extractObservations, extractReasoning } from "@domain/events/payloadAccessors";
+import {
+  formatConfirmedPreview,
+  formatExpiredPreview,
+  formatInvalidatedAfterConfirmedPreview,
+  formatRejectedPreview,
+  formatReviewerVerdictPreview,
+  formatSLHitPreview,
+  formatSetupCreatedPreview,
+  formatTPHitPreview,
+} from "@domain/notify/formatTelegramText";
 import type { NewEvent, SetupStateUpdate } from "@domain/ports/EventStore";
 import type { ReviewerLlmOutput } from "@domain/schemas/ReviewerOutput";
 import { ReviewerLlmOutputSchema } from "@domain/schemas/ReviewerOutput";
@@ -566,10 +576,16 @@ export function buildSetupActivities(deps: ActivityDeps) {
       const includeReasoning = input.includeReasoning ?? watch.include_reasoning;
       const includeChartImage = input.includeChartImage ?? watch.include_chart_image;
 
-      const arrow = input.direction === "LONG" ? "🟢 LONG" : "🔴 SHORT";
-      const tpStr = input.takeProfit.length ? `\nTP: ${input.takeProfit.join(" / ")}` : "";
-      const reasoning = includeReasoning ? `\n\n${input.reasoning}` : "";
-      const text = `${arrow} ${input.asset} ${input.timeframe}\nEntry: ${input.entry}\nSL: ${input.stopLoss}${tpStr}${reasoning}`;
+      const text = formatConfirmedPreview({
+        asset: input.asset,
+        timeframe: input.timeframe,
+        direction: input.direction,
+        entry: input.entry,
+        stopLoss: input.stopLoss,
+        takeProfit: input.takeProfit,
+        reasoning: input.reasoning,
+        includeReasoning,
+      });
 
       const images =
         includeChartImage && input.chartUri ? [{ uri: input.chartUri }] : undefined;
@@ -598,7 +614,11 @@ export function buildSetupActivities(deps: ActivityDeps) {
       }
       const result = await deps.notifier.send({
         chatId: deps.infra.notifications.telegram.chat_id,
-        text: `❌ Setup ${input.asset} ${input.timeframe} rejected\n\n${input.reasoning}`,
+        text: formatRejectedPreview({
+          asset: input.asset,
+          timeframe: input.timeframe,
+          reasoning: input.reasoning,
+        }),
       });
       childLog.info({ event: "rejected" }, "telegram sent");
       return result;
@@ -622,7 +642,11 @@ export function buildSetupActivities(deps: ActivityDeps) {
       }
       const result = await deps.notifier.send({
         chatId: deps.infra.notifications.telegram.chat_id,
-        text: `⚠️ ${input.asset} ${input.timeframe} invalidated post-confirmation\nReason: ${input.reason}`,
+        text: formatInvalidatedAfterConfirmedPreview({
+          asset: input.asset,
+          timeframe: input.timeframe,
+          reason: input.reason,
+        }),
       });
       childLog.info({ event: "invalidated_after_confirmed" }, "telegram sent");
       return result;
@@ -643,11 +667,15 @@ export function buildSetupActivities(deps: ActivityDeps) {
         childLog.debug({ event: "tp_hit" }, "notification skipped (not in notify_on)");
         return null;
       }
-      const tpLabel = `TP${input.index + 1}`;
-      const finalStr = input.isFinal ? " (final, position closed)" : "";
       const result = await deps.notifier.send({
         chatId: deps.infra.notifications.telegram.chat_id,
-        text: `🎯 ${tpLabel} hit on ${input.asset} ${input.timeframe} @ ${input.level}${finalStr}`,
+        text: formatTPHitPreview({
+          asset: input.asset,
+          timeframe: input.timeframe,
+          level: input.level,
+          index: input.index,
+          isFinal: input.isFinal,
+        }),
       });
       childLog.info(
         { event: "tp_hit", level: input.level, index: input.index, isFinal: input.isFinal },
@@ -671,7 +699,11 @@ export function buildSetupActivities(deps: ActivityDeps) {
       }
       const result = await deps.notifier.send({
         chatId: deps.infra.notifications.telegram.chat_id,
-        text: `🛑 SL hit on ${input.asset} ${input.timeframe} @ ${input.level} — position closed`,
+        text: formatSLHitPreview({
+          asset: input.asset,
+          timeframe: input.timeframe,
+          level: input.level,
+        }),
       });
       childLog.info({ event: "sl_hit", level: input.level }, "telegram sent");
       return result;
@@ -691,7 +723,7 @@ export function buildSetupActivities(deps: ActivityDeps) {
       }
       const result = await deps.notifier.send({
         chatId: deps.infra.notifications.telegram.chat_id,
-        text: `⏱ Setup expired (TTL reached) on ${input.asset} ${input.timeframe}`,
+        text: formatExpiredPreview({ asset: input.asset, timeframe: input.timeframe }),
       });
       childLog.info({ event: "expired" }, "telegram sent");
       return result;
@@ -726,15 +758,16 @@ export function buildSetupActivities(deps: ActivityDeps) {
 
       const includeChartImage = input.includeChartImage ?? watch.include_chart_image;
 
-      const arrow = input.direction === "LONG" ? "🟢 LONG" : "🔴 SHORT";
-      const text = [
-        `🆕 New setup detected — ${input.watchId}`,
-        `${input.asset} ${input.timeframe} | ${arrow} | pattern=${input.patternHint}`,
-        `Score initial: ${input.initialScore}/100`,
-        `Invalidation: ${input.invalidationLevel}`,
-        "",
-        input.rawObservation,
-      ].join("\n");
+      const text = formatSetupCreatedPreview({
+        watchId: input.watchId,
+        asset: input.asset,
+        timeframe: input.timeframe,
+        patternHint: input.patternHint,
+        direction: input.direction,
+        initialScore: input.initialScore,
+        invalidationLevel: input.invalidationLevel,
+        rawObservation: input.rawObservation,
+      });
 
       const images =
         includeChartImage && input.chartUri ? [{ uri: input.chartUri }] : undefined;
@@ -788,20 +821,15 @@ export function buildSetupActivities(deps: ActivityDeps) {
 
       const includeReasoning = input.includeReasoning ?? watch.include_reasoning;
       const scoreBefore = input.scoreAfter - input.scoreDelta;
-      // Symmetric template — the verdict already encodes the sign, so we
-      // build it explicitly from `Math.abs` rather than relying on a leading
-      // `+` for STRENGTHEN and a natural `-` for WEAKEN.
-      const sign = input.verdict === "STRENGTHEN" ? "+" : "-";
-      const emoji = input.verdict === "STRENGTHEN" ? "💪" : "💔";
-      const header = `${emoji} ${input.verdict} ${sign}${Math.abs(input.scoreDelta)} — ${input.asset} ${input.timeframe}`;
-      const text = [
-        header,
-        `Score: ${scoreBefore}→${input.scoreAfter}`,
-        "",
-        includeReasoning ? input.reasoning : "",
-      ]
-        .filter((l) => l !== "")
-        .join("\n");
+      const text = formatReviewerVerdictPreview({
+        asset: input.asset,
+        timeframe: input.timeframe,
+        verdict: input.verdict,
+        scoreBefore,
+        scoreAfter: input.scoreAfter,
+        reasoning: input.reasoning,
+        includeReasoning,
+      });
 
       const result = await deps.notifier.sendWithButtons({
         chatId: deps.infra.notifications.telegram.chat_id,

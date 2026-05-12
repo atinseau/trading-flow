@@ -1,19 +1,18 @@
 /**
- * Plain-text formatters that mirror the messages built by the live
- * `notifyTelegram*` activities in `src/workflows/setup/activities.ts`.
- * The replay workflow uses these to attach a `telegramPreview` field to
- * the events that would have triggered a notification in production —
- * the UI then renders the preview with a "NEUTRALISÉ" badge.
+ * Plain-text formatters for the Telegram messages the bot sends.
  *
- * Kept as pure functions (no DI, no IO) so :
- *   - The replay workflow can call them inline without proxying an
- *     activity.
- *   - Live activities CAN migrate to use them later if we want to
- *     deduplicate, but for now the live formatters stay untouched.
+ * Single source of truth used by BOTH :
+ *  - Live `notifyTelegram*` activities (which pass the string to the
+ *    `Notifier` port).
+ *  - The replay workflow, which attaches the formatted string to the
+ *    `telegramPreview` field on the corresponding `replay_events`
+ *    payload — the UI renders it with a "NEUTRALISÉ" badge.
  *
- * Layout decision : the previews are intentionally faithful to the live
- * messages (same emojis, same line breaks) so a user comparing a replay
- * UI to a real Telegram history can match them visually.
+ * Sharing the formatters across both paths eliminates drift risk : a
+ * change to the live message (new emoji, new disclaimer) automatically
+ * reflects in the replay preview, with no parity test needed.
+ *
+ * Pure functions, no DI, no IO.
  */
 
 export type SetupCreatedPreviewInput = {
@@ -49,17 +48,26 @@ export type ReviewerVerdictPreviewInput = {
   includeReasoning?: boolean;
 };
 
+/**
+ * Layout mirrors the live `notifyTelegramReviewerVerdict` :
+ *   - header line with emoji + verdict + signed Δ + asset/timeframe
+ *   - "Score: before→after"
+ *   - reasoning appended on the next line (no blank line between) when
+ *     `includeReasoning` is true and reasoning is non-empty
+ */
 export function formatReviewerVerdictPreview(args: ReviewerVerdictPreviewInput): string {
   const sign = args.verdict === "STRENGTHEN" ? "+" : "-";
   const emoji = args.verdict === "STRENGTHEN" ? "💪" : "💔";
   const delta = Math.abs(args.scoreAfter - args.scoreBefore);
   const include = args.includeReasoning ?? true;
-  const lines = [
+  return [
     `${emoji} ${args.verdict} ${sign}${delta} — ${args.asset} ${args.timeframe}`,
     `Score: ${args.scoreBefore}→${args.scoreAfter}`,
-  ];
-  if (include && args.reasoning) lines.push("", args.reasoning);
-  return lines.join("\n");
+    "",
+    include ? args.reasoning : "",
+  ]
+    .filter((l) => l !== "")
+    .join("\n");
 }
 
 export type ConfirmedPreviewInput = {

@@ -11,11 +11,11 @@ import {
   startChild,
   workflowInfo,
 } from "@temporalio/workflow";
-import type { EventPayload } from "../../domain/events/schemas";
-import type { EventTypeName } from "../../domain/events/types";
+import { UNRECOVERABLE_ERROR_NAMES } from "../../domain/errors";
 import { deriveCloseOutcome, shouldTriggerFeedback } from "../../domain/feedback/closeOutcome";
 import type { Verdict } from "../../domain/schemas/Verdict";
 import { applyVerdict } from "../../domain/scoring/applyVerdict";
+import { verdictToEvent } from "../../domain/scoring/verdictToEvent";
 import type { SetupStatus } from "../../domain/state-machine/setupTransitions";
 import { isActive } from "../../domain/state-machine/setupTransitions";
 import { feedbackLoopWorkflow, feedbackWorkflowId } from "../feedback/feedbackLoopWorkflow";
@@ -28,15 +28,7 @@ import { trackingLoop } from "./trackingLoop";
 // child workflow function by name at startChild time.
 export { feedbackLoopWorkflow };
 
-const SHARED_NON_RETRYABLE = [
-  "InvalidConfigError",
-  "AssetNotFoundError",
-  "LLMSchemaValidationError",
-  "PromptTooLargeError",
-  "NoProviderAvailableError",
-  "CircularFallbackError",
-  "StopRequestedError",
-];
+const SHARED_NON_RETRYABLE = [...UNRECOVERABLE_ERROR_NAMES];
 
 // LLM activities — fewer attempts, longer timeouts (LLM calls are slow + expensive).
 const llmActivities = proxyActivities<ReturnType<typeof activities.buildSetupActivities>>({
@@ -152,55 +144,8 @@ export type SetupWorkflowState = {
 
 export const getStateQuery = defineQuery<SetupWorkflowState>("getState");
 
-function verdictToEvent(verdict: Verdict): { type: EventTypeName; payload: EventPayload } {
-  switch (verdict.type) {
-    case "STRENGTHEN":
-      return {
-        type: "Strengthened",
-        payload: {
-          type: "Strengthened",
-          data: {
-            reasoning: verdict.reasoning,
-            observations: verdict.observations,
-            source: "reviewer_full",
-          },
-        },
-      };
-    case "WEAKEN":
-      return {
-        type: "Weakened",
-        payload: {
-          type: "Weakened",
-          data: {
-            reasoning: verdict.reasoning,
-            observations: verdict.observations,
-          },
-        },
-      };
-    case "NEUTRAL":
-      return {
-        type: "Neutral",
-        payload: {
-          type: "Neutral",
-          data: {
-            observations: verdict.observations,
-          },
-        },
-      };
-    case "INVALIDATE":
-      return {
-        type: "Invalidated",
-        payload: {
-          type: "Invalidated",
-          data: {
-            reason: verdict.reason,
-            trigger: "reviewer_verdict",
-            deterministic: false,
-          },
-        },
-      };
-  }
-}
+// `verdictToEvent` moved to `src/domain/scoring/verdictToEvent.ts` so the
+// replay workflow can share it (was duplicated verbatim across both).
 
 export async function setupWorkflow(initial: InitialEvidence): Promise<SetupStatus> {
   const state: SetupWorkflowState = {

@@ -1,12 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import type { WatchConfig } from "@domain/schemas/WatchesConfig";
+import { verdictToEvent } from "@domain/scoring/verdictToEvent";
 import {
   type AliveSetup,
   type ReplayActivityProxies,
   isOverCap,
   processTick,
   timeframeMinutes,
-  verdictToEvent,
   withReviewerPreview,
 } from "@workflows/replay/processTick";
 
