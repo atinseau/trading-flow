@@ -872,6 +872,84 @@ describe("POST /api/replay/sessions/:id/events/:eventId/promote", () => {
     expect(events).toHaveLength(1);
   });
 
+  test("REFINE → new lesson supersedes the old one (live lessons_events appended)", async () => {
+    const lessonStore = deps.lessonStore as InMemoryLessonStore;
+    const targetId = "66666666-6666-4666-8666-666666666666";
+    await lessonStore.create({
+      id: targetId,
+      watchId: "btc-1h",
+      category: "reviewing",
+      title: "Old wording",
+      body: "Old body body body body body body body body body body body body",
+      rationale: "old rationale",
+      promptVersion: "feedback_v1",
+      status: "ACTIVE",
+    });
+    const { sessionId, eventId } = await createSessionWithFeedbackProposal("REFINE", {
+      supersedesLessonId: targetId,
+    });
+    const res = await api.promoteFeedbackLesson(
+      new Request("http://x", { method: "POST" }),
+      { id: sessionId, eventId },
+    );
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as { lessonId: string; action: string };
+    expect(body.action).toBe("REFINE");
+    // New lesson exists (refined supersede creates a new row pointing at the old).
+    const newLesson = await lessonStore.getById(body.lessonId);
+    expect(newLesson?.supersedesLessonId).toBe(targetId);
+  });
+
+  test("REFINE → 404 when the supersedesLessonId points to a missing lesson", async () => {
+    const missingId = "77777777-7777-4777-8777-777777777777";
+    const { sessionId, eventId } = await createSessionWithFeedbackProposal("REFINE", {
+      supersedesLessonId: missingId,
+    });
+    const res = await api.promoteFeedbackLesson(
+      new Request("http://x", { method: "POST" }),
+      { id: sessionId, eventId },
+    );
+    expect(res.status).toBe(404);
+  });
+
+  test("DEPRECATE → flips the live lesson from ACTIVE to DEPRECATED", async () => {
+    const lessonStore = deps.lessonStore as InMemoryLessonStore;
+    const targetId = "88888888-8888-4888-8888-888888888888";
+    await lessonStore.create({
+      id: targetId,
+      watchId: "btc-1h",
+      category: "reviewing",
+      title: "About to be deprecated",
+      body: "Body body body body body body body body body body body body body body",
+      rationale: "rationale",
+      promptVersion: "feedback_v1",
+      status: "ACTIVE",
+    });
+    const { sessionId, eventId } = await createSessionWithFeedbackProposal("DEPRECATE", {
+      supersedesLessonId: targetId,
+    });
+    const res = await api.promoteFeedbackLesson(
+      new Request("http://x", { method: "POST" }),
+      { id: sessionId, eventId },
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { lessonId: string; action: string };
+    expect(body.action).toBe("DEPRECATE");
+    expect(body.lessonId).toBe(targetId);
+    const after = await lessonStore.getById(targetId);
+    expect(after?.status).toBe("DEPRECATED");
+  });
+
+  test("DEPRECATE → 400 when supersedesLessonId is missing", async () => {
+    const { sessionId, eventId } = await createSessionWithFeedbackProposal("DEPRECATE");
+    // No supersedesLessonId in the proposal payload.
+    const res = await api.promoteFeedbackLesson(
+      new Request("http://x", { method: "POST" }),
+      { id: sessionId, eventId },
+    );
+    expect(res.status).toBe(400);
+  });
+
   test("REINFORCE → incrementReinforced on the referenced live lesson", async () => {
     const lessonStore = deps.lessonStore as InMemoryLessonStore;
     const targetId = "55555555-5555-4555-8555-555555555555";

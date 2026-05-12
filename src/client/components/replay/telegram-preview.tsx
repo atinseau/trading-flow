@@ -2,10 +2,11 @@ import { Badge } from "@client/components/ui/badge";
 
 /**
  * Renders the Telegram message that would have been sent in production
- * by the corresponding event. In replay mode the message is captured by
- * NoopTelegramNotifier — never actually sent. Displayed with a clearly
- * muted style + (NEUTRALISÉ) badge so it can't be mistaken for a real
- * notification.
+ * by the corresponding event. In replay mode the message is formatted
+ * inline via `formatTelegramText` and attached as `data.telegramPreview`
+ * on the persisted event — never actually sent to Telegram. Displayed
+ * with a clearly muted style + (NEUTRALISÉ) badge so it can't be
+ * mistaken for a real notification.
  */
 export function TelegramPreview(props: { text: string }) {
   return (

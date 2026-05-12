@@ -79,9 +79,14 @@ export type ReplayWorkflowState = {
 export const getReplayStateQuery = defineQuery<ReplayWorkflowState>("getReplayState");
 
 // --- Activity proxies --------------------------------------------------------
+// Timeouts + retry policies aligned on the project standard (see
+// `setupWorkflow` / `schedulerWorkflow`) so a contributor jumping between
+// workflows finds the same numbers.
 
-const llm = proxyActivities<ReturnType<typeof replayActivities.buildReplayActivities>>({
-  startToCloseTimeout: "180s",
+const llmActivities = proxyActivities<
+  ReturnType<typeof replayActivities.buildReplayActivities>
+>({
+  startToCloseTimeout: "120s",
   retry: {
     maximumAttempts: 3,
     initialInterval: "2s",
@@ -91,11 +96,13 @@ const llm = proxyActivities<ReturnType<typeof replayActivities.buildReplayActivi
   },
 });
 
-const db = proxyActivities<ReturnType<typeof replayActivities.buildReplayActivities>>({
-  startToCloseTimeout: "20s",
+const dbActivities = proxyActivities<
+  ReturnType<typeof replayActivities.buildReplayActivities>
+>({
+  startToCloseTimeout: "10s",
   retry: {
     maximumAttempts: 5,
-    initialInterval: "200ms",
+    initialInterval: "100ms",
     maximumInterval: "5s",
     backoffCoefficient: 2,
     nonRetryableErrorTypes: [...UNRECOVERABLE_ERROR_NAMES],
@@ -107,7 +114,7 @@ const db = proxyActivities<ReturnType<typeof replayActivities.buildReplayActivit
 export async function replaySessionWorkflow(args: ReplaySessionWorkflowArgs): Promise<void> {
   // Load the session once at start. Config snapshot is immutable for the
   // session's lifetime (spec §10 invariant 5), so we trust the cached copy.
-  const { session } = await db.loadReplaySession({ sessionId: args.sessionId });
+  const { session } = await dbActivities.loadReplaySession({ sessionId: args.sessionId });
   const watch = session.configSnapshot;
 
   const queue: string[] = [];
@@ -136,7 +143,7 @@ export async function replaySessionWorkflow(args: ReplaySessionWorkflowArgs): Pr
     kind: "paused" | "resumed" | "cost_capped" | "failed" | "reset",
     reason?: string,
   ): void {
-    void db
+    void dbActivities
       .appendReplayEvent({
         sessionId: args.sessionId,
         event: {
@@ -191,7 +198,7 @@ export async function replaySessionWorkflow(args: ReplaySessionWorkflowArgs): Pr
       emitReplayMeta("failed", a.reason ?? "user_terminated");
       // Fire-and-forget the persist; workflow exits in the main loop on
       // next condition check.
-      void db
+      void dbActivities
         .updateReplaySessionStatus({
           sessionId: args.sessionId,
           status: "FAILED",
@@ -227,7 +234,7 @@ export async function replaySessionWorkflow(args: ReplaySessionWorkflowArgs): Pr
     tickInProgress = true;
     try {
       const { costUsd: cost } = await processTick(
-        { llm, db },
+        { llm: llmActivities, db: dbActivities },
         {
           sessionId: args.sessionId,
           watch,
@@ -252,7 +259,7 @@ export async function replaySessionWorkflow(args: ReplaySessionWorkflowArgs): Pr
           "cost_capped",
           `cumulative cost $${costUsdSoFar.toFixed(2)} >= cap $${session.costCapUsd.toFixed(2)}`,
         );
-        await db.updateReplaySessionStatus({
+        await dbActivities.updateReplaySessionStatus({
           sessionId: args.sessionId,
           status: "COST_CAPPED",
         });
@@ -261,7 +268,7 @@ export async function replaySessionWorkflow(args: ReplaySessionWorkflowArgs): Pr
       // Completion guard: if we've reached the window end, finalize.
       if (new Date(tickAt) >= session.windowEndAt) {
         status = "COMPLETED";
-        await db.updateReplaySessionStatus({
+        await dbActivities.updateReplaySessionStatus({
           sessionId: args.sessionId,
           status: "COMPLETED",
         });
@@ -278,7 +285,7 @@ export async function replaySessionWorkflow(args: ReplaySessionWorkflowArgs): Pr
       if (isUnrecoverableError(err)) {
         status = "FAILED";
         emitReplayMeta("failed", reason);
-        await db.updateReplaySessionStatus({
+        await dbActivities.updateReplaySessionStatus({
           sessionId: args.sessionId,
           status: "FAILED",
           failureReason: reason,
@@ -289,7 +296,7 @@ export async function replaySessionWorkflow(args: ReplaySessionWorkflowArgs): Pr
       paused = true;
       status = "PAUSED";
       emitReplayMeta("paused", `transient: ${reason}`);
-      await db.updateReplaySessionStatus({
+      await dbActivities.updateReplaySessionStatus({
         sessionId: args.sessionId,
         status: "PAUSED",
         failureReason: `transient: ${reason}`,
