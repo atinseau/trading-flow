@@ -149,6 +149,75 @@ describe("simulateCandleTracking — LONG", () => {
   });
 });
 
+describe("simulateCandleTracking — PriceInvalidated", () => {
+  test("invalidation level breached before SL → PriceInvalidated, no SLHit", async () => {
+    // LONG : invalidation @ 29_400, SL @ 29_500. Both below entry ; the
+    // invalidation is the "deeper" structural break.
+    const s = initialTrackingState({
+      direction: "LONG",
+      entry: 30_000,
+      stopLoss: 29_500,
+      takeProfit: [30_500],
+      invalidationLevel: 29_400,
+    });
+    // Fill on a candle that touches entry.
+    simulateCandleTracking(
+      s,
+      candle({ ts: "2026-04-29T12:00:00Z", o: 29_900, h: 30_100, l: 29_900, c: 30_050 }),
+    );
+    // Next candle dives below both SL AND invalidation. Invalidation wins
+    // because we check it BEFORE the SL.
+    const evts = simulateCandleTracking(
+      s,
+      candle({ ts: "2026-04-29T13:00:00Z", o: 30_050, h: 30_100, l: 29_300, c: 29_400 }),
+    );
+    expect(evts.map((e) => e.kind)).toEqual(["PriceInvalidated"]);
+    expect(closeReasonFromState(s)).toBe("price_invalidated");
+    expect(s.priceInvalidated).toBe(true);
+  });
+
+  test("when invalidationLevel === stopLoss → falls back to SLHit only", async () => {
+    // Default (no invalidationLevel arg) sets invalidation = stopLoss.
+    // Avoid double-firing on the same level.
+    const s = initialTrackingState({
+      direction: "LONG",
+      entry: 30_000,
+      stopLoss: 29_500,
+      takeProfit: [30_500],
+    });
+    simulateCandleTracking(
+      s,
+      candle({ ts: "2026-04-29T12:00:00Z", o: 29_900, h: 30_100, l: 29_900, c: 30_050 }),
+    );
+    const evts = simulateCandleTracking(
+      s,
+      candle({ ts: "2026-04-29T13:00:00Z", o: 30_050, h: 30_100, l: 29_400, c: 29_500 }),
+    );
+    expect(evts.map((e) => e.kind)).toEqual(["SLHit"]);
+    expect(closeReasonFromState(s)).toBe("sl_hit_direct");
+  });
+
+  test("SHORT invalidation : price spikes above invalidation level", async () => {
+    const s = initialTrackingState({
+      direction: "SHORT",
+      entry: 30_000,
+      stopLoss: 30_500,
+      takeProfit: [29_500],
+      invalidationLevel: 30_600,
+    });
+    simulateCandleTracking(
+      s,
+      candle({ ts: "2026-04-29T12:00:00Z", o: 30_100, h: 30_100, l: 29_900, c: 29_950 }),
+    );
+    const evts = simulateCandleTracking(
+      s,
+      candle({ ts: "2026-04-29T13:00:00Z", o: 29_950, h: 30_700, l: 29_900, c: 30_650 }),
+    );
+    expect(evts.map((e) => e.kind)).toEqual(["PriceInvalidated"]);
+    expect(closeReasonFromState(s)).toBe("price_invalidated");
+  });
+});
+
 describe("simulateCandleTracking — SHORT", () => {
   test("SHORT happy path : entry then TP", () => {
     const s = initialTrackingState({

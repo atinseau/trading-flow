@@ -409,12 +409,14 @@ export function buildReplayActivities(deps: ReplayActivityDeps) {
      *    them.
      *  - History is sourced from `replay_events` filtered by setup.id, not
      *    the live event store.
-     *  - HTF context is fetched with `endTime = tickAt` to keep the replay
-     *    deterministic.
-     *  - HTF round-2 chart reload (the tool-call pattern) is intentionally
-     *    NOT implemented yet — the wire field `request_additional` is
-     *    discarded just like in live. Adding the second round is a future
-     *    follow-up; not blocking for J2 first-pass.
+     *  - HTF context + HTF round-2 chart are both fetched with
+     *    `endTime = tickAt` to keep the replay deterministic.
+     *  - HTF round-2 chart reload is implemented faithfully : if the
+     *    reviewer emits `request_additional.htfChart`, we render a daily
+     *    chart anchored at `tickAt` and replay the LLM call with both
+     *    images attached. The second round becomes the final verdict ;
+     *    cost + tokens are recorded as a separate `reviewer_htf_chart`
+     *    stage in `replay_llm_calls`.
      *  - Returns the persisted verdict only; the workflow handles event
      *    persistence to `replay_events` (mirrors live separation).
      */
@@ -507,7 +509,7 @@ export function buildReplayActivities(deps: ReplayActivityDeps) {
         wrappedProviders,
       );
 
-      const cacheHit = wasCacheHit(round1.output);
+      const round1CacheHit = wasCacheHit(round1.output);
       const promptVersion = deps.promptBuilder.reviewerVersion;
 
       await deps.replayLlmCallStore.record({
@@ -522,35 +524,105 @@ export function buildReplayActivities(deps: ReplayActivityDeps) {
         cacheCreateTokens: round1.output.cacheWriteTokens ?? 0,
         costUsd: round1.output.costUsd,
         latencyMs: round1.output.latencyMs,
-        cacheHit,
+        cacheHit: round1CacheHit,
       });
-      if (!cacheHit && round1.output.costUsd > 0) {
+      if (!round1CacheHit && round1.output.costUsd > 0) {
         await deps.sessionsRepo.incrementCost(input.sessionId, round1.output.costUsd);
       }
 
-      // Strip request_additional before persisting — the HTF round-2 reload
-      // is not yet implemented in replay (see method docstring). Live mirrors
-      // this strip after the optional round-2 run.
-      const llmOut = round1.output.parsed as ReviewerLlmOutput;
-      const { request_additional: _unused, ...persistedFields } = llmOut;
+      // Round 2 (on-demand) — mirrors live `runReviewer`. If the reviewer
+      // asked for the HTF chart, render a daily chart anchored at `tickAt`
+      // and replay the call with both images attached. Only one extra
+      // round (no recursion). The cache-hit short-circuit still works :
+      // identical inputs across replays produce identical chart URIs
+      // (content-addressable artifact store) → cache hits.
+      let finalParsed = round1.output.parsed as ReviewerLlmOutput;
+      let totalCost = round1.output.costUsd;
+      let usedProvider = round1.usedProvider;
+      let effectivePromptVersion = promptVersion;
+      let aggregateCacheHit = round1CacheHit;
+      if (finalParsed.request_additional?.htfChart === true && reviewerFetcher) {
+        try {
+          const htfChartUri = await renderHtfChart({
+            chartRenderer: deps.chartRenderer,
+            indicatorCalculator: deps.indicatorCalculator,
+            indicatorRegistry: deps.indicatorRegistry,
+            artifactStore: deps.artifactStore,
+            fetcher: reviewerFetcher,
+            asset: watch.asset.symbol,
+            endTime: tickAt,
+          });
+          const round2Images = [
+            ...round1Images,
+            { sourceUri: htfChartUri, mimeType: inferImageMimeType(htfChartUri) },
+          ];
+          const round2 = await resolveAndCall(
+            watch.analyzers.reviewer.provider,
+            {
+              systemPrompt: deps.promptBuilder.reviewerSystemPrompt,
+              userPrompt: `${userPrompt}\n\n## Additional context: HTF (daily) chart attached as 2nd image\n\nThe daily chart you requested is now attached. Update your verdict with this extra structural context. Do NOT request additional artifacts in this round — answer with a final verdict.`,
+              images: round2Images,
+              model: watch.analyzers.reviewer.model,
+              maxTokens: watch.analyzers.reviewer.max_tokens,
+              responseSchema: ReviewerLlmOutputSchema,
+            },
+            wrappedProviders,
+          );
+          const round2CacheHit = wasCacheHit(round2.output);
+          await deps.replayLlmCallStore.record({
+            sessionId: input.sessionId,
+            setupId: input.setup.id,
+            stage: "reviewer_htf_chart",
+            provider: round2.usedProvider,
+            model: watch.analyzers.reviewer.model,
+            promptTokens: round2.output.promptTokens,
+            completionTokens: round2.output.completionTokens,
+            cacheReadTokens: round2.output.cacheReadTokens ?? 0,
+            cacheCreateTokens: round2.output.cacheWriteTokens ?? 0,
+            costUsd: round2.output.costUsd,
+            latencyMs: round2.output.latencyMs,
+            cacheHit: round2CacheHit,
+          });
+          if (!round2CacheHit && round2.output.costUsd > 0) {
+            await deps.sessionsRepo.incrementCost(input.sessionId, round2.output.costUsd);
+          }
+          finalParsed = round2.output.parsed as ReviewerLlmOutput;
+          totalCost += round2.output.costUsd;
+          usedProvider = round2.usedProvider;
+          effectivePromptVersion = `${promptVersion}+htf2`;
+          // The aggregate result is a cache hit only if BOTH rounds hit
+          // — the second run is the one with the final verdict.
+          aggregateCacheHit = aggregateCacheHit && round2CacheHit;
+        } catch (err) {
+          childLog.warn(
+            { err: (err as Error).message },
+            "HTF chart render/replay failed, falling back to round-1 verdict",
+          );
+        }
+      }
+
+      // Strip request_additional before persisting — live mirrors this
+      // strip after the optional round-2 run.
+      const { request_additional: _unused, ...persistedFields } = finalParsed;
       const verdict = VerdictSchema.parse(persistedFields) as Verdict;
 
       childLog.info(
         {
           verdict: verdict.type,
-          costUsd: round1.output.costUsd,
-          cacheHit,
+          costUsd: totalCost,
+          cacheHit: aggregateCacheHit,
+          htfRound2: effectivePromptVersion !== promptVersion,
         },
         "runReviewerReplay complete",
       );
 
       return {
         verdictJson: JSON.stringify(verdict),
-        costUsd: round1.output.costUsd,
-        promptVersion,
-        provider: round1.usedProvider,
+        costUsd: totalCost,
+        promptVersion: effectivePromptVersion,
+        provider: usedProvider,
         model: watch.analyzers.reviewer.model,
-        cacheHit,
+        cacheHit: aggregateCacheHit,
       };
     },
 

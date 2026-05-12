@@ -276,6 +276,51 @@ describe("runReviewerReplay", () => {
     expect(verdict).not.toHaveProperty("request_additional");
   });
 
+  test("HTF round-2 : request_additional.htfChart triggers a 2nd LLM call + reviewer_htf_chart stage", async () => {
+    const h = await buildHarness({
+      reviewerParsed: {
+        type: "STRENGTHEN",
+        scoreDelta: 5,
+        observations: [{ kind: "trend", text: "uptrend" }],
+        reasoning: "Need wider view.",
+        request_additional: { htfChart: true, reason: "want daily" },
+      },
+    });
+    const activities = buildReplayActivities(h.deps);
+    const chart = await h.deps.artifactStore.put({
+      kind: "chart_image",
+      content: Buffer.from("htf-test-chart"),
+      mimeType: "image/png",
+    });
+
+    const result = await activities.runReviewerReplay({
+      sessionId,
+      tickAt: h.tickAt.toISOString(),
+      setup: makeSetup(),
+      chartUri: chart.uri,
+      indicatorsJson: JSON.stringify({}),
+      lastClose: 30_500,
+    });
+
+    // Round-1 + Round-2 → LLM called twice.
+    expect(h.llm.callCount).toBe(2);
+    // The 2nd call should have two images (original chart + HTF chart).
+    expect(h.llm.callsLog[1]?.images?.length).toBe(2);
+
+    // Two llm_call rows : "reviewer" (round-1) + "reviewer_htf_chart" (round-2).
+    expect(h.replayLlmCallStore.calls).toHaveLength(2);
+    expect(h.replayLlmCallStore.calls[0]?.stage).toBe("reviewer");
+    expect(h.replayLlmCallStore.calls[1]?.stage).toBe("reviewer_htf_chart");
+
+    // promptVersion is tagged with `+htf2`.
+    expect(result.promptVersion).toMatch(/\+htf2$/);
+
+    // Cost reflects both rounds (0.25 × 2 = 0.50).
+    expect(result.costUsd).toBeCloseTo(0.5, 5);
+    const session = await h.sessionsRepo.get(sessionId);
+    expect(session?.costUsdSoFar).toBeCloseTo(0.5, 5);
+  });
+
   test("loads history scoped to setup.id from replay_events only", async () => {
     const h = await buildHarness();
     // Append events: one matching setup, one for an unrelated setup.

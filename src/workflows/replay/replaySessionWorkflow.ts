@@ -1,6 +1,7 @@
 import {
   formatConfirmedPreview,
   formatExpiredPreview,
+  formatInvalidatedAfterConfirmedPreview,
   formatRejectedPreview,
   formatReviewerVerdictPreview,
   formatSLHitPreview,
@@ -163,6 +164,32 @@ export async function replaySessionWorkflow(args: ReplaySessionWorkflowArgs): Pr
       : "READY";
   const alive = new Map<string, AliveSetup>();
 
+  /**
+   * Fire-and-forget emission of a session-level `ReplayMeta` event. Used
+   * from signal handlers (which can't await) and from the main loop on
+   * cost-cap / failure transitions, so the UI's event log surfaces
+   * paused / resumed / cost_capped / failed milestones.
+   */
+  function emitReplayMeta(
+    kind: "paused" | "resumed" | "cost_capped" | "failed" | "reset",
+    reason?: string,
+  ): void {
+    void db
+      .appendReplayEvent({
+        sessionId: args.sessionId,
+        event: {
+          setupId: null,
+          occurredAt: new Date(),
+          stage: "replay-meta",
+          actor: "replay-workflow",
+          type: "ReplayMeta",
+          scoreDelta: 0,
+          payload: { type: "ReplayMeta", data: { kind, reason } },
+        },
+      })
+      .catch(() => undefined);
+  }
+
   // ----- signal/query handlers must be registered before any await. -----
 
   setHandler(replayTickSignal, (a) => {
@@ -171,17 +198,22 @@ export async function replaySessionWorkflow(args: ReplaySessionWorkflowArgs): Pr
     for (const t of incoming) queue.push(t);
   });
   setHandler(pauseSignal, () => {
+    if (status !== "READY") return;
     paused = true;
-    if (status === "READY") status = "PAUSED";
+    status = "PAUSED";
+    emitReplayMeta("paused", "user_pause");
   });
   setHandler(resumeSignal, () => {
+    if (status !== "PAUSED") return;
     paused = false;
-    if (status === "PAUSED") status = "READY";
+    status = "READY";
+    emitReplayMeta("resumed", "user_resume");
   });
   setHandler(terminateSignal, (a) => {
     terminated = true;
     if (status === "READY" || status === "PAUSED") {
       status = "FAILED";
+      emitReplayMeta("failed", a.reason ?? "user_terminated");
       // Fire-and-forget the persist; workflow exits in the main loop on
       // next condition check.
       void db
@@ -237,6 +269,10 @@ export async function replaySessionWorkflow(args: ReplaySessionWorkflowArgs): Pr
       // honored by the activities themselves).
       if (costUsdSoFar >= session.costCapUsd) {
         status = "COST_CAPPED";
+        emitReplayMeta(
+          "cost_capped",
+          `cumulative cost $${costUsdSoFar.toFixed(2)} >= cap $${session.costCapUsd.toFixed(2)}`,
+        );
         await db.updateReplaySessionStatus({
           sessionId: args.sessionId,
           status: "COST_CAPPED",
@@ -262,6 +298,7 @@ export async function replaySessionWorkflow(args: ReplaySessionWorkflowArgs): Pr
       // (network, rate limit, market data outage).
       if (isUnrecoverableError(err)) {
         status = "FAILED";
+        emitReplayMeta("failed", reason);
         await db.updateReplaySessionStatus({
           sessionId: args.sessionId,
           status: "FAILED",
@@ -272,6 +309,7 @@ export async function replaySessionWorkflow(args: ReplaySessionWorkflowArgs): Pr
       // Recoverable : pause + remember reason for the UI.
       paused = true;
       status = "PAUSED";
+      emitReplayMeta("paused", `transient: ${reason}`);
       await db.updateReplaySessionStatus({
         sessionId: args.sessionId,
         status: "PAUSED",
@@ -614,6 +652,9 @@ async function processTick(
         entry: decision.entry,
         stopLoss: decision.stop_loss,
         takeProfit: decision.take_profit,
+        // Carry the structural-break level captured at SetupCreated so the
+        // tracker can fire `PriceInvalidated` distinctly from the SL.
+        invalidationLevel: setup.snapshot.invalidationLevel ?? decision.stop_loss,
       });
       setup.scoreAtConfirmation = setup.runtime.score;
       const confirmedPreview = setup.snapshot.direction
@@ -727,8 +768,14 @@ async function processTick(
           await persistTrackerEvent(sessionId, setup, evt);
         }
         if (setup.tracking.closed) {
-          // Mark setup as CLOSED in the runtime state ; finalize the close.
-          setup.runtime = { ...setup.runtime, status: "CLOSED" };
+          // `PriceInvalidated` closes the setup as INVALIDATED ; SL/all-TPs
+          // close as CLOSED. The persistTrackerEvent helper already emitted
+          // the right `statusAfter` on the event itself ; we mirror it on
+          // the in-memory runtime so subsequent guards see the right state.
+          setup.runtime = {
+            ...setup.runtime,
+            status: setup.tracking.priceInvalidated ? "INVALIDATED" : "CLOSED",
+          };
           const reason = closeReasonFromState(setup.tracking);
           if (reason !== null) {
             // Trigger feedback analysis (Wiring 4). The activity itself
@@ -840,6 +887,39 @@ async function persistTrackerEvent(
           data: {
             level: evt.level,
             observedAt: evt.observedAt.toISOString(),
+            telegramPreview: preview,
+          },
+        },
+      },
+    });
+    return;
+  }
+  if (evt.kind === "PriceInvalidated") {
+    const preview = formatInvalidatedAfterConfirmedPreview({
+      asset: setup.snapshot.asset,
+      timeframe: setup.snapshot.timeframe,
+      reason: "price_below_invalidation",
+    });
+    await db.appendReplayEvent({
+      sessionId,
+      event: {
+        setupId: setup.id,
+        occurredAt: evt.observedAt,
+        stage: "tracker",
+        actor: "replay-tracker",
+        type: "Invalidated",
+        scoreDelta: 0,
+        scoreAfter: setup.runtime.score,
+        statusBefore: beforeStatus,
+        statusAfter: "INVALIDATED",
+        payload: {
+          type: "Invalidated",
+          data: {
+            reason: "price_below_invalidation",
+            trigger: "tracker",
+            priceAtInvalidation: evt.currentPrice,
+            invalidationLevel: evt.invalidationLevel,
+            deterministic: true,
             telegramPreview: preview,
           },
         },
