@@ -5,6 +5,8 @@ import type { WatchConfig } from "@domain/schemas/WatchesConfig";
 import { FakeClock } from "../../fakes/FakeClock";
 import { FakeMarketDataFetcher } from "../../fakes/FakeMarketDataFetcher";
 import { FakeReplaySignalSender } from "../../fakes/FakeReplaySignalSender";
+import { InMemoryLessonEventStore } from "../../fakes/InMemoryLessonEventStore";
+import { InMemoryLessonStore } from "../../fakes/InMemoryLessonStore";
 import { InMemoryLiveEventQueryByWindow } from "../../fakes/InMemoryLiveEventQueryByWindow";
 import { InMemoryLLMResponseCacheStore } from "../../fakes/InMemoryLLMResponseCacheStore";
 import { InMemoryReplayEventStore } from "../../fakes/InMemoryReplayEventStore";
@@ -60,6 +62,8 @@ beforeEach(() => {
     marketDataFetchers,
     clock: new FakeClock(new Date("2026-05-08T12:00:00.000Z")),
     signaller,
+    lessonStore: new InMemoryLessonStore(),
+    lessonEventStore: new InMemoryLessonEventStore(),
   };
   api = makeReplayApi(deps);
 });
@@ -752,5 +756,152 @@ describe("DELETE /api/replay/sessions/:id with terminate side-effect", () => {
     // Session is gone from the in-memory repo.
     const after = await deps.sessionsRepo.get(id);
     expect(after).toBeNull();
+  });
+});
+
+describe("POST /api/replay/sessions/:id/events/:eventId/promote", () => {
+  async function createSessionWithFeedbackProposal(
+    action: "CREATE" | "REINFORCE" | "REFINE" | "DEPRECATE",
+    extra?: { supersedesLessonId?: string },
+  ): Promise<{ sessionId: string; eventId: string }> {
+    const created = await api.create(
+      postCreate({
+        watchId: "btc-1h",
+        windowStartAt: "2026-04-12T14:00:00.000Z",
+        windowEndAt: "2026-04-13T14:00:00.000Z",
+      }),
+    );
+    const { session } = (await created.json()) as { session: { id: string } };
+    const sessionId = session.id;
+    const replayEventStore = deps.replayEventStore as InMemoryReplayEventStore;
+    const evt = await replayEventStore.append(sessionId, {
+      setupId: "00000000-0000-4000-8000-000000000099",
+      occurredAt: new Date(),
+      stage: "feedback",
+      actor: "test",
+      type: "FeedbackLessonProposed",
+      scoreDelta: 0,
+      payload: {
+        type: "FeedbackLessonProposed",
+        data: {
+          action,
+          title: "Demand fresh volume above the prior swing high",
+          body: "When price approaches the prior swing high without a notable uptick in relative volume, downgrade the confluence rating.",
+          rationale: "Past failed setups consistently show flat volume at the contested level.",
+          sourceTradeSetupId: "00000000-0000-4000-8000-000000000099",
+          ...(extra?.supersedesLessonId
+            ? { supersedesLessonId: extra.supersedesLessonId }
+            : {}),
+        },
+      },
+    });
+    return { sessionId, eventId: evt.id };
+  }
+
+  test("CREATE → new lesson row in PENDING + CREATE lesson_event", async () => {
+    const { sessionId, eventId } = await createSessionWithFeedbackProposal("CREATE");
+    const res = await api.promoteFeedbackLesson(
+      new Request("http://x", { method: "POST" }),
+      { id: sessionId, eventId },
+    );
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as { lessonId: string; action: string };
+    expect(body.action).toBe("CREATE");
+    const lessonStore = deps.lessonStore as InMemoryLessonStore;
+    const lesson = await lessonStore.getById(body.lessonId);
+    expect(lesson?.status).toBe("PENDING");
+    expect(lesson?.title).toContain("fresh volume");
+  });
+
+  test("second promote on the same event returns alreadyPromoted=true (idempotent)", async () => {
+    const { sessionId, eventId } = await createSessionWithFeedbackProposal("CREATE");
+    await api.promoteFeedbackLesson(new Request("http://x", { method: "POST" }), {
+      id: sessionId,
+      eventId,
+    });
+    const second = await api.promoteFeedbackLesson(new Request("http://x", { method: "POST" }), {
+      id: sessionId,
+      eventId,
+    });
+    expect(second.status).toBe(200);
+    const body = (await second.json()) as { alreadyPromoted: boolean };
+    expect(body.alreadyPromoted).toBe(true);
+    // The live lesson_events store has exactly one row for this proposal.
+    const lessonEventStore = deps.lessonEventStore as InMemoryLessonEventStore;
+    const events = await lessonEventStore.findByInputHash({
+      watchId: "btc-1h",
+      inputHash: `replay-promote:${eventId}`,
+    });
+    expect(events).toHaveLength(1);
+  });
+
+  test("REINFORCE → incrementReinforced on the referenced live lesson", async () => {
+    const lessonStore = deps.lessonStore as InMemoryLessonStore;
+    const targetId = "55555555-5555-4555-8555-555555555555";
+    await lessonStore.create({
+      id: targetId,
+      watchId: "btc-1h",
+      category: "reviewing",
+      title: "Existing lesson",
+      body: "Body of the existing lesson xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      rationale: "rationale",
+      promptVersion: "feedback_v1",
+      status: "ACTIVE",
+    });
+    const { sessionId, eventId } = await createSessionWithFeedbackProposal("REINFORCE", {
+      supersedesLessonId: targetId,
+    });
+    const res = await api.promoteFeedbackLesson(
+      new Request("http://x", { method: "POST" }),
+      { id: sessionId, eventId },
+    );
+    expect(res.status).toBe(200);
+    const after = await lessonStore.getById(targetId);
+    expect(after?.timesReinforced).toBe(1);
+  });
+
+  test("404 when the event id doesn't exist", async () => {
+    const created = await api.create(
+      postCreate({
+        watchId: "btc-1h",
+        windowStartAt: "2026-04-12T14:00:00.000Z",
+        windowEndAt: "2026-04-13T14:00:00.000Z",
+      }),
+    );
+    const { session } = (await created.json()) as { session: { id: string } };
+    const res = await api.promoteFeedbackLesson(
+      new Request("http://x", { method: "POST" }),
+      { id: session.id, eventId: "ffffffff-ffff-4fff-8fff-ffffffffffff" },
+    );
+    expect(res.status).toBe(404);
+  });
+
+  test("400 when the event is not a FeedbackLessonProposed", async () => {
+    const created = await api.create(
+      postCreate({
+        watchId: "btc-1h",
+        windowStartAt: "2026-04-12T14:00:00.000Z",
+        windowEndAt: "2026-04-13T14:00:00.000Z",
+      }),
+    );
+    const { session } = (await created.json()) as { session: { id: string } };
+    const replayEventStore = deps.replayEventStore as InMemoryReplayEventStore;
+    const evt = await replayEventStore.append(session.id, {
+      setupId: null,
+      occurredAt: new Date(),
+      stage: "detector",
+      actor: "test",
+      type: "DetectorTickProcessed",
+      scoreDelta: 0,
+      payload: {
+        type: "DetectorTickProcessed",
+        data: { ignoreReason: null },
+      },
+    });
+    const res = await api.promoteFeedbackLesson(
+      new Request("http://x", { method: "POST" }),
+      { id: session.id, eventId: evt.id },
+    );
+    expect(res.status).toBe(400);
   });
 });

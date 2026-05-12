@@ -2,7 +2,7 @@ import { Badge } from "@client/components/ui/badge";
 import { Button } from "@client/components/ui/button";
 import { Slider } from "@client/components/ui/slider";
 import { timeframeToMinutes } from "@client/lib/timeframe";
-import { Loader2, Pause, Play, SkipForward, StepForward } from "lucide-react";
+import { Loader2, Pause, Play, Square, SkipForward, StepForward } from "lucide-react";
 
 /**
  * Step controls for a replay session.
@@ -29,6 +29,10 @@ export function ReplayControls(props: {
   onStep: (tickAts: Date[]) => void;
   onPause: () => void;
   onResume: () => void;
+  /** Auto-step toggle. The parent owns the loop : it dispatches one step
+   *  per tick interval until cancelled or a terminal state is reached. */
+  autoStepActive: boolean;
+  onToggleAuto: () => void;
 }) {
   const start = props.windowStartAt.getTime();
   const end = props.windowEndAt.getTime();
@@ -78,6 +82,24 @@ export function ReplayControls(props: {
           <SkipForward className="size-3.5" />
           Step 5
         </Button>
+        <Button
+          size="sm"
+          variant={props.autoStepActive ? "default" : "outline"}
+          disabled={terminal || capped || props.status !== "READY"}
+          title={
+            props.autoStepActive
+              ? "Stopper l'auto-step"
+              : "Auto-step : avance d'une bougie toutes les ~800ms"
+          }
+          onClick={props.onToggleAuto}
+        >
+          {props.autoStepActive ? (
+            <Square className="size-3.5" />
+          ) : (
+            <Play className="size-3.5" />
+          )}
+          {props.autoStepActive ? "Stop auto" : "Auto"}
+        </Button>
         {props.status === "PAUSED" ? (
           <Button size="sm" variant="outline" disabled={terminal} onClick={props.onResume}>
             <Play className="size-3.5" />
@@ -87,7 +109,7 @@ export function ReplayControls(props: {
           <Button
             size="sm"
             variant="outline"
-            disabled={terminal || capped || props.status !== "READY"}
+            disabled={terminal || capped || props.status !== "READY" || props.autoStepActive}
             onClick={props.onPause}
           >
             <Pause className="size-3.5" />

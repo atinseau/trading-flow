@@ -29,7 +29,13 @@ function extractTelegramText(event: ReplayEventRow): string | null {
   return payload.data?.telegramPreview ?? null;
 }
 
-export function CurrentPhaseCard({ event }: { event: ReplayEventRow | null }) {
+export function CurrentPhaseCard({
+  event,
+  sessionId,
+}: {
+  event: ReplayEventRow | null;
+  sessionId: string;
+}) {
   if (!event) {
     return (
       <div className="rounded-md border bg-card p-3 text-xs text-muted-foreground italic">
@@ -88,7 +94,7 @@ export function CurrentPhaseCard({ event }: { event: ReplayEventRow | null }) {
       </div>
 
       {event.type === "FeedbackLessonProposed" ? (
-        <FeedbackAnalysisCard event={event} />
+        <FeedbackAnalysisCard event={event} sessionId={sessionId} />
       ) : (
         <>
           {reasoning && (

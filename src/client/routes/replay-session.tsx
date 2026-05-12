@@ -11,10 +11,11 @@ import { Button } from "@client/components/ui/button";
 import { Skeleton } from "@client/components/ui/skeleton";
 import { useReplaySteps } from "@client/hooks/useReplaySteps";
 import { api } from "@client/lib/api";
+import { timeframeToMinutes } from "@client/lib/timeframe";
 import { cn } from "@client/lib/utils";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Trash2 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
 const STATUS_BADGE: Record<ReplaySessionStatus, string> = {
@@ -48,6 +49,10 @@ export function Component() {
   const [activeSetupId, setActiveSetupId] = useState<string | null>(null);
   const [focusedEventId, setFocusedEventId] = useState<string | null>(null);
   const [scrubMs, setScrubMs] = useState<number | null>(null);
+  const [autoStepActive, setAutoStepActive] = useState(false);
+  // Track the last tickAt we dispatched so the auto-step loop advances
+  // even if the React Query invalidations haven't refetched yet.
+  const lastDispatchedMsRef = useRef<number | null>(null);
 
   const windowStartAt = session.data ? new Date(session.data.windowStartAt) : null;
   const windowEndAt = session.data ? new Date(session.data.windowEndAt) : null;
@@ -64,6 +69,42 @@ export function Component() {
     }
     return lastEventBefore(events.data, playheadAt.getTime(), activeSetupId);
   }, [events.data, focusedEventId, playheadAt, activeSetupId]);
+
+  // Auto-step loop : while active, fire one step per AUTO_STEP_DELAY_MS.
+  // The loop self-stops on terminal status, cost cap, end-of-window, or
+  // when the user toggles off. Each iteration dispatches a single step
+  // signal and relies on `step.isPending` to gate the next iteration so
+  // we don't pile up signals faster than the worker drains them.
+  // The 800ms delay is fast enough to feel automated, slow enough for
+  // the human eye to follow the chart updating.
+  useEffect(() => {
+    if (!autoStepActive) return;
+    if (!session.data || !ohlcv.data || !windowEndAt) return;
+    if (step.isPending) return;
+    const status = session.data.status;
+    if (status === "COMPLETED" || status === "FAILED" || status === "COST_CAPPED") {
+      setAutoStepActive(false);
+      return;
+    }
+    const tfMs = timeframeToMinutes(ohlcv.data.timeframe) * 60_000;
+    const baseMs =
+      lastDispatchedMsRef.current ??
+      (scrubMs !== null ? scrubMs : new Date(session.data.windowStartAt).getTime());
+    const nextMs = Math.min(baseMs + tfMs, windowEndAt.getTime());
+    if (nextMs <= baseMs) {
+      // We're already at the end — exit auto.
+      setAutoStepActive(false);
+      return;
+    }
+    const handle = window.setTimeout(() => {
+      const next = new Date(nextMs);
+      step.mutate({ tickAt: next.toISOString() });
+      lastDispatchedMsRef.current = nextMs;
+      setScrubMs(nextMs);
+      setFocusedEventId(null);
+    }, 800);
+    return () => window.clearTimeout(handle);
+  }, [autoStepActive, session.data, ohlcv.data, windowEndAt, step.isPending, step.mutate, scrubMs]);
 
   const del = useMutation({
     mutationFn: () => api(`/api/replay/sessions/${sessionId}`, { method: "DELETE" }),
@@ -177,11 +218,19 @@ export function Component() {
           // chart immediately reflects where the workflow is heading ;
           // events will land asynchronously.
           const last = tickAts[tickAts.length - 1];
-          if (last) setScrubMs(last.getTime());
+          if (last) {
+            setScrubMs(last.getTime());
+            lastDispatchedMsRef.current = last.getTime();
+          }
           setFocusedEventId(null);
         }}
-        onPause={() => pause.mutate()}
+        onPause={() => {
+          setAutoStepActive(false);
+          pause.mutate();
+        }}
         onResume={() => resume.mutate()}
+        autoStepActive={autoStepActive}
+        onToggleAuto={() => setAutoStepActive((v) => !v)}
       />
 
       {/* Two-column: left = chart already above; below: tabs/list + log */}
@@ -222,7 +271,7 @@ export function Component() {
           <h3 className="text-xs uppercase tracking-wide text-muted-foreground mb-2">
             Phase courante
           </h3>
-          <CurrentPhaseCard event={focusedEvent} />
+          <CurrentPhaseCard event={focusedEvent} sessionId={sessionId} />
         </div>
       </div>
     </div>

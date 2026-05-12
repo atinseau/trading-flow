@@ -5,6 +5,8 @@ import { PostgresLLMResponseCacheStore } from "@adapters/persistence/PostgresLLM
 import { PostgresReplayEventStore } from "@adapters/persistence/PostgresReplayEventStore";
 import { PostgresReplayLLMCallStore } from "@adapters/persistence/PostgresReplayLLMCallStore";
 import { PostgresReplaySessionRepository } from "@adapters/persistence/PostgresReplaySessionRepository";
+import { PostgresLessonEventStore } from "@adapters/persistence/PostgresLessonEventStore";
+import { PostgresLessonStore } from "@adapters/persistence/PostgresLessonStore";
 import { PostgresWatchRepository } from "@adapters/persistence/PostgresWatchRepository";
 import { TemporalScheduleController } from "@adapters/temporal/TemporalScheduleController";
 import { SystemClock } from "@adapters/time/SystemClock";
@@ -119,6 +121,10 @@ const replayApi = makeReplayApi({
   marketDataFetchers: replayMarketDataFetchers,
   clock: new SystemClock(),
   signaller: replaySignaller,
+  // Live stores for the "promote" endpoint only ; every other replay
+  // endpoint stays isolated from them.
+  lessonStore: new PostgresLessonStore(db),
+  lessonEventStore: new PostgresLessonEventStore(db),
 });
 
 const adminApi = makeAdminApi({
@@ -202,6 +208,9 @@ const server = Bun.serve({
     "/api/replay/sessions/:id/pause": { POST: withParams(replayApi.pause) },
     "/api/replay/sessions/:id/resume": { POST: withParams(replayApi.resume) },
     "/api/replay/sessions/:id/terminate": { POST: withParams(replayApi.terminate) },
+    "/api/replay/sessions/:id/events/:eventId/promote": {
+      POST: withParams(replayApi.promoteFeedbackLesson),
+    },
     "/api/watches/:id/force-tick": { POST: withParams(adminApi.forceTick) },
     "/api/watches/:id/pause": { POST: withParams(adminApi.pause) },
     "/api/watches/:id/resume": { POST: withParams(adminApi.resume) },

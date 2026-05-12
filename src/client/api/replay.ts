@@ -1,5 +1,7 @@
 import { NotFoundError, requireParam, safeHandler, ValidationError } from "@client/api/safeHandler";
 import type { Clock } from "@domain/ports/Clock";
+import type { LessonEventStore } from "@domain/ports/LessonEventStore";
+import type { LessonStore } from "@domain/ports/LessonStore";
 import type { LiveEventQueryByWindow } from "@domain/ports/LiveEventQueryByWindow";
 import type { LLMResponseCacheStore } from "@domain/ports/LLMResponseCacheStore";
 import type { MarketDataFetcher } from "@domain/ports/MarketDataFetcher";
@@ -36,6 +38,14 @@ export type ReplayApiDeps = {
    * Temporal server.
    */
   signaller: ReplaySignalSender;
+  /**
+   * Live lesson stores — used ONLY by the `promote` endpoint, which
+   * materializes a `FeedbackLessonProposed` replay event into the prod
+   * `lessons` / `lesson_events` tables. Every other endpoint stays
+   * strictly isolated from these (invariant 1).
+   */
+  lessonStore: LessonStore;
+  lessonEventStore: LessonEventStore;
 };
 
 const StepBodySchema = z
@@ -371,6 +381,200 @@ export function makeReplayApi(deps: ReplayApiDeps) {
         windowEndAt: session.windowEndAt.toISOString(),
         candles,
       });
+    }),
+
+    /**
+     * POST /api/replay/sessions/:id/events/:eventId/promote
+     *
+     * Materializes a `FeedbackLessonProposed` replay event into the live
+     * `lessons` / `lesson_events` tables. The user reviews the proposal
+     * in the UI ; when they're convinced it's a real lesson, they click
+     * "Promouvoir en prod" and this endpoint writes it to the live pool
+     * with status=PENDING (the existing /api/lessons/:id/approve flow
+     * then activates it).
+     *
+     * Idempotent : a second call for the same replay event returns 409
+     * Conflict with the existing lessonId in the body. Detected via
+     * `lesson_events.inputHash === "replay-promote:{eventId}"`.
+     *
+     * Discriminates by action :
+     *  - CREATE → new lesson row + CREATE lesson_event
+     *  - REINFORCE → incrementReinforced on the referenced lesson +
+     *    REINFORCE lesson_event
+     *  - REFINE → refineSupersede (new lesson row supersedes the old) +
+     *    REFINE lesson_event
+     *  - DEPRECATE → updateStatus(ACTIVE → DEPRECATED) + DEPRECATE
+     *    lesson_event
+     */
+    promoteFeedbackLesson: safeHandler(async (_req, params) => {
+      const sessionId = requireParam(params, "id");
+      const eventId = requireParam(params, "eventId");
+      const session = await deps.sessionsRepo.get(sessionId);
+      if (!session) throw new NotFoundError(`replay session ${sessionId} not found`);
+
+      const allEvents = await deps.replayEventStore.listBySession(sessionId);
+      const evt = allEvents.find((e) => e.id === eventId);
+      if (!evt) throw new NotFoundError(`replay event ${eventId} not found`);
+      if (evt.type !== "FeedbackLessonProposed") {
+        throw new ValidationError(`event ${eventId} is not a FeedbackLessonProposed`);
+      }
+
+      // Idempotence check : has this event already been promoted ?
+      const inputHash = `replay-promote:${eventId}`;
+      const prior = await deps.lessonEventStore.findByInputHash({
+        watchId: session.watchId,
+        inputHash,
+      });
+      if (prior.length > 0) {
+        const first = prior[0];
+        return Response.json(
+          { ok: true, alreadyPromoted: true, lessonId: first?.lessonId ?? null },
+          { status: 200 },
+        );
+      }
+
+      const payload = evt.payload as { type: "FeedbackLessonProposed"; data: {
+        action: "CREATE" | "REINFORCE" | "REFINE" | "DEPRECATE";
+        title: string;
+        body: string;
+        rationale: string;
+        sourceTradeSetupId: string;
+        supersedesLessonId?: string;
+      } };
+      const data = payload.data;
+      const triggerCloseReason = `promoted_from_replay:${sessionId}`;
+      const actor = `replay-promote:${session.id.slice(0, 8)}`;
+      const promotedVersion = `replay-promoted:${evt.promptVersion ?? "unknown"}`;
+
+      if (data.action === "CREATE") {
+        // CREATE proposals don't have a category in the payload, but the
+        // feedback prompt produces one — it's stored in the live proposed
+        // action shape. Replay event payload trims it (see
+        // `mapActionToProposedPayload`), so we default to "reviewing"
+        // which is the most common ; the user can re-categorize via the
+        // existing lessons admin UI before approving.
+        const newId = crypto.randomUUID();
+        const lessonEvt = await deps.lessonEventStore.append({
+          watchId: session.watchId,
+          lessonId: newId,
+          type: "CREATE",
+          actor,
+          triggerSetupId: data.sourceTradeSetupId,
+          triggerCloseReason,
+          payload: {
+            type: "CREATE",
+            data: {
+              category: "reviewing",
+              title: data.title,
+              body: data.body,
+              rationale: data.rationale,
+            },
+          },
+          promptVersion: promotedVersion,
+          inputHash,
+        });
+        await deps.lessonStore.create({
+          id: newId,
+          watchId: session.watchId,
+          category: "reviewing",
+          title: data.title,
+          body: data.body,
+          rationale: data.rationale,
+          promptVersion: promotedVersion,
+          sourceFeedbackEventId: lessonEvt.id,
+          status: "PENDING",
+        });
+        return Response.json({ ok: true, lessonId: newId, action: "CREATE" }, { status: 201 });
+      }
+      if (data.action === "REINFORCE") {
+        if (!data.supersedesLessonId) {
+          throw new ValidationError("REINFORCE payload missing supersedesLessonId");
+        }
+        await deps.lessonEventStore.append({
+          watchId: session.watchId,
+          lessonId: data.supersedesLessonId,
+          type: "REINFORCE",
+          actor,
+          triggerSetupId: data.sourceTradeSetupId,
+          triggerCloseReason,
+          payload: { type: "REINFORCE", data: { reason: data.rationale } },
+          promptVersion: promotedVersion,
+          inputHash,
+        });
+        await deps.lessonStore.incrementReinforced(data.supersedesLessonId);
+        return Response.json(
+          { ok: true, lessonId: data.supersedesLessonId, action: "REINFORCE" },
+          { status: 200 },
+        );
+      }
+      if (data.action === "REFINE") {
+        if (!data.supersedesLessonId) {
+          throw new ValidationError("REFINE payload missing supersedesLessonId");
+        }
+        const oldLesson = await deps.lessonStore.getById(data.supersedesLessonId);
+        if (!oldLesson) {
+          throw new NotFoundError(`lesson ${data.supersedesLessonId} not found`);
+        }
+        const newId = crypto.randomUUID();
+        const lessonEvt = await deps.lessonEventStore.append({
+          watchId: session.watchId,
+          lessonId: newId,
+          type: "REFINE",
+          actor,
+          triggerSetupId: data.sourceTradeSetupId,
+          triggerCloseReason,
+          payload: {
+            type: "REFINE",
+            data: {
+              supersedesLessonId: data.supersedesLessonId,
+              before: { title: oldLesson.title, body: oldLesson.body },
+              after: { title: data.title, body: data.body },
+              rationale: data.rationale,
+            },
+          },
+          promptVersion: promotedVersion,
+          inputHash,
+        });
+        await deps.lessonStore.refineSupersede({
+          newId,
+          watchId: session.watchId,
+          category: oldLesson.category,
+          oldLessonId: data.supersedesLessonId,
+          newTitle: data.title,
+          newBody: data.body,
+          rationale: data.rationale,
+          promptVersion: promotedVersion,
+          sourceFeedbackEventId: lessonEvt.id,
+        });
+        return Response.json({ ok: true, lessonId: newId, action: "REFINE" }, { status: 201 });
+      }
+      if (data.action === "DEPRECATE") {
+        if (!data.supersedesLessonId) {
+          throw new ValidationError("DEPRECATE payload missing supersedesLessonId");
+        }
+        await deps.lessonEventStore.append({
+          watchId: session.watchId,
+          lessonId: data.supersedesLessonId,
+          type: "DEPRECATE",
+          actor,
+          triggerSetupId: data.sourceTradeSetupId,
+          triggerCloseReason,
+          payload: { type: "DEPRECATE", data: { reason: data.rationale } },
+          promptVersion: promotedVersion,
+          inputHash,
+        });
+        await deps.lessonStore.updateStatus({
+          lessonId: data.supersedesLessonId,
+          fromStatus: "ACTIVE",
+          toStatus: "DEPRECATED",
+          occurredAt: deps.clock.now(),
+        });
+        return Response.json(
+          { ok: true, lessonId: data.supersedesLessonId, action: "DEPRECATE" },
+          { status: 200 },
+        );
+      }
+      throw new ValidationError(`unknown action: ${data.action}`);
     }),
   };
 }
