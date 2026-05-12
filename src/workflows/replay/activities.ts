@@ -6,6 +6,10 @@ import { extractObservations, extractReasoning } from "@domain/events/payloadAcc
 import type { CloseReason } from "@domain/feedback/closeOutcome";
 import type { LessonAction, LessonCategory } from "@domain/feedback/lessonAction";
 import type { NewReplayEvent, StoredReplayEvent } from "@domain/ports/ReplayEventStore";
+import {
+  buildReplayFeedbackContext,
+  type ReplayFeedbackChunk,
+} from "@domain/replay/feedbackContext";
 import { filterLessonsForReplay, type LessonLike } from "@domain/replay/lessonsLookup";
 import type { ReplaySession } from "@domain/replay/ReplaySession";
 import { buildDetectorOutputSchema } from "@domain/schemas/DetectorOutput";
@@ -814,11 +818,12 @@ export function buildReplayActivities(deps: ReplayActivityDeps) {
      *    `lessons` / `lesson_events` tables ; promotion to prod is a
      *    manual, user-driven step on the replay UI.
      *
-     * The feedback "context" passed to the LLM is minimal in this first
-     * pass — no chart / event-stream chunks. The bare close outcome +
-     * score + existing-lessons pool is enough to exercise the feedback
-     * loop's end-to-end shape for J2 ; richer context (replay-scoped
-     * event projections, chart artifacts at close) is a J3 follow-up.
+     * Feedback context is rich : `buildReplayFeedbackContext` assembles
+     * the same three chunks the live providers produce — setup timeline
+     * (markdown of `replay_events` filtered to the setup), post-mortem
+     * OHLCV (markdown table of candles from confirmedAt → close + 4h),
+     * post-mortem chart (rendered image of the full setup window). The
+     * LLM sees the same shape as in live, modulo the data source.
      */
     async runFeedbackAnalysisReplay(
       input: RunFeedbackAnalysisReplayInput,
@@ -898,13 +903,39 @@ export function buildReplayActivities(deps: ReplayActivityDeps) {
 
       const feedbackPrompt = await loadPrompt("feedback");
       const closeOutcome = { reason: input.closeReason, everConfirmed: input.everConfirmed };
+
+      // Rich feedback context (Final 6). Builds the same three chunks the
+      // live providers produce — setup timeline, post-mortem OHLCV,
+      // post-mortem chart — but scoped to `replay_events`. The fetcher
+      // is shared with live ; its `fetchRange` is deterministic for the
+      // same (asset, timeframe, from, to) window so the cache stays
+      // sound across replay sessions.
+      const feedbackFetcher = deps.marketDataFetchers.get(watch.asset.source);
+      const setupEvents = (await deps.replayEventStore.listBySession(input.sessionId))
+        .filter((e) => e.setupId === input.setupId)
+        .sort((a, b) => a.sequence - b.sequence);
+      const contextChunks = feedbackFetcher
+        ? await buildReplayFeedbackContext(
+            {
+              marketDataFetcher: feedbackFetcher,
+              chartRenderer: deps.chartRenderer,
+              artifactStore: deps.artifactStore,
+            },
+            {
+              asset: watch.asset.symbol,
+              timeframe: watch.timeframes.primary,
+              setupEvents,
+            },
+          )
+        : [];
+
       const userPrompt = feedbackPrompt.render({
         closeOutcome,
         scoreAtClose: input.scoreAtClose,
         poolStats,
         maxActivePerCategory: cap,
         existingLessons: existingFlat,
-        contextChunks: [],
+        contextChunks,
       });
 
       const wrappedProviders = wrapLlmProvidersWithCache(
@@ -912,12 +943,24 @@ export function buildReplayActivities(deps: ReplayActivityDeps) {
         deps.cacheStore,
         feedbackPrompt.version,
       );
+      // Image chunks become LLM input images — same shape as live
+      // `runFeedbackAnalysis` produces from its FeedbackContextChunk[].
+      const llmImages = contextChunks
+        .filter(
+          (c): c is ReplayFeedbackChunk & { content: { kind: "image" } & { artifactUri: string; mimeType: string } } =>
+            c.content.kind === "image",
+        )
+        .map((c) => ({
+          sourceUri: c.content.artifactUri,
+          mimeType: c.content.mimeType,
+        }));
       const startedAt = Date.now();
       const result = await resolveAndCall(
         analyzer.provider,
         {
           systemPrompt: feedbackPrompt.systemPrompt,
           userPrompt,
+          images: llmImages.length > 0 ? llmImages : undefined,
           model: analyzer.model,
           responseSchema: FeedbackOutputSchema,
         },
