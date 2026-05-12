@@ -47,7 +47,7 @@ export type TrackerEvent =
       invalidationLevel: number;
       observedAt: Date;
     }
-  | { kind: "TrailingMoved"; newStopLoss: number; reason: string };
+  | { kind: "TrailingMoved"; newStopLoss: number; reason: string; observedAt: Date };
 
 /**
  * Outcome semantics expected by the feedback loop when the setup closes
@@ -199,6 +199,7 @@ export function simulateCandleTracking(
         kind: "TrailingMoved",
         newStopLoss: state.entry,
         reason: "tp1_hit_move_to_breakeven",
+        observedAt: candle.timestamp,
       });
     }
     if (isFinal) {

@@ -1128,6 +1128,7 @@ function mapActionToProposedPayload(
   sourceTradeSetupId: string,
 ): {
   action: "CREATE" | "REINFORCE" | "REFINE" | "DEPRECATE";
+  category?: LessonCategory;
   title: string;
   body: string;
   rationale: string;
@@ -1136,8 +1137,13 @@ function mapActionToProposedPayload(
 } {
   switch (action.type) {
     case "CREATE":
+      // Propagate the LLM-chosen category so a later `promote` action
+      // lands the lesson in the correct pool. Previously stripped → all
+      // CREATE proposals defaulted to "reviewing" at promote time, even
+      // when the LLM had explicitly picked detector / finalizer.
       return {
         action: "CREATE",
+        category: action.category,
         title: action.title,
         body: action.body,
         rationale: action.rationale,

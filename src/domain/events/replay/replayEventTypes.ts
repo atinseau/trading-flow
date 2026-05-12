@@ -32,6 +32,13 @@ export const ReplayMetaPayload = z.object({
 /** A lesson proposed by the feedback loop during replay (never auto-promoted). */
 export const FeedbackLessonProposedPayload = z.object({
   action: z.enum(["CREATE", "REINFORCE", "REFINE", "DEPRECATE"]),
+  /**
+   * Stage the lesson targets. Required for CREATE proposals so a later
+   * `promote` action lands the lesson in the right pool (detector /
+   * reviewer / finalizer). Optional for REINFORCE / REFINE / DEPRECATE
+   * because the target lesson already carries its own category.
+   */
+  category: z.enum(["detecting", "reviewing", "finalizing"]).optional(),
   title: z.string(),
   body: z.string(),
   rationale: z.string(),

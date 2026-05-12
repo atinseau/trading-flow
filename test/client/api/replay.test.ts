@@ -762,7 +762,11 @@ describe("DELETE /api/replay/sessions/:id with terminate side-effect", () => {
 describe("POST /api/replay/sessions/:id/events/:eventId/promote", () => {
   async function createSessionWithFeedbackProposal(
     action: "CREATE" | "REINFORCE" | "REFINE" | "DEPRECATE",
-    extra?: { supersedesLessonId?: string },
+    extra?: {
+      supersedesLessonId?: string;
+      category?: "detecting" | "reviewing" | "finalizing";
+      omitCategory?: boolean;
+    },
   ): Promise<{ sessionId: string; eventId: string }> {
     const created = await api.create(
       postCreate({
@@ -785,6 +789,12 @@ describe("POST /api/replay/sessions/:id/events/:eventId/promote", () => {
         type: "FeedbackLessonProposed",
         data: {
           action,
+          // Default to "reviewing" for CREATE proposals so existing tests
+          // keep their semantics ; pass `omitCategory: true` to exercise
+          // the legacy-event guard in the promote endpoint.
+          ...(action === "CREATE" && !extra?.omitCategory
+            ? { category: extra?.category ?? "reviewing" }
+            : {}),
           title: "Demand fresh volume above the prior swing high",
           body: "When price approaches the prior swing high without a notable uptick in relative volume, downgrade the confluence rating.",
           rationale: "Past failed setups consistently show flat volume at the contested level.",
@@ -811,6 +821,33 @@ describe("POST /api/replay/sessions/:id/events/:eventId/promote", () => {
     const lesson = await lessonStore.getById(body.lessonId);
     expect(lesson?.status).toBe("PENDING");
     expect(lesson?.title).toContain("fresh volume");
+  });
+
+  test("CREATE category is propagated from the payload (no hardcoded reviewing)", async () => {
+    const { sessionId, eventId } = await createSessionWithFeedbackProposal("CREATE", {
+      category: "detecting",
+    });
+    const res = await api.promoteFeedbackLesson(
+      new Request("http://x", { method: "POST" }),
+      { id: sessionId, eventId },
+    );
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as { lessonId: string; category: string };
+    expect(body.category).toBe("detecting");
+    const lessonStore = deps.lessonStore as InMemoryLessonStore;
+    const lesson = await lessonStore.getById(body.lessonId);
+    expect(lesson?.category).toBe("detecting");
+  });
+
+  test("400 when CREATE legacy event lacks category (predates the fix)", async () => {
+    const { sessionId, eventId } = await createSessionWithFeedbackProposal("CREATE", {
+      omitCategory: true,
+    });
+    const res = await api.promoteFeedbackLesson(
+      new Request("http://x", { method: "POST" }),
+      { id: sessionId, eventId },
+    );
+    expect(res.status).toBe(400);
   });
 
   test("second promote on the same event returns alreadyPromoted=true (idempotent)", async () => {

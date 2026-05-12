@@ -223,8 +223,14 @@ describe("runFeedbackAnalysisReplay", () => {
     expect(events[0]?.type).toBe("FeedbackLessonProposed");
     expect(events[0]?.stage).toBe("feedback");
     expect(events[0]?.setupId).toBe(setupId);
-    const payload = events[0]?.payload as { type: string; data: { action: string } };
+    const payload = events[0]?.payload as {
+      type: string;
+      data: { action: string; category?: string };
+    };
     expect(payload.data.action).toBe("CREATE");
+    // The LLM picked category "reviewing" in the default feedbackOutput ;
+    // mapActionToProposedPayload must propagate it.
+    expect(payload.data.category).toBe("reviewing");
   });
 
   test("does NOT mutate the live lessons store, even when proposals reference existing lessons", async () => {

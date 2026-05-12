@@ -239,6 +239,32 @@ describe("simulateCandleTracking — SHORT", () => {
     expect(s.currentSL).toBe(30_000);
   });
 
+  test("TrailingMoved fires with candle.timestamp (deterministic, not wall-clock)", () => {
+    const s = initialTrackingState({
+      direction: "LONG",
+      entry: 30_000,
+      stopLoss: 29_500,
+      takeProfit: [30_500, 31_000],
+    });
+    simulateCandleTracking(
+      s,
+      candle({ ts: "2026-04-29T12:00:00Z", o: 29_900, h: 30_100, l: 29_900, c: 30_050 }),
+    );
+    const tp1Candle = candle({
+      ts: "2026-04-29T13:00:00Z",
+      o: 30_100,
+      h: 30_600,
+      l: 30_050,
+      c: 30_500,
+    });
+    const evts = simulateCandleTracking(s, tp1Candle);
+    const trailing = evts.find((e) => e.kind === "TrailingMoved");
+    expect(trailing).toBeDefined();
+    if (trailing?.kind === "TrailingMoved") {
+      expect(trailing.observedAt.toISOString()).toBe(tp1Candle.timestamp.toISOString());
+    }
+  });
+
   test("SHORT SL hit", () => {
     const s = initialTrackingState({
       direction: "SHORT",

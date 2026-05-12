@@ -195,7 +195,20 @@ export async function replaySessionWorkflow(args: ReplaySessionWorkflowArgs): Pr
   setHandler(replayTickSignal, (a) => {
     if (terminated || status === "COMPLETED" || status === "FAILED") return;
     const incoming = a.tickAts ?? (a.tickAt ? [a.tickAt] : []);
-    for (const t of incoming) queue.push(t);
+    // Inv 4 (spec §10) : the workflow itself MUST refuse playheads
+    // outside the session window. The API already validates incoming
+    // bodies, but signals can arrive from anywhere (tests, mis-typed
+    // calls, future programmatic callers). A `tickAt` outside the
+    // window would consume LLM budget before the post-tick guard
+    // catches it ; cheaper to drop here.
+    const startMs = session.windowStartAt.getTime();
+    const endMs = session.windowEndAt.getTime();
+    for (const t of incoming) {
+      const tMs = new Date(t).getTime();
+      if (Number.isNaN(tMs)) continue;
+      if (tMs < startMs || tMs > endMs) continue;
+      queue.push(t);
+    }
   });
   setHandler(pauseSignal, () => {
     if (status !== "READY") return;
@@ -927,12 +940,14 @@ async function persistTrackerEvent(
     });
     return;
   }
-  // TrailingMoved — no Telegram in live, no preview here.
+  // TrailingMoved — no Telegram in live, no preview here. Use the
+  // candle's `observedAt` (not wall-clock) so the timeline stays
+  // deterministic (spec §10 invariant 7).
   await db.appendReplayEvent({
     sessionId,
     event: {
       setupId: setup.id,
-      occurredAt: new Date(),
+      occurredAt: evt.observedAt,
       stage: "tracker",
       actor: "replay-tracker",
       type: "TrailingMoved",

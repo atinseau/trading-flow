@@ -435,6 +435,7 @@ export function makeReplayApi(deps: ReplayApiDeps) {
 
       const payload = evt.payload as { type: "FeedbackLessonProposed"; data: {
         action: "CREATE" | "REINFORCE" | "REFINE" | "DEPRECATE";
+        category?: "detecting" | "reviewing" | "finalizing";
         title: string;
         body: string;
         rationale: string;
@@ -447,12 +448,18 @@ export function makeReplayApi(deps: ReplayApiDeps) {
       const promotedVersion = `replay-promoted:${evt.promptVersion ?? "unknown"}`;
 
       if (data.action === "CREATE") {
-        // CREATE proposals don't have a category in the payload, but the
-        // feedback prompt produces one — it's stored in the live proposed
-        // action shape. Replay event payload trims it (see
-        // `mapActionToProposedPayload`), so we default to "reviewing"
-        // which is the most common ; the user can re-categorize via the
-        // existing lessons admin UI before approving.
+        // The LLM-chosen category is propagated through the
+        // FeedbackLessonProposed payload (`mapActionToProposedPayload`
+        // now preserves it). Refuse to promote a CREATE that lacks a
+        // category — that would force an arbitrary default and route the
+        // lesson to the wrong stage. Replay events created before the
+        // category was added are rejected here ; the user can re-run
+        // the feedback analysis to produce a fresh proposal.
+        if (!data.category) {
+          throw new ValidationError(
+            "CREATE proposal missing `category` (legacy replay event predating the category fix). Re-run the feedback analysis to generate a fresh proposal.",
+          );
+        }
         const newId = crypto.randomUUID();
         const lessonEvt = await deps.lessonEventStore.append({
           watchId: session.watchId,
@@ -464,7 +471,7 @@ export function makeReplayApi(deps: ReplayApiDeps) {
           payload: {
             type: "CREATE",
             data: {
-              category: "reviewing",
+              category: data.category,
               title: data.title,
               body: data.body,
               rationale: data.rationale,
@@ -476,7 +483,7 @@ export function makeReplayApi(deps: ReplayApiDeps) {
         await deps.lessonStore.create({
           id: newId,
           watchId: session.watchId,
-          category: "reviewing",
+          category: data.category,
           title: data.title,
           body: data.body,
           rationale: data.rationale,
@@ -484,7 +491,10 @@ export function makeReplayApi(deps: ReplayApiDeps) {
           sourceFeedbackEventId: lessonEvt.id,
           status: "PENDING",
         });
-        return Response.json({ ok: true, lessonId: newId, action: "CREATE" }, { status: 201 });
+        return Response.json(
+          { ok: true, lessonId: newId, action: "CREATE", category: data.category },
+          { status: 201 },
+        );
       }
       if (data.action === "REINFORCE") {
         if (!data.supersedesLessonId) {
