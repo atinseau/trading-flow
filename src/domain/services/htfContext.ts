@@ -26,11 +26,18 @@ export async function computeHtfContext(deps: {
   marketDataFetcher: MarketDataFetcher;
   asset: string;
   livePrice: number;
+  /**
+   * Optional upper bound for the daily slice. Replay passes the session
+   * `tickAt` to keep the historical fetch deterministic ; live omits it
+   * so the fetcher returns the window ending "now".
+   */
+  endTime?: Date;
 }): Promise<HtfContext> {
   const dailies = await deps.marketDataFetcher.fetchOHLCV({
     asset: deps.asset,
     timeframe: "1d",
     limit: 30,
+    endTime: deps.endTime,
   });
   return summarizeHtf(dailies, deps.livePrice);
 }

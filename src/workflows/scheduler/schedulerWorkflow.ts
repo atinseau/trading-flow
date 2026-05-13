@@ -9,18 +9,11 @@ import {
   startChild,
   uuid4,
 } from "@temporalio/workflow";
+import { UNRECOVERABLE_ERROR_NAMES } from "../../domain/errors";
 import { type InitialEvidence, setupWorkflow } from "../setup/setupWorkflow";
 import type * as schedulerActivities from "./activities";
 
-const SHARED_NON_RETRYABLE = [
-  "InvalidConfigError",
-  "AssetNotFoundError",
-  "LLMSchemaValidationError",
-  "PromptTooLargeError",
-  "NoProviderAvailableError",
-  "CircularFallbackError",
-  "StopRequestedError",
-];
+const SHARED_NON_RETRYABLE = [...UNRECOVERABLE_ERROR_NAMES];
 
 // Fetch (HTTP / Playwright render) — network is flaky, retry aggressively.
 const fetchActivities = proxyActivities<

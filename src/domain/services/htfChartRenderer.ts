@@ -20,11 +20,18 @@ export async function renderHtfChart(deps: {
   artifactStore: ArtifactStore;
   fetcher: MarketDataFetcher;
   asset: string;
+  /**
+   * Optional upper bound for the daily slice. Replay passes the session
+   * `tickAt` to render the chart that would have existed at that moment ;
+   * live omits it so the fetcher returns the window ending "now".
+   */
+  endTime?: Date;
 }): Promise<string> {
   const dailies = await deps.fetcher.fetchOHLCV({
     asset: deps.asset,
     timeframe: "1d",
     limit: 200, // EMA200 warm-up window
+    endTime: deps.endTime,
   });
 
   const slice = dailies.slice(-60); // last ~2 months for the LLM

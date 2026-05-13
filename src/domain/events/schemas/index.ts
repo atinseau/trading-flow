@@ -1,3 +1,8 @@
+import {
+  DetectorTickProcessedPayload,
+  FeedbackLessonProposedPayload,
+  ReplayMetaPayload,
+} from "@domain/events/replay/replayEventTypes";
 import { ObservationSchema } from "@domain/schemas/Verdict";
 import { z } from "zod";
 
@@ -10,12 +15,22 @@ const KeyLevelsSchema = z.object({
   entry: z.number().optional(),
 });
 
+/**
+ * Optional preview of the Telegram message a live worker would have sent
+ * for this event. Set only by the replay workflow (see
+ * `formatReplayTelegramPreview`) — live events never carry it. The
+ * replay UI uses it to render a "NEUTRALISÉ" badge next to events that
+ * would have notified the user in production.
+ */
+const TelegramPreviewField = { telegramPreview: z.string().optional() } as const;
+
 export const SetupCreatedPayload = z.object({
   pattern: z.string(),
   direction: z.enum(["LONG", "SHORT"]),
   keyLevels: KeyLevelsSchema,
   initialScore: z.number().min(0).max(100),
   rawObservation: z.string(),
+  ...TelegramPreviewField,
 });
 
 const FreshDataSummary = z.object({
@@ -28,12 +43,14 @@ export const StrengthenedPayload = z.object({
   observations: z.array(ObservationSchema),
   source: z.enum(["reviewer_full", "detector_corroboration"]),
   freshDataSummary: FreshDataSummary.optional(),
+  ...TelegramPreviewField,
 });
 
 export const WeakenedPayload = z.object({
   reasoning: z.string(),
   observations: z.array(ObservationSchema),
   freshDataSummary: FreshDataSummary.optional(),
+  ...TelegramPreviewField,
 });
 
 export const NeutralPayload = z.object({
@@ -46,6 +63,7 @@ export const InvalidatedPayload = z.object({
   priceAtInvalidation: z.number().optional(),
   invalidationLevel: z.number().optional(),
   deterministic: z.boolean(),
+  ...TelegramPreviewField,
 });
 
 export const ConfirmedPayload = z.object({
@@ -55,11 +73,13 @@ export const ConfirmedPayload = z.object({
   takeProfit: z.array(z.number()).min(1),
   reasoning: z.string(),
   notificationMessageId: z.number().optional(),
+  ...TelegramPreviewField,
 });
 
 export const RejectedPayload = z.object({
   decision: z.literal("NO_GO"),
   reasoning: z.string(),
+  ...TelegramPreviewField,
 });
 
 export const EntryFilledPayload = z.object({
@@ -71,11 +91,13 @@ export const TPHitPayload = z.object({
   level: z.number(),
   index: z.number().int().nonnegative(),
   observedAt: z.iso.datetime(),
+  ...TelegramPreviewField,
 });
 
 export const SLHitPayload = z.object({
   level: z.number(),
   observedAt: z.iso.datetime(),
+  ...TelegramPreviewField,
 });
 
 export const TrailingMovedPayload = z.object({
@@ -86,6 +108,7 @@ export const TrailingMovedPayload = z.object({
 export const ExpiredPayload = z.object({
   reason: z.literal("ttl_reached"),
   ttlExpiresAt: z.iso.datetime(),
+  ...TelegramPreviewField,
 });
 
 export const PriceInvalidatedPayload = z.object({
@@ -98,6 +121,7 @@ export const KilledPayload = z.object({
   /** Free-text reason. Currently always "user_killed_via_telegram"; reserved
       for future kill triggers (e.g. budget cap, schedule override). */
   reason: z.string(),
+  ...TelegramPreviewField,
 });
 
 export const EventPayloadSchema = z.discriminatedUnion("type", [
@@ -115,6 +139,10 @@ export const EventPayloadSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("Expired"), data: ExpiredPayload }),
   z.object({ type: z.literal("PriceInvalidated"), data: PriceInvalidatedPayload }),
   z.object({ type: z.literal("Killed"), data: KilledPayload }),
+  // Replay-only event types — appear in replay_events, never in live events.
+  z.object({ type: z.literal("DetectorTickProcessed"), data: DetectorTickProcessedPayload }),
+  z.object({ type: z.literal("ReplayMeta"), data: ReplayMetaPayload }),
+  z.object({ type: z.literal("FeedbackLessonProposed"), data: FeedbackLessonProposedPayload }),
 ]);
 
 export type EventPayload = z.infer<typeof EventPayloadSchema>;

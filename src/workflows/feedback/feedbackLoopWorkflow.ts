@@ -1,16 +1,9 @@
 import { proxyActivities } from "@temporalio/workflow";
+import { UNRECOVERABLE_ERROR_NAMES } from "../../domain/errors";
 import type { CloseOutcome } from "../../domain/feedback/closeOutcome";
 import type * as activities from "./activities";
 
-const SHARED_NON_RETRYABLE = [
-  "InvalidConfigError",
-  "AssetNotFoundError",
-  "LLMSchemaValidationError",
-  "PromptTooLargeError",
-  "NoProviderAvailableError",
-  "CircularFallbackError",
-  "StopRequestedError",
-];
+const SHARED_NON_RETRYABLE = [...UNRECOVERABLE_ERROR_NAMES];
 
 // Context activity — moderate timeout, few retries (mostly DB + artifact I/O).
 const contextActivity = proxyActivities<ReturnType<typeof activities.buildFeedbackActivities>>({

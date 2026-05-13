@@ -1,15 +1,8 @@
 import { condition, defineSignal, proxyActivities, setHandler } from "@temporalio/workflow";
+import { UNRECOVERABLE_ERROR_NAMES } from "../../domain/errors";
 import type * as activities from "./activities";
 
-const SHARED_NON_RETRYABLE = [
-  "InvalidConfigError",
-  "AssetNotFoundError",
-  "LLMSchemaValidationError",
-  "PromptTooLargeError",
-  "NoProviderAvailableError",
-  "CircularFallbackError",
-  "StopRequestedError",
-];
+const SHARED_NON_RETRYABLE = [...UNRECOVERABLE_ERROR_NAMES];
 
 // DB / persistence activities — many fast retries (transient DB blips).
 const dbActivities = proxyActivities<ReturnType<typeof activities.buildSetupActivities>>({

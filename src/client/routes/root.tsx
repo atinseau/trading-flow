@@ -54,6 +54,15 @@ export function RootLayout() {
             >
               Live events
             </NavLink>
+            <NavLink
+              to="/performance"
+              className={({ isActive }) => (isActive ? "text-foreground" : "")}
+            >
+              Performance
+            </NavLink>
+            <NavLink to="/replay" className={({ isActive }) => (isActive ? "text-foreground" : "")}>
+              Replay
+            </NavLink>
             <NavLink to="/costs" className={({ isActive }) => (isActive ? "text-foreground" : "")}>
               Coûts
             </NavLink>

@@ -1,3 +1,13 @@
+import { BinanceFetcher } from "@adapters/market-data/BinanceFetcher";
+import { YahooFinanceFetcher } from "@adapters/market-data/YahooFinanceFetcher";
+import { PostgresLiveEventQueryByWindow } from "@adapters/persistence/PostgresLiveEventQueryByWindow";
+import { PostgresLLMResponseCacheStore } from "@adapters/persistence/PostgresLLMResponseCacheStore";
+import { PostgresReplayEventStore } from "@adapters/persistence/PostgresReplayEventStore";
+import { PostgresReplayLLMCallStore } from "@adapters/persistence/PostgresReplayLLMCallStore";
+import { PostgresReplaySessionRepository } from "@adapters/persistence/PostgresReplaySessionRepository";
+import { PostgresLessonEventStore } from "@adapters/persistence/PostgresLessonEventStore";
+import { PostgresLessonStore } from "@adapters/persistence/PostgresLessonStore";
+import { PostgresWatchRepository } from "@adapters/persistence/PostgresWatchRepository";
 import { TemporalScheduleController } from "@adapters/temporal/TemporalScheduleController";
 import { SystemClock } from "@adapters/time/SystemClock";
 import { makeAdminApi } from "@client/api/admin";
@@ -6,6 +16,8 @@ import { makeCostsApi } from "@client/api/costs";
 import { makeEventsApi } from "@client/api/events";
 import { health } from "@client/api/health";
 import { makeLessonsApi } from "@client/api/lessons";
+import { makePerfApi } from "@client/api/perf";
+import { makeReplayApi } from "@client/api/replay";
 import { search } from "@client/api/search";
 import { makeSetupsApi } from "@client/api/setups";
 import { makeStreamHandler } from "@client/api/stream";
@@ -21,6 +33,10 @@ import { applyReload } from "@config/applyReload";
 import { bootstrapWatch } from "@config/bootstrapWatch";
 import { tearDownWatch } from "@config/tearDownWatch";
 import { forceTick, killSetup, pauseWatch, resumeWatch } from "@config/watchOps";
+import {
+  type ReplaySignalSender,
+  TemporalReplaySignalSender,
+} from "@workflows/replay/replaySignals";
 import index from "./index.html";
 
 const port = Number(process.env.WEB_PORT ?? 8084);
@@ -57,6 +73,59 @@ const eventsApi = makeEventsApi({ db });
 const ticksApi = makeTicksApi({ db });
 const costsApi = makeCostsApi({ db });
 const lessonsApi = makeLessonsApi({ db });
+const perfApi = makePerfApi({ db });
+
+// Replay API — Jalon 1: no Temporal client wired yet (step/pause/resume
+// endpoints will be added in Jalon 2). Activities and adapters are
+// composed here from the shared `db` to keep the wiring single-shot.
+const replayMarketDataFetchers = new Map<
+  string,
+  import("@domain/ports/MarketDataFetcher").MarketDataFetcher
+>();
+replayMarketDataFetchers.set("binance", new BinanceFetcher());
+replayMarketDataFetchers.set("yahoo", new YahooFinanceFetcher());
+/**
+ * Lazy signaller — the Temporal client is created on first call and
+ * cached. Avoids forcing a Temporal connection on web boot when the user
+ * only ever browses live data (the schedulerWorker + analysisWorker
+ * already do the same lazy pattern via getTemporalClient).
+ */
+const REPLAY_TASK_QUEUE = process.env.REPLAY_TASK_QUEUE ?? "replay";
+let cachedSignaller: ReplaySignalSender | null = null;
+async function getReplaySignaller(): Promise<ReplaySignalSender> {
+  if (cachedSignaller) return cachedSignaller;
+  const client = await getTemporalClient();
+  cachedSignaller = new TemporalReplaySignalSender(client, REPLAY_TASK_QUEUE);
+  return cachedSignaller;
+}
+
+/**
+ * Lazy-resolving signaller façade. The API holds this object at boot ;
+ * each method resolves the underlying client only when actually
+ * invoked, keeping web startup fast.
+ */
+const replaySignaller: ReplaySignalSender = {
+  step: (args) => getReplaySignaller().then((s) => s.step(args)),
+  pause: (args) => getReplaySignaller().then((s) => s.pause(args)),
+  resume: (args) => getReplaySignaller().then((s) => s.resume(args)),
+  terminate: (args) => getReplaySignaller().then((s) => s.terminate(args)),
+};
+
+const replayApi = makeReplayApi({
+  sessionsRepo: new PostgresReplaySessionRepository(db),
+  replayEventStore: new PostgresReplayEventStore(db),
+  replayLlmCallStore: new PostgresReplayLLMCallStore(db),
+  cacheStore: new PostgresLLMResponseCacheStore(db),
+  liveEventQuery: new PostgresLiveEventQueryByWindow(db),
+  watchRepo: new PostgresWatchRepository(db),
+  marketDataFetchers: replayMarketDataFetchers,
+  clock: new SystemClock(),
+  signaller: replaySignaller,
+  // Live stores for the "promote" endpoint only ; every other replay
+  // endpoint stays isolated from them.
+  lessonStore: new PostgresLessonStore(db),
+  lessonEventStore: new PostgresLessonEventStore(db),
+});
 
 const adminApi = makeAdminApi({
   ops: {
@@ -121,6 +190,27 @@ const server = Bun.serve({
     "/api/ticks": { GET: (req) => ticksApi.list(req) },
     "/api/ticks/:id/chart.png": { GET: withParams(ticksApi.chartPng) },
     "/api/costs": { GET: (req) => costsApi.aggregations(req) },
+    "/api/perf": { GET: (req) => perfApi.perf(req) },
+    "/api/replay/sessions": {
+      GET: (req) => replayApi.list(req),
+      POST: (req) => replayApi.create(req),
+    },
+    "/api/replay/sessions/:id": {
+      GET: withParams(replayApi.get),
+      DELETE: withParams(replayApi.delete),
+    },
+    "/api/replay/sessions/:id/events": { GET: withParams(replayApi.events) },
+    "/api/replay/sessions/:id/setups": { GET: withParams(replayApi.setupsProjection) },
+    "/api/replay/sessions/:id/ohlcv": { GET: withParams(replayApi.ohlcv) },
+    "/api/replay/sessions/:id/cost-breakdown": { GET: withParams(replayApi.costBreakdown) },
+    "/api/replay/sessions/:id/llm-calls": { GET: withParams(replayApi.llmCalls) },
+    "/api/replay/sessions/:id/step": { POST: withParams(replayApi.step) },
+    "/api/replay/sessions/:id/pause": { POST: withParams(replayApi.pause) },
+    "/api/replay/sessions/:id/resume": { POST: withParams(replayApi.resume) },
+    "/api/replay/sessions/:id/terminate": { POST: withParams(replayApi.terminate) },
+    "/api/replay/sessions/:id/events/:eventId/promote": {
+      POST: withParams(replayApi.promoteFeedbackLesson),
+    },
     "/api/watches/:id/force-tick": { POST: withParams(adminApi.forceTick) },
     "/api/watches/:id/pause": { POST: withParams(adminApi.pause) },
     "/api/watches/:id/resume": { POST: withParams(adminApi.resume) },

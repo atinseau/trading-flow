@@ -5,6 +5,7 @@ import { SetupLessonsSpotlight } from "../components/lessons/setup-lessons-spotl
 import type { SetupEvent } from "../components/setup/events-timeline";
 import { KeyLevels } from "../components/setup/key-levels";
 import { NarrativeTimeline } from "../components/setup/narrative-timeline";
+import { TradeOutcomeCard } from "../components/setup/trade-outcome-card";
 import { type Candle, type Level, TVChart } from "../components/setup/tv-chart";
 import { ConfirmAction } from "../components/shared/confirm-action";
 import { Badge } from "../components/ui/badge";
@@ -28,6 +29,13 @@ type Setup = {
   outcome: string | null;
   createdAt: string;
   closedAt: string | null;
+  // Trade perf metrics — null when setup never reached EntryFilled.
+  entryPrice: string | null;
+  stopLoss: string | null;
+  exitPrice: string | null;
+  exitReason: string | null;
+  pnlPct: string | null;
+  rMultiple: string | null;
 };
 
 const ACTIVE = new Set(["CANDIDATE", "REVIEWING", "FINALIZING", "TRACKING"]);
@@ -168,6 +176,20 @@ export function Component() {
           <span>{events.data?.length ?? 0} events</span>
         </div>
       </div>
+
+      <TradeOutcomeCard
+        s={{
+          direction: s.direction,
+          entryPrice: s.entryPrice,
+          stopLoss: s.stopLoss,
+          exitPrice: s.exitPrice,
+          exitReason: s.exitReason,
+          pnlPct: s.pnlPct,
+          rMultiple: s.rMultiple,
+          closedAt: s.closedAt,
+          outcome: s.outcome,
+        }}
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-[3fr_2fr] gap-6">
         {/* Left: chart + key levels */}

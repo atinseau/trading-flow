@@ -1,0 +1,118 @@
+/**
+ * Client-side mirrors of the backend types served by /api/replay/*.
+ * Kept manually in sync with src/domain/replay/* and src/client/api/replay.ts.
+ * If divergence becomes a maintenance burden, generate from a shared schema
+ * — but for v1 the duplication is small and explicit.
+ */
+
+import type { EventPayload } from "@domain/events/schemas";
+
+export type ReplaySessionStatus = "READY" | "PAUSED" | "COMPLETED" | "COST_CAPPED" | "FAILED";
+
+export type LessonsMode = "current" | "historical" | "disabled";
+export type FeedbackMode = "run" | "skip";
+
+export type ReplaySessionRow = {
+  id: string;
+  watchId: string;
+  name: string | null;
+  status: ReplaySessionStatus;
+  windowStartAt: string; // ISO
+  windowEndAt: string;
+  workflowId: string;
+  configSnapshot: Record<string, unknown>;
+  lessonsMode: LessonsMode;
+  feedbackMode: FeedbackMode;
+  costCapUsd: number;
+  costUsdSoFar: number;
+  failureReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ReplayEventRow = {
+  id: string;
+  sessionId: string;
+  setupId: string | null;
+  sequence: number;
+  occurredAt: string;
+  stage: string;
+  actor: string;
+  type: string;
+  scoreDelta: number;
+  scoreAfter: number | null;
+  statusBefore: string | null;
+  statusAfter: string | null;
+  payload: EventPayload;
+  provider: string | null;
+  model: string | null;
+  promptVersion: string | null;
+  inputHash: string | null;
+  latencyMs: number | null;
+  cacheHit: boolean;
+};
+
+export type SetupProjectionRow = {
+  setupId: string;
+  status: string;
+  direction: "LONG" | "SHORT" | null;
+  patternHint: string | null;
+  currentScore: number;
+  entry: number | null;
+  stopLoss: number | null;
+  takeProfit: number[] | null;
+  invalidationLevel: number | null;
+  closedAt: string | null;
+  outcome: string | null;
+  rMultiple: number | null;
+  pnlPct: number | null;
+  firstEventSeq: number;
+  lastEventSeq: number;
+  firstEventAt: string;
+  lastEventAt: string;
+  eventCount: number;
+};
+
+export type OhlcvCandle = {
+  timestamp: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume?: number;
+};
+
+export type OhlcvResponse = {
+  symbol: string;
+  source: string;
+  timeframe: string;
+  from: string;
+  to: string;
+  windowStartAt: string;
+  windowEndAt: string;
+  candles: OhlcvCandle[];
+};
+
+export type CostByStageRow = {
+  stage: string;
+  totalCostUsd: number;
+  calls: number;
+  cacheHits: number;
+};
+
+export type CostBreakdownResponse = {
+  sessionId: string;
+  costUsdSoFar: number;
+  costCapUsd: number;
+  byStage: CostByStageRow[];
+};
+
+export type CreateSessionBody = {
+  watchId: string;
+  name?: string | null;
+  windowStartAt: string;
+  windowEndAt: string;
+  costCapUsd?: number;
+  lessonsMode?: LessonsMode;
+  feedbackMode?: FeedbackMode;
+};
