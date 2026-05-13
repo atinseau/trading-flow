@@ -60,13 +60,27 @@ export function DecisionsLog(props: {
                 className="inline-block size-2 rounded-full shrink-0 mt-1"
                 style={{ backgroundColor: setupColor }}
               />
-              <span className="text-muted-foreground shrink-0 w-32">{fmtTime(e.occurredAt)}</span>
-              <span className="shrink-0 w-20">{e.stage}</span>
-              <span className="shrink-0 w-32">{e.type}</span>
+              {/* Each fixed-width column also needs `truncate` (not just
+                  `w-*`) — otherwise overflowing content visually bleeds
+                  onto the next column even though the layout box itself
+                  is the right width. */}
+              <span className="text-muted-foreground shrink-0 w-32 truncate">
+                {fmtTime(e.occurredAt)}
+              </span>
+              <span className="shrink-0 w-20 truncate">{e.stage}</span>
+              <span className="shrink-0 w-44 truncate" title={e.type}>
+                {e.type}
+              </span>
               {deltaStr && (
                 <span className={cn("shrink-0 w-12 tabular-nums", deltaCls)}>{deltaStr}</span>
               )}
-              <span className="truncate text-muted-foreground">{reason}</span>
+              {/* min-w-0 is required so flex doesn't grant this span its
+                  natural content width — without it, a long `reason` blows
+                  the row past the parent column and the rest of the UI
+                  reflows horizontally. */}
+              <span className="truncate text-muted-foreground min-w-0 flex-1" title={reason}>
+                {reason}
+              </span>
             </button>
           </li>
         );

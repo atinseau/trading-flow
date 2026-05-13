@@ -4,6 +4,7 @@ import type {
   ReplayEventRow,
   ReplaySessionRow,
   SetupProjectionRow,
+  WorkflowStateResponse,
 } from "@client/components/replay/replay-types";
 import { api } from "@client/lib/api";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -52,12 +53,32 @@ export function useReplaySteps(sessionId: string) {
     staleTime: 10_000,
   });
 
+  // Live workflow state — used to gate Step / Auto and render the
+  // "raisonnement en cours" indicator. Polls fast (800ms) when the
+  // workflow is actively crunching a tick or has queued ticks ; quiets
+  // down to a slow heartbeat (8s) otherwise so we don't hammer Temporal
+  // for nothing. `null` from the API means "workflow not started yet or
+  // terminated" — both render as idle.
+  const workflowState = useQuery({
+    queryKey: ["replay", sessionId, "workflow-state"],
+    queryFn: () => api<WorkflowStateResponse>(`/api/replay/sessions/${sessionId}/workflow-state`),
+    refetchInterval: (q) => {
+      const live = q.state.data?.live;
+      if (live && (live.tickInProgress || live.pendingTicks > 0)) return 800;
+      return 8_000;
+    },
+    // Always trigger an immediate refetch on mount so a tab that returns
+    // from background catches up without waiting for the next interval.
+    refetchOnWindowFocus: true,
+  });
+
   function invalidateAll(): Promise<unknown> {
     return Promise.all([
       queryClient.invalidateQueries({ queryKey: ["replay", sessionId, "session"] }),
       queryClient.invalidateQueries({ queryKey: ["replay", sessionId, "events"] }),
       queryClient.invalidateQueries({ queryKey: ["replay", sessionId, "setups"] }),
       queryClient.invalidateQueries({ queryKey: ["replay", sessionId, "cost"] }),
+      queryClient.invalidateQueries({ queryKey: ["replay", sessionId, "workflow-state"] }),
     ]);
   }
 
@@ -105,6 +126,7 @@ export function useReplaySteps(sessionId: string) {
     setups,
     ohlcv,
     cost,
+    workflowState,
     step: stepMut,
     pause: pauseMut,
     resume: resumeMut,

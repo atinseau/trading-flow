@@ -342,6 +342,27 @@ export function makeReplayApi(deps: ReplayApiDeps) {
       return Response.json({ ok: true });
     }),
 
+    /**
+     * GET /api/replay/sessions/:id/workflow-state — live snapshot of the
+     * Temporal workflow's queue and tick progress. The UI polls this while
+     * a step is in flight so it can :
+     *   - disable Step / Auto until the workflow drains (you can't dispatch
+     *     a new tick while the current one is still running through
+     *     Detector / Reviewer / Finalizer);
+     *   - render a "Raisonnement en cours…" indicator with the live cost.
+     *
+     * Returns `{ live: null }` when no workflow exists yet (no step has
+     * ever been dispatched on this session) or it has terminated normally —
+     * both render as idle in the UI.
+     */
+    workflowState: safeHandler(async (_req, params) => {
+      const id = requireParam(params, "id");
+      const session = await deps.sessionsRepo.get(id);
+      if (!session) throw new NotFoundError(`replay session ${id} not found`);
+      const live = await deps.signaller.getWorkflowState({ sessionId: id });
+      return Response.json({ live });
+    }),
+
     /** GET /api/replay/sessions/:id/ohlcv — OHLCV covering window + lookback. */
     ohlcv: safeHandler(async (_req, params) => {
       const id = requireParam(params, "id");
@@ -433,15 +454,18 @@ export function makeReplayApi(deps: ReplayApiDeps) {
         );
       }
 
-      const payload = evt.payload as { type: "FeedbackLessonProposed"; data: {
-        action: "CREATE" | "REINFORCE" | "REFINE" | "DEPRECATE";
-        category?: "detecting" | "reviewing" | "finalizing";
-        title: string;
-        body: string;
-        rationale: string;
-        sourceTradeSetupId: string;
-        supersedesLessonId?: string;
-      } };
+      const payload = evt.payload as {
+        type: "FeedbackLessonProposed";
+        data: {
+          action: "CREATE" | "REINFORCE" | "REFINE" | "DEPRECATE";
+          category?: "detecting" | "reviewing" | "finalizing";
+          title: string;
+          body: string;
+          rationale: string;
+          sourceTradeSetupId: string;
+          supersedesLessonId?: string;
+        };
+      };
       const data = payload.data;
       const triggerCloseReason = `promoted_from_replay:${sessionId}`;
       const actor = `replay-promote:${session.id.slice(0, 8)}`;

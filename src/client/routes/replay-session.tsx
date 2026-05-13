@@ -45,7 +45,8 @@ export function Component() {
   const sessionId = params.id ?? "";
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { session, events, setups, ohlcv, cost, step, pause, resume } = useReplaySteps(sessionId);
+  const { session, events, setups, ohlcv, cost, workflowState, step, pause, resume } =
+    useReplaySteps(sessionId);
 
   const [activeSetupId, setActiveSetupId] = useState<string | null>(null);
   const [focusedEventId, setFocusedEventId] = useState<string | null>(null);
@@ -80,15 +81,20 @@ export function Component() {
 
   // Auto-step loop : while active, fire one step per AUTO_STEP_DELAY_MS.
   // The loop self-stops on terminal status, cost cap, end-of-window, or
-  // when the user toggles off. Each iteration dispatches a single step
-  // signal and relies on `step.isPending` to gate the next iteration so
-  // we don't pile up signals faster than the worker drains them.
+  // when the user toggles off. We gate on three signals so we never pile
+  // signals faster than the worker drains them:
+  //   - `step.isPending`  : an HTTP /step POST is mid-flight
+  //   - `tickInProgress`  : the workflow is inside processTick
+  //   - `pendingTicks>0`  : the workflow already has queued ticks
   // The 800ms delay is fast enough to feel automated, slow enough for
   // the human eye to follow the chart updating.
+  const live = workflowState.data?.live;
+  const workflowBusyForAuto = (live?.tickInProgress ?? false) || (live?.pendingTicks ?? 0) > 0;
   useEffect(() => {
     if (!autoStepActive) return;
     if (!session.data || !ohlcv.data || !windowEndAt) return;
     if (step.isPending) return;
+    if (workflowBusyForAuto) return;
     const status = session.data.status;
     if (status === "COMPLETED" || status === "FAILED" || status === "COST_CAPPED") {
       setAutoStepActive(false);
@@ -112,7 +118,16 @@ export function Component() {
       setFocusedEventId(null);
     }, 800);
     return () => window.clearTimeout(handle);
-  }, [autoStepActive, session.data, ohlcv.data, windowEndAt, step.isPending, step.mutate, scrubMs]);
+  }, [
+    autoStepActive,
+    session.data,
+    ohlcv.data,
+    windowEndAt,
+    step.isPending,
+    step.mutate,
+    scrubMs,
+    workflowBusyForAuto,
+  ]);
 
   const del = useMutation({
     mutationFn: () => api(`/api/replay/sessions/${sessionId}`, { method: "DELETE" }),
@@ -216,6 +231,8 @@ export function Component() {
         costCapUsd={cost.data?.costCapUsd ?? s.costCapUsd}
         status={s.status}
         stepInFlight={step.isPending}
+        workflowBusy={workflowState.data?.live?.tickInProgress ?? false}
+        pendingTicks={workflowState.data?.live?.pendingTicks ?? 0}
         onStep={(tickAts) => {
           if (tickAts.length === 0) return;
           const isoList = tickAts.map((t) => t.toISOString());
@@ -241,9 +258,14 @@ export function Component() {
         onToggleAuto={() => setAutoStepActive((v) => !v)}
       />
 
-      {/* Two-column: left = chart already above; below: tabs/list + log */}
+      {/* Two-column: left = chart already above; below: tabs/list + log.
+          `min-w-0` on both grid items is critical: CSS grid items default to
+          `min-width: auto` (i.e. as wide as their content), which makes the
+          left column blow up to fit the longest event reasoning string —
+          overflowing the page and starving the right column. With min-w-0
+          the columns honor the 3fr/2fr ratio and `truncate` works. */}
       <div className="grid grid-cols-1 lg:grid-cols-[3fr_2fr] gap-4">
-        <div className="space-y-3">
+        <div className="space-y-3 min-w-0">
           <h3 className="text-xs uppercase tracking-wide text-muted-foreground">
             Setups dans la session ({setups.data?.length ?? 0})
           </h3>
@@ -275,7 +297,7 @@ export function Component() {
             onFocus={setFocusedEventId}
           />
         </div>
-        <div>
+        <div className="min-w-0">
           <h3 className="text-xs uppercase tracking-wide text-muted-foreground mb-2">
             Phase courante
           </h3>

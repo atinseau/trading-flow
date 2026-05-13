@@ -116,3 +116,32 @@ export type CreateSessionBody = {
   lessonsMode?: LessonsMode;
   feedbackMode?: FeedbackMode;
 };
+
+/**
+ * Live snapshot of the running Temporal workflow — what the UI uses to
+ * decide whether a Step is safe to dispatch and to render the "raisonnement
+ * en cours" indicator. `live === null` means no workflow exists yet
+ * (no step has ever been sent on this session) or it has terminated normally.
+ *
+ * Mirrors the shape returned by `getReplayStateQuery` in
+ * `src/workflows/replay/replaySessionWorkflow.ts`.
+ */
+export type ReplayWorkflowLiveState = {
+  status: ReplaySessionStatus;
+  lastTickAt: string | null;
+  aliveSetups: Array<{
+    id: string;
+    status: string;
+    score: number;
+    invalidationLevel: number;
+    direction: "LONG" | "SHORT";
+    patternHint: string | null;
+  }>;
+  costUsdSoFar: number;
+  /** Workflow is currently inside `processTick` (LLM activities running). */
+  tickInProgress: boolean;
+  /** Queue depth — ticks signaled but not yet drained. */
+  pendingTicks: number;
+};
+
+export type WorkflowStateResponse = { live: ReplayWorkflowLiveState | null };

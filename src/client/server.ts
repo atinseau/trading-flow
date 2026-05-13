@@ -1,12 +1,12 @@
 import { BinanceFetcher } from "@adapters/market-data/BinanceFetcher";
 import { YahooFinanceFetcher } from "@adapters/market-data/YahooFinanceFetcher";
+import { PostgresLessonEventStore } from "@adapters/persistence/PostgresLessonEventStore";
+import { PostgresLessonStore } from "@adapters/persistence/PostgresLessonStore";
 import { PostgresLiveEventQueryByWindow } from "@adapters/persistence/PostgresLiveEventQueryByWindow";
 import { PostgresLLMResponseCacheStore } from "@adapters/persistence/PostgresLLMResponseCacheStore";
 import { PostgresReplayEventStore } from "@adapters/persistence/PostgresReplayEventStore";
 import { PostgresReplayLLMCallStore } from "@adapters/persistence/PostgresReplayLLMCallStore";
 import { PostgresReplaySessionRepository } from "@adapters/persistence/PostgresReplaySessionRepository";
-import { PostgresLessonEventStore } from "@adapters/persistence/PostgresLessonEventStore";
-import { PostgresLessonStore } from "@adapters/persistence/PostgresLessonStore";
 import { PostgresWatchRepository } from "@adapters/persistence/PostgresWatchRepository";
 import { TemporalScheduleController } from "@adapters/temporal/TemporalScheduleController";
 import { SystemClock } from "@adapters/time/SystemClock";
@@ -109,6 +109,7 @@ const replaySignaller: ReplaySignalSender = {
   pause: (args) => getReplaySignaller().then((s) => s.pause(args)),
   resume: (args) => getReplaySignaller().then((s) => s.resume(args)),
   terminate: (args) => getReplaySignaller().then((s) => s.terminate(args)),
+  getWorkflowState: (args) => getReplaySignaller().then((s) => s.getWorkflowState(args)),
 };
 
 const replayApi = makeReplayApi({
@@ -207,6 +208,7 @@ const server = Bun.serve({
     "/api/replay/sessions/:id/step": { POST: withParams(replayApi.step) },
     "/api/replay/sessions/:id/pause": { POST: withParams(replayApi.pause) },
     "/api/replay/sessions/:id/resume": { POST: withParams(replayApi.resume) },
+    "/api/replay/sessions/:id/workflow-state": { GET: withParams(replayApi.workflowState) },
     "/api/replay/sessions/:id/terminate": { POST: withParams(replayApi.terminate) },
     "/api/replay/sessions/:id/events/:eventId/promote": {
       POST: withParams(replayApi.promoteFeedbackLesson),

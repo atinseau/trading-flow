@@ -1,7 +1,10 @@
 import { getLogger } from "@observability/logger";
 import type { Client } from "@temporalio/client";
+import { WorkflowNotFoundError } from "@temporalio/common";
 import {
+  getReplayStateQuery,
   pauseSignal,
+  type ReplayWorkflowState,
   replaySessionWorkflow,
   replaySessionWorkflowId,
   replayTickSignal,
@@ -23,14 +26,17 @@ const log = getLogger({ component: "replay-signals" });
  */
 export interface ReplaySignalSender {
   /** Either `tickAt` (single candle) or `tickAts` (batch ; e.g. "Step 5"). */
-  step(args: {
-    sessionId: string;
-    tickAt?: string;
-    tickAts?: string[];
-  }): Promise<void>;
+  step(args: { sessionId: string; tickAt?: string; tickAts?: string[] }): Promise<void>;
   pause(args: { sessionId: string }): Promise<void>;
   resume(args: { sessionId: string }): Promise<void>;
   terminate(args: { sessionId: string; reason?: string }): Promise<void>;
+  /**
+   * Live workflow state for the UI's "raisonnement en cours" indicator.
+   * Returns `null` when no workflow exists yet (no step has ever been
+   * dispatched) or it has terminated (COMPLETED / FAILED) — both cases
+   * the UI renders as "idle, ready to step".
+   */
+  getWorkflowState(args: { sessionId: string }): Promise<ReplayWorkflowState | null>;
 }
 
 /**
@@ -44,11 +50,7 @@ export class TemporalReplaySignalSender implements ReplaySignalSender {
     private readonly taskQueue: string,
   ) {}
 
-  async step(args: {
-    sessionId: string;
-    tickAt?: string;
-    tickAts?: string[];
-  }): Promise<void> {
+  async step(args: { sessionId: string; tickAt?: string; tickAts?: string[] }): Promise<void> {
     await this.client.workflow.signalWithStart(replaySessionWorkflow, {
       workflowId: replaySessionWorkflowId(args.sessionId),
       taskQueue: this.taskQueue,
@@ -85,5 +87,23 @@ export class TemporalReplaySignalSender implements ReplaySignalSender {
       .getHandle(replaySessionWorkflowId(args.sessionId))
       .signal(terminateSignal, { reason: args.reason });
     log.info({ sessionId: args.sessionId, reason: args.reason }, "terminate signal sent");
+  }
+
+  async getWorkflowState(args: { sessionId: string }): Promise<ReplayWorkflowState | null> {
+    try {
+      return await this.client.workflow
+        .getHandle(replaySessionWorkflowId(args.sessionId))
+        .query(getReplayStateQuery);
+    } catch (err) {
+      // No workflow yet, or it has been terminated — both mean "no live
+      // state to surface". The UI treats this as idle.
+      if (err instanceof WorkflowNotFoundError) return null;
+      // Same shape but raised by `getHandle().query()` when the workflow
+      // has terminated normally (COMPLETED) — Temporal returns a
+      // QueryFailedError with no resolvable state.
+      const name = (err as Error)?.name ?? "";
+      if (name === "QueryNotRegisteredError" || name === "QueryFailedError") return null;
+      throw err;
+    }
   }
 }

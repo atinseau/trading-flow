@@ -2,7 +2,8 @@ import { Badge } from "@client/components/ui/badge";
 import { Button } from "@client/components/ui/button";
 import { Slider } from "@client/components/ui/slider";
 import { timeframeToMinutes } from "@client/lib/timeframe";
-import { Loader2, Pause, Play, Square, SkipForward, StepForward } from "lucide-react";
+import { Loader2, Pause, Play, SkipForward, Square, StepForward } from "lucide-react";
+import { computeStepGating } from "./replayStepGating";
 
 /**
  * Step controls for a replay session.
@@ -12,7 +13,10 @@ import { Loader2, Pause, Play, Square, SkipForward, StepForward } from "lucide-r
  * timeframe. The workflow processes them serially.
  *
  * Pause and Resume signal the workflow to gate further tick processing.
- * They are session-status aware (disabled in terminal states).
+ * They are session-status aware (disabled in terminal states) AND
+ * workflow-aware (disabled while a tick is being processed or queued —
+ * dispatching another step on top would just pile up signals while the
+ * user thinks "nothing is happening").
  */
 export function ReplayControls(props: {
   timeframe: string;
@@ -23,7 +27,17 @@ export function ReplayControls(props: {
   costUsdSoFar: number;
   costCapUsd: number;
   status: "READY" | "PAUSED" | "COMPLETED" | "COST_CAPPED" | "FAILED";
+  /** Mutation in flight (HTTP roundtrip to /step). */
   stepInFlight: boolean;
+  /** True iff the Temporal workflow is currently inside `processTick` —
+   *  the Detector / Reviewer / Finalizer chain is running and would
+   *  ignore a fresh tick anyway. UI uses this to grey Step + render the
+   *  spinner badge. */
+  workflowBusy: boolean;
+  /** Number of ticks already queued in the workflow but not yet drained.
+   *  We surface this so the user understands why Step is greyed even
+   *  when a tick isn't actively running (it's about to run). */
+  pendingTicks: number;
   /** Dispatch one or N ticks. The component decides the batch size ; the
    *  parent forwards the array to the /step endpoint in a single signal. */
   onStep: (tickAts: Date[]) => void;
@@ -42,7 +56,16 @@ export function ReplayControls(props: {
   const tfMs = timeframeToMinutes(props.timeframe) * 60_000;
   const terminal = props.status === "COMPLETED" || props.status === "FAILED";
   const capped = props.status === "COST_CAPPED";
-  const stepDisabled = terminal || capped || props.stepInFlight;
+  // Gating logic lives in `replayStepGating.ts` (pure, unit-tested) so the
+  // four-axis truth table can't silently regress through CSS / JSX edits.
+  const gate = computeStepGating({
+    status: props.status,
+    stepInFlight: props.stepInFlight,
+    workflowBusy: props.workflowBusy,
+    pendingTicks: props.pendingTicks,
+  });
+  const { stepDisabled, autoDisabled, showBusyBadge, workflowActivelyProcessing } = gate;
+  const busy = showBusyBadge;
 
   function buildBatch(n: number): Date[] {
     const batch: Date[] = [];
@@ -62,10 +85,10 @@ export function ReplayControls(props: {
           size="sm"
           variant="outline"
           disabled={stepDisabled}
-          title="Step 1 bougie"
+          title={busy ? "Raisonnement en cours — attends la fin du tick" : "Step 1 bougie"}
           onClick={() => props.onStep(buildBatch(1))}
         >
-          {props.stepInFlight ? (
+          {props.stepInFlight || busy ? (
             <Loader2 className="size-3.5 animate-spin" />
           ) : (
             <StepForward className="size-3.5" />
@@ -76,7 +99,11 @@ export function ReplayControls(props: {
           size="sm"
           variant="outline"
           disabled={stepDisabled}
-          title="Step 5 bougies (batché en un signal)"
+          title={
+            busy
+              ? "Raisonnement en cours — attends la fin du tick"
+              : "Step 5 bougies (batché en un signal)"
+          }
           onClick={() => props.onStep(buildBatch(5))}
         >
           <SkipForward className="size-3.5" />
@@ -85,19 +112,17 @@ export function ReplayControls(props: {
         <Button
           size="sm"
           variant={props.autoStepActive ? "default" : "outline"}
-          disabled={terminal || capped || props.status !== "READY"}
+          disabled={autoDisabled}
           title={
             props.autoStepActive
               ? "Stopper l'auto-step"
-              : "Auto-step : avance d'une bougie toutes les ~800ms"
+              : busy
+                ? "Raisonnement en cours — attends la fin du tick"
+                : "Auto-step : avance d'une bougie toutes les ~800ms"
           }
           onClick={props.onToggleAuto}
         >
-          {props.autoStepActive ? (
-            <Square className="size-3.5" />
-          ) : (
-            <Play className="size-3.5" />
-          )}
+          {props.autoStepActive ? <Square className="size-3.5" /> : <Play className="size-3.5" />}
           {props.autoStepActive ? "Stop auto" : "Auto"}
         </Button>
         {props.status === "PAUSED" ? (
@@ -127,6 +152,22 @@ export function ReplayControls(props: {
             className="text-[10px] border-muted-foreground/40 text-muted-foreground"
           >
             {props.status}
+          </Badge>
+        )}
+        {showBusyBadge && (
+          <Badge
+            variant="outline"
+            className="text-[10px] border-blue-500/40 text-blue-300 gap-1"
+            title={
+              workflowActivelyProcessing
+                ? "Le workflow exécute actuellement Detector / Reviewer / Finalizer."
+                : `${props.pendingTicks} tick(s) en attente — le worker draine.`
+            }
+          >
+            <Loader2 className="size-3 animate-spin" />
+            {workflowActivelyProcessing
+              ? "Raisonnement en cours…"
+              : `${props.pendingTicks} tick(s) en file`}
           </Badge>
         )}
         <div className="ml-auto text-xs text-muted-foreground font-mono">

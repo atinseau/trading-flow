@@ -629,11 +629,7 @@ describe("POST /api/replay/sessions/:id/step", () => {
     expect(signaller.calls[0]).toEqual({
       kind: "step",
       sessionId: id,
-      tickAts: [
-        "2026-04-12T15:00:00.000Z",
-        "2026-04-12T16:00:00.000Z",
-        "2026-04-12T17:00:00.000Z",
-      ],
+      tickAts: ["2026-04-12T15:00:00.000Z", "2026-04-12T16:00:00.000Z", "2026-04-12T17:00:00.000Z"],
     });
   });
 
@@ -700,6 +696,70 @@ describe("POST /api/replay/sessions/:id/pause + /resume", () => {
   });
 });
 
+describe("GET /api/replay/sessions/:id/workflow-state", () => {
+  async function createTestSession(): Promise<string> {
+    const created = await api.create(
+      postCreate({
+        watchId: "btc-1h",
+        windowStartAt: "2026-04-12T14:00:00.000Z",
+        windowEndAt: "2026-04-13T14:00:00.000Z",
+      }),
+    );
+    const body = (await created.json()) as { session: { id: string } };
+    return body.session.id;
+  }
+
+  test("returns { live: null } when no workflow is running yet", async () => {
+    const id = await createTestSession();
+    // signaller defaults to `workflowState: null` (FakeReplaySignalSender) —
+    // mimics the case where the user just created the session and hasn't
+    // dispatched any step.
+    const res = await api.workflowState(new Request("http://x"), { id });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { live: unknown };
+    expect(body.live).toBeNull();
+    expect(signaller.calls).toEqual([{ kind: "getWorkflowState", sessionId: id }]);
+  });
+
+  test("passes the signaller's live state through verbatim", async () => {
+    const id = await createTestSession();
+    // The endpoint should be a thin pass-through ; serialization is the
+    // signaller's responsibility (which uses Temporal's JSON converter
+    // in production).
+    signaller.workflowState = {
+      status: "READY",
+      lastTickAt: "2026-04-12T14:30:00.000Z",
+      aliveSetups: [
+        {
+          id: "setup-1",
+          status: "REVIEWING",
+          score: 75,
+          invalidationLevel: 29_500,
+          direction: "LONG",
+          patternHint: "bullish_engulfing",
+        },
+      ],
+      costUsdSoFar: 0.42,
+      tickInProgress: true,
+      pendingTicks: 3,
+    };
+    const res = await api.workflowState(new Request("http://x"), { id });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { live: typeof signaller.workflowState };
+    expect(body.live).toEqual(signaller.workflowState);
+  });
+
+  test("404 on unknown session", async () => {
+    const res = await api.workflowState(new Request("http://x"), {
+      id: "00000000-0000-0000-0000-000000000000",
+    });
+    expect(res.status).toBe(404);
+    // Must NOT call the signaller for an unknown session — the API short-
+    // circuits before issuing a Temporal query.
+    expect(signaller.calls).toHaveLength(0);
+  });
+});
+
 describe("POST /api/replay/sessions/:id/terminate", () => {
   async function createTestSession(): Promise<string> {
     const created = await api.create(
@@ -722,9 +782,7 @@ describe("POST /api/replay/sessions/:id/terminate", () => {
     });
     const res = await api.terminate(req, { id });
     expect(res.status).toBe(200);
-    expect(signaller.calls).toEqual([
-      { kind: "terminate", sessionId: id, reason: "user_abort" },
-    ]);
+    expect(signaller.calls).toEqual([{ kind: "terminate", sessionId: id, reason: "user_abort" }]);
   });
 
   test("400 on terminal session", async () => {
@@ -799,9 +857,7 @@ describe("POST /api/replay/sessions/:id/events/:eventId/promote", () => {
           body: "When price approaches the prior swing high without a notable uptick in relative volume, downgrade the confluence rating.",
           rationale: "Past failed setups consistently show flat volume at the contested level.",
           sourceTradeSetupId: "00000000-0000-4000-8000-000000000099",
-          ...(extra?.supersedesLessonId
-            ? { supersedesLessonId: extra.supersedesLessonId }
-            : {}),
+          ...(extra?.supersedesLessonId ? { supersedesLessonId: extra.supersedesLessonId } : {}),
         },
       },
     });
@@ -810,10 +866,10 @@ describe("POST /api/replay/sessions/:id/events/:eventId/promote", () => {
 
   test("CREATE → new lesson row in PENDING + CREATE lesson_event", async () => {
     const { sessionId, eventId } = await createSessionWithFeedbackProposal("CREATE");
-    const res = await api.promoteFeedbackLesson(
-      new Request("http://x", { method: "POST" }),
-      { id: sessionId, eventId },
-    );
+    const res = await api.promoteFeedbackLesson(new Request("http://x", { method: "POST" }), {
+      id: sessionId,
+      eventId,
+    });
     expect(res.status).toBe(201);
     const body = (await res.json()) as { lessonId: string; action: string };
     expect(body.action).toBe("CREATE");
@@ -827,10 +883,10 @@ describe("POST /api/replay/sessions/:id/events/:eventId/promote", () => {
     const { sessionId, eventId } = await createSessionWithFeedbackProposal("CREATE", {
       category: "detecting",
     });
-    const res = await api.promoteFeedbackLesson(
-      new Request("http://x", { method: "POST" }),
-      { id: sessionId, eventId },
-    );
+    const res = await api.promoteFeedbackLesson(new Request("http://x", { method: "POST" }), {
+      id: sessionId,
+      eventId,
+    });
     expect(res.status).toBe(201);
     const body = (await res.json()) as { lessonId: string; category: string };
     expect(body.category).toBe("detecting");
@@ -843,10 +899,10 @@ describe("POST /api/replay/sessions/:id/events/:eventId/promote", () => {
     const { sessionId, eventId } = await createSessionWithFeedbackProposal("CREATE", {
       omitCategory: true,
     });
-    const res = await api.promoteFeedbackLesson(
-      new Request("http://x", { method: "POST" }),
-      { id: sessionId, eventId },
-    );
+    const res = await api.promoteFeedbackLesson(new Request("http://x", { method: "POST" }), {
+      id: sessionId,
+      eventId,
+    });
     expect(res.status).toBe(400);
   });
 
@@ -888,10 +944,10 @@ describe("POST /api/replay/sessions/:id/events/:eventId/promote", () => {
     const { sessionId, eventId } = await createSessionWithFeedbackProposal("REFINE", {
       supersedesLessonId: targetId,
     });
-    const res = await api.promoteFeedbackLesson(
-      new Request("http://x", { method: "POST" }),
-      { id: sessionId, eventId },
-    );
+    const res = await api.promoteFeedbackLesson(new Request("http://x", { method: "POST" }), {
+      id: sessionId,
+      eventId,
+    });
     expect(res.status).toBe(201);
     const body = (await res.json()) as { lessonId: string; action: string };
     expect(body.action).toBe("REFINE");
@@ -905,10 +961,10 @@ describe("POST /api/replay/sessions/:id/events/:eventId/promote", () => {
     const { sessionId, eventId } = await createSessionWithFeedbackProposal("REFINE", {
       supersedesLessonId: missingId,
     });
-    const res = await api.promoteFeedbackLesson(
-      new Request("http://x", { method: "POST" }),
-      { id: sessionId, eventId },
-    );
+    const res = await api.promoteFeedbackLesson(new Request("http://x", { method: "POST" }), {
+      id: sessionId,
+      eventId,
+    });
     expect(res.status).toBe(404);
   });
 
@@ -928,10 +984,10 @@ describe("POST /api/replay/sessions/:id/events/:eventId/promote", () => {
     const { sessionId, eventId } = await createSessionWithFeedbackProposal("DEPRECATE", {
       supersedesLessonId: targetId,
     });
-    const res = await api.promoteFeedbackLesson(
-      new Request("http://x", { method: "POST" }),
-      { id: sessionId, eventId },
-    );
+    const res = await api.promoteFeedbackLesson(new Request("http://x", { method: "POST" }), {
+      id: sessionId,
+      eventId,
+    });
     expect(res.status).toBe(200);
     const body = (await res.json()) as { lessonId: string; action: string };
     expect(body.action).toBe("DEPRECATE");
@@ -943,10 +999,10 @@ describe("POST /api/replay/sessions/:id/events/:eventId/promote", () => {
   test("DEPRECATE → 400 when supersedesLessonId is missing", async () => {
     const { sessionId, eventId } = await createSessionWithFeedbackProposal("DEPRECATE");
     // No supersedesLessonId in the proposal payload.
-    const res = await api.promoteFeedbackLesson(
-      new Request("http://x", { method: "POST" }),
-      { id: sessionId, eventId },
-    );
+    const res = await api.promoteFeedbackLesson(new Request("http://x", { method: "POST" }), {
+      id: sessionId,
+      eventId,
+    });
     expect(res.status).toBe(400);
   });
 
@@ -966,10 +1022,10 @@ describe("POST /api/replay/sessions/:id/events/:eventId/promote", () => {
     const { sessionId, eventId } = await createSessionWithFeedbackProposal("REINFORCE", {
       supersedesLessonId: targetId,
     });
-    const res = await api.promoteFeedbackLesson(
-      new Request("http://x", { method: "POST" }),
-      { id: sessionId, eventId },
-    );
+    const res = await api.promoteFeedbackLesson(new Request("http://x", { method: "POST" }), {
+      id: sessionId,
+      eventId,
+    });
     expect(res.status).toBe(200);
     const after = await lessonStore.getById(targetId);
     expect(after?.timesReinforced).toBe(1);
@@ -984,10 +1040,10 @@ describe("POST /api/replay/sessions/:id/events/:eventId/promote", () => {
       }),
     );
     const { session } = (await created.json()) as { session: { id: string } };
-    const res = await api.promoteFeedbackLesson(
-      new Request("http://x", { method: "POST" }),
-      { id: session.id, eventId: "ffffffff-ffff-4fff-8fff-ffffffffffff" },
-    );
+    const res = await api.promoteFeedbackLesson(new Request("http://x", { method: "POST" }), {
+      id: session.id,
+      eventId: "ffffffff-ffff-4fff-8fff-ffffffffffff",
+    });
     expect(res.status).toBe(404);
   });
 
@@ -1013,10 +1069,10 @@ describe("POST /api/replay/sessions/:id/events/:eventId/promote", () => {
         data: { ignoreReason: null },
       },
     });
-    const res = await api.promoteFeedbackLesson(
-      new Request("http://x", { method: "POST" }),
-      { id: session.id, eventId: evt.id },
-    );
+    const res = await api.promoteFeedbackLesson(new Request("http://x", { method: "POST" }), {
+      id: session.id,
+      eventId: evt.id,
+    });
     expect(res.status).toBe(400);
   });
 });
