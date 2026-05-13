@@ -37,6 +37,35 @@ export type ReplaySessionWorkflowArgs = {
   sessionId: string;
 };
 
+/**
+ * Coerce the session's window date fields into primitives the workflow can
+ * safely compare numerically.
+ *
+ * **Why this helper exists.** Temporal's default JSON payload converter
+ * serializes `Date` to an ISO string and deserializes it back as a plain
+ * `string` (it has no Date reviver). So even though `ReplaySession.window*`
+ * is typed `Date` for the persistence layer, by the time the workflow
+ * receives the result of `loadReplaySession` those fields are strings — and
+ * `.getTime()` on a string explodes at runtime. The TypeScript types lie
+ * across the activity boundary, so the compiler can't help.
+ *
+ * `new Date(x)` accepts both a Date and an ISO string, so coercing once at
+ * the top of the workflow is the safe, cheap fix. Exported for unit tests.
+ */
+export function coerceSessionWindow(s: {
+  windowStartAt: Date | string;
+  windowEndAt: Date | string;
+}): { startMs: number; endMs: number; endDate: Date } {
+  const startMs = new Date(s.windowStartAt).getTime();
+  const endMs = new Date(s.windowEndAt).getTime();
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) {
+    throw new Error(
+      `coerceSessionWindow: invalid window dates (start=${s.windowStartAt}, end=${s.windowEndAt})`,
+    );
+  }
+  return { startMs, endMs, endDate: new Date(endMs) };
+}
+
 export type ReplayTickSignalArgs = {
   /** One or more ISO candle-close timestamps to enqueue, in order. The
    * `tickAts` array form lets the API batch a "Step N" click into a
@@ -119,11 +148,13 @@ export async function replaySessionWorkflow(args: ReplaySessionWorkflowArgs): Pr
 
   // Temporal serializes Date payloads as ISO strings across the activity
   // boundary, so the typed `Date` fields on `session.window*` arrive in the
-  // workflow as strings. Coerce once here so the rest of the workflow can
-  // rely on real Date instances (and `.getTime()` / numeric comparisons).
-  const windowStartAtMs = new Date(session.windowStartAt).getTime();
-  const windowEndAtMs = new Date(session.windowEndAt).getTime();
-  const windowEndAtDate = new Date(windowEndAtMs);
+  // workflow as strings. `coerceSessionWindow` normalizes both shapes — see
+  // its docblock and the dedicated unit test.
+  const {
+    startMs: windowStartAtMs,
+    endMs: windowEndAtMs,
+    endDate: windowEndAtDate,
+  } = coerceSessionWindow(session);
 
   const queue: string[] = [];
   let paused = session.status === "PAUSED";
