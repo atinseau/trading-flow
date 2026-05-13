@@ -10,6 +10,7 @@ const VARS = [
   "TEMPORAL_TASK_QUEUE_SCHEDULER",
   "TEMPORAL_TASK_QUEUE_ANALYSIS",
   "TEMPORAL_TASK_QUEUE_NOTIFICATIONS",
+  "TEMPORAL_TASK_QUEUE_REPLAY",
   "TELEGRAM_BOT_TOKEN",
   "TELEGRAM_CHAT_ID",
   "OPENROUTER_API_KEY",
@@ -64,6 +65,7 @@ test("loadInfraConfig applies defaults when only required vars are set", () => {
   expect(cfg.temporal.task_queues.scheduler).toBe("scheduler");
   expect(cfg.temporal.task_queues.analysis).toBe("analysis");
   expect(cfg.temporal.task_queues.notifications).toBe("notifications");
+  expect(cfg.temporal.task_queues.replay).toBe("replay");
   expect(cfg.notifications.telegram.bot_token).toBe("bot-token");
   expect(cfg.notifications.telegram.chat_id).toBe("12345");
   expect(cfg.llm.openrouter_api_key).toBeNull();

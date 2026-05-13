@@ -204,7 +204,7 @@ describe("SetupWorkflow integration (real Postgres + real activities)", () => {
       temporal: {
         address: "x",
         namespace: "default",
-        task_queues: { scheduler: "s", analysis: "a", notifications: "n" },
+        task_queues: { scheduler: "s", analysis: "a", notifications: "n", replay: "r" },
       },
       notifications: { telegram: { bot_token: "test-token", chat_id: "test-chat" } },
       llm: { openrouter_api_key: null },

@@ -20,6 +20,7 @@ const InfraConfigSchema = z.object({
       scheduler: z.string().min(1),
       analysis: z.string().min(1),
       notifications: z.string().min(1),
+      replay: z.string().min(1),
     }),
   }),
   notifications: z.object({
@@ -91,6 +92,7 @@ export function loadInfraConfig(): InfraConfig {
         scheduler: optional("TEMPORAL_TASK_QUEUE_SCHEDULER", "scheduler"),
         analysis: optional("TEMPORAL_TASK_QUEUE_ANALYSIS", "analysis"),
         notifications: optional("TEMPORAL_TASK_QUEUE_NOTIFICATIONS", "notifications"),
+        replay: optional("TEMPORAL_TASK_QUEUE_REPLAY", "replay"),
       },
     },
     notifications: {

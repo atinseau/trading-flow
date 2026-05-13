@@ -117,6 +117,14 @@ export async function replaySessionWorkflow(args: ReplaySessionWorkflowArgs): Pr
   const { session } = await dbActivities.loadReplaySession({ sessionId: args.sessionId });
   const watch = session.configSnapshot;
 
+  // Temporal serializes Date payloads as ISO strings across the activity
+  // boundary, so the typed `Date` fields on `session.window*` arrive in the
+  // workflow as strings. Coerce once here so the rest of the workflow can
+  // rely on real Date instances (and `.getTime()` / numeric comparisons).
+  const windowStartAtMs = new Date(session.windowStartAt).getTime();
+  const windowEndAtMs = new Date(session.windowEndAt).getTime();
+  const windowEndAtDate = new Date(windowEndAtMs);
+
   const queue: string[] = [];
   let paused = session.status === "PAUSED";
   let terminated = false;
@@ -170,12 +178,10 @@ export async function replaySessionWorkflow(args: ReplaySessionWorkflowArgs): Pr
     // calls, future programmatic callers). A `tickAt` outside the
     // window would consume LLM budget before the post-tick guard
     // catches it ; cheaper to drop here.
-    const startMs = session.windowStartAt.getTime();
-    const endMs = session.windowEndAt.getTime();
     for (const t of incoming) {
       const tMs = new Date(t).getTime();
       if (Number.isNaN(tMs)) continue;
-      if (tMs < startMs || tMs > endMs) continue;
+      if (tMs < windowStartAtMs || tMs > windowEndAtMs) continue;
       queue.push(t);
     }
   });
@@ -266,7 +272,7 @@ export async function replaySessionWorkflow(args: ReplaySessionWorkflowArgs): Pr
       }
 
       // Completion guard: if we've reached the window end, finalize.
-      if (new Date(tickAt) >= session.windowEndAt) {
+      if (new Date(tickAt) >= windowEndAtDate) {
         status = "COMPLETED";
         await dbActivities.updateReplaySessionStatus({
           sessionId: args.sessionId,

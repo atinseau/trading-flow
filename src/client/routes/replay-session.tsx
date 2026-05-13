@@ -56,11 +56,34 @@ export function Component() {
 
   const windowStartAt = session.data ? new Date(session.data.windowStartAt) : null;
   const windowEndAt = session.data ? new Date(session.data.windowEndAt) : null;
+  // Derive the "live" playhead from the latest persisted replay event so the
+  // playhead survives reloads and matches what the workflow actually
+  // processed. Falls back to windowStartAt before any tick has run — the
+  // first Step then advances by one timeframe from there. We deliberately
+  // do NOT default to windowEndAt (the previous behavior), which caused
+  // every Step to send tickAt=windowEndAt and instantly complete the session.
+  //
+  // The candidate is clamped to [windowStartAt, windowEndAt] because some
+  // event types (`ReplayMeta` for paused / failed) use a wall-clock
+  // `occurredAt` that can land outside the window — we don't want those to
+  // pull the playhead off the chart.
+  const lastEventAt = useMemo(() => {
+    if (!events.data || events.data.length === 0 || !windowStartAt || !windowEndAt) return null;
+    const lo = windowStartAt.getTime();
+    const hi = windowEndAt.getTime();
+    let maxMs = 0;
+    for (const e of events.data) {
+      const t = new Date(e.occurredAt).getTime();
+      if (t < lo || t > hi) continue;
+      if (t > maxMs) maxMs = t;
+    }
+    return maxMs > 0 ? new Date(maxMs) : null;
+  }, [events.data, windowStartAt, windowEndAt]);
   const playheadAt = useMemo(() => {
-    if (!windowEndAt) return null;
+    if (!windowStartAt) return null;
     if (scrubMs !== null) return new Date(scrubMs);
-    return windowEndAt;
-  }, [windowEndAt, scrubMs]);
+    return lastEventAt ?? windowStartAt;
+  }, [windowStartAt, lastEventAt, scrubMs]);
 
   const focusedEvent = useMemo(() => {
     if (!events.data || !playheadAt) return null;

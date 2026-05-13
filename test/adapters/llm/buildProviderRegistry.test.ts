@@ -7,7 +7,7 @@ const infraStub: InfraConfig = {
   temporal: {
     address: "x",
     namespace: "default",
-    task_queues: { scheduler: "s", analysis: "a", notifications: "n" },
+    task_queues: { scheduler: "s", analysis: "a", notifications: "n", replay: "r" },
   },
   notifications: { telegram: { bot_token: "t", chat_id: "c" } },
   llm: { openrouter_api_key: "k" },

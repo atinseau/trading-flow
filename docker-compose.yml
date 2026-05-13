@@ -156,6 +156,7 @@ services:
       TEMPORAL_TASK_QUEUE_SCHEDULER: ${TEMPORAL_TASK_QUEUE_SCHEDULER:-scheduler}
       TEMPORAL_TASK_QUEUE_ANALYSIS: ${TEMPORAL_TASK_QUEUE_ANALYSIS:-analysis}
       TEMPORAL_TASK_QUEUE_NOTIFICATIONS: ${TEMPORAL_TASK_QUEUE_NOTIFICATIONS:-notifications}
+      TEMPORAL_TASK_QUEUE_REPLAY: ${TEMPORAL_TASK_QUEUE_REPLAY:-replay}
       ARTIFACTS_BASE_DIR: ${ARTIFACTS_BASE_DIR:-/data/artifacts}
       CLAUDE_WORKSPACE_DIR: ${CLAUDE_WORKSPACE_DIR:-/data/claude-workspace}
       # Long-lived OAuth token for the bundled `claude` binary (used by the
