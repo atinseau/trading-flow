@@ -48,13 +48,20 @@ export class PostgresReplayEventStore implements ReplayEventStore {
         .where(eq(replayEvents.sessionId, sessionId));
       const sequence = Number(seqRow?.max ?? 0) + 1;
 
+      // Coerce `occurredAt` to a real Date — across the Temporal activity
+      // boundary it arrives as an ISO string (the type lies), and drizzle's
+      // timestamp-column adapter throws `value.toISOString is not a
+      // function` on raw strings. `new Date(x)` accepts both shapes.
+      const occurredAt =
+        event.occurredAt instanceof Date ? event.occurredAt : new Date(event.occurredAt);
+
       const [row] = await tx
         .insert(replayEvents)
         .values({
           sessionId,
           setupId: event.setupId,
           sequence,
-          occurredAt: event.occurredAt,
+          occurredAt,
           stage: event.stage,
           actor: event.actor,
           type: event.type,
