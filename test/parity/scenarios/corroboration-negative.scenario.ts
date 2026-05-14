@@ -126,9 +126,7 @@ export const corroborationNegativeScenario: PipelineScenario = {
     },
     {
       tickAt: "2026-05-14T11:00:00.000Z",
-      detectorVerdict: detectorCorroborationOnly("test-setup-corrob-negative", -8, [
-        "volume_fade",
-      ]),
+      detectorVerdict: detectorCorroborationOnly("test-setup-corrob-negative", -8, ["volume_fade"]),
       candle: {
         open: 51_100,
         high: 51_300,
@@ -139,9 +137,7 @@ export const corroborationNegativeScenario: PipelineScenario = {
     },
     {
       tickAt: "2026-05-14T12:00:00.000Z",
-      detectorVerdict: detectorCorroborationOnly("test-setup-corrob-negative", -8, [
-        "lower_high",
-      ]),
+      detectorVerdict: detectorCorroborationOnly("test-setup-corrob-negative", -8, ["lower_high"]),
       candle: {
         open: 51_050,
         high: 51_200,

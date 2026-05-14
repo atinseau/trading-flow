@@ -36,9 +36,10 @@ test("parity: feedback-disabled → INVALIDATED + no FeedbackLessonProposed", as
   // Absence test : no FeedbackLessonProposed on either side.
   const replayFeedback = replayEvents.some((e) => e.type === "FeedbackLessonProposed");
   const liveFeedback = liveEvents.some((e) => e.type === "FeedbackLessonProposed");
-  expect(replayFeedback, "replay emitted FeedbackLessonProposed despite feedback.enabled=false").toBe(
-    false,
-  );
+  expect(
+    replayFeedback,
+    "replay emitted FeedbackLessonProposed despite feedback.enabled=false",
+  ).toBe(false);
   expect(liveFeedback, "live emitted FeedbackLessonProposed despite feedback.enabled=false").toBe(
     false,
   );
