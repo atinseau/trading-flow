@@ -180,6 +180,29 @@ export async function runLive(
       const corroborations = tick.detectorVerdict.corroborations ?? [];
       const targetCorroboration = corroborations.find((c) => c.setup_id === scenario.setup.setupId);
 
+      // Pre-detector price-breach check (mirrors replay's phase 0.5).
+      // If the scenario declares intraCandlePrices AND the workflow is
+      // currently in REVIEWING/FINALIZING (= pre-TRACK), we send each
+      // price as a `priceCheck` signal so the workflow's
+      // priceCheckSignal handler can invalidate on a breach. After the
+      // workflow enters TRACKING, intra-candle prices flow through
+      // `trackingPrice` instead (see TRACKING-phase block below).
+      if (tick.intraCandlePrices && tick.intraCandlePrices.length > 0) {
+        const preState = await handle.query<{ status: string }>("getState");
+        if (preState.status === "REVIEWING" || preState.status === "FINALIZING") {
+          for (const p of tick.intraCandlePrices) {
+            await handle.signal("priceCheck", {
+              currentPrice: p.price,
+              observedAt: p.observedAt,
+            });
+          }
+          // Let any priceCheck-driven INVALIDATED transition settle
+          // before issuing detector/reviewer signals that would
+          // short-circuit on the new status.
+          await new Promise((r) => setTimeout(r, 50));
+        }
+      }
+
       // Apply detector corroboration first (matches schedulerWorkflow order :
       // corroborations are processed before review signals on the same tick).
       if (targetCorroboration && targetCorroboration.confidence_delta_suggested !== 0) {
@@ -227,13 +250,20 @@ export async function runLive(
       // transitioned to TRACKING (i.e. after the finalizer GO'd this tick).
       // We poll the workflow state briefly to wait for TRACKING before
       // sending — mirrors the pattern in setupWorkflow.test.ts.
+      //
+      // Skip if the pre-detector priceCheck pass already invalidated the
+      // setup (price-breach-during-reviewing scenario) or if any other
+      // terminal transition happened on this tick.
       if (tick.intraCandlePrices && tick.intraCandlePrices.length > 0) {
-        await waitForStatus(handle, "TRACKING", 10_000);
-        for (const p of tick.intraCandlePrices) {
-          await handle.signal("trackingPrice", {
-            currentPrice: p.price,
-            observedAt: p.observedAt,
-          });
+        const postState = await handle.query<{ status: string }>("getState");
+        if (postState.status === "TRACKING" || postState.status === "FINALIZING") {
+          await waitForStatus(handle, "TRACKING", 10_000);
+          for (const p of tick.intraCandlePrices) {
+            await handle.signal("trackingPrice", {
+              currentPrice: p.price,
+              observedAt: p.observedAt,
+            });
+          }
         }
       }
     }
