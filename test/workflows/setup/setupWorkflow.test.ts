@@ -2,11 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { TestWorkflowEnvironment } from "@temporalio/testing";
 import { Worker } from "@temporalio/worker";
 import { getStateQuery, type InitialEvidence, setupWorkflow } from "@workflows/setup/setupWorkflow";
-import {
-  baseRunReviewerReturn,
-  defaultActivityStubs,
-  makePersistEvent,
-} from "./_setupTestHelpers";
+import { baseRunReviewerReturn, defaultActivityStubs, makePersistEvent } from "./_setupTestHelpers";
 
 // One TestWorkflowEnvironment shared across all tests in the file. We can't
 // recreate per-test because the Temporal native Runtime is a process-global
@@ -449,6 +445,96 @@ describe("SetupWorkflow", () => {
       });
       const result = await handle.result();
       expect(result).toBe("INVALIDATED");
+    });
+  }, 30_000);
+
+  test("priceCheck race: N concurrent invalidation signals produce exactly ONE PriceInvalidated event", async () => {
+    // Regression for the PriceInvalidated burst observed in production
+    // (1516 events in 1h on a single setup). Root cause was the signal
+    // handler awaiting `persistEvent` BEFORE flipping `state.status` to
+    // INVALIDATED — so concurrent signals all read `state.status === "REVIEWING"`,
+    // passed the `isActive` guard, and each queued their own persist.
+    //
+    // This test makes `persistEvent` artificially slow so the race window
+    // is wide enough that 5 in-flight signals overlap. Without the fix the
+    // handler persists 5 PriceInvalidated events; with the fix only the
+    // first slips through and the rest short-circuit.
+    const taskQueue = uniqueQueue("price-invalidated-race");
+    const persistedInvalidations: Array<{
+      currentPrice: number;
+      statusBefore: string;
+    }> = [];
+
+    const seqCounter = new Map<string, number>();
+    const fakeActivities = {
+      ...defaultActivityStubs(),
+      persistEvent: async (input: {
+        event: {
+          setupId: string;
+          type: string;
+          statusBefore?: string;
+          statusAfter?: string;
+          payload?: { data?: { currentPrice?: number } };
+        };
+        setupUpdate: unknown;
+      }) => {
+        if (input.event.type === "PriceInvalidated") {
+          persistedInvalidations.push({
+            currentPrice: input.event.payload?.data?.currentPrice ?? -1,
+            statusBefore: input.event.statusBefore ?? "?",
+          });
+          // Slow the persist so subsequent signals get a chance to slip
+          // through the (pre-fix) `isActive` guard.
+          await new Promise((r) => setTimeout(r, 200));
+        }
+        const prev = seqCounter.get(input.event.setupId) ?? 0;
+        const sequence = prev + 1;
+        seqCounter.set(input.event.setupId, sequence);
+        return {
+          ...input.event,
+          sequence,
+          id: `evt-${input.event.setupId}-${sequence}`,
+          occurredAt: new Date(),
+        };
+      },
+    };
+
+    const worker = await Worker.create({
+      connection: env.nativeConnection,
+      taskQueue,
+      workflowsPath: require.resolve("@workflows/setup/setupWorkflow"),
+      activities: fakeActivities,
+    });
+
+    await worker.runUntil(async () => {
+      const handle = await env.client.workflow.start(setupWorkflow, {
+        args: [{ ...baseInitial, setupId: "test-race" }],
+        workflowId: `test-race-${__testCounter}`,
+        taskQueue,
+      });
+
+      // Fire 5 invalidation signals concurrently. In production this maps
+      // to a price oscillating around the invalidation level on the WS
+      // feed — each sub-second tick triggers a fresh priceCheck signal.
+      const at = new Date().toISOString();
+      await Promise.all([
+        handle.signal("priceCheck", { currentPrice: 41000, observedAt: at }),
+        handle.signal("priceCheck", { currentPrice: 40999, observedAt: at }),
+        handle.signal("priceCheck", { currentPrice: 40998, observedAt: at }),
+        handle.signal("priceCheck", { currentPrice: 40997, observedAt: at }),
+        handle.signal("priceCheck", { currentPrice: 40996, observedAt: at }),
+      ]);
+
+      const result = await handle.result();
+      expect(result).toBe("INVALIDATED");
+
+      // The critical assertion: only ONE PriceInvalidated event was
+      // persisted. With the bug this is 5 ; with the fix it is 1.
+      expect(persistedInvalidations).toHaveLength(1);
+      // And the one event's `statusBefore` is the active state, not a
+      // post-mutation value — proves the handler's read of state was
+      // coherent.
+      expect(persistedInvalidations[0]?.statusBefore).toBe("REVIEWING");
     });
   }, 30_000);
 

@@ -1,5 +1,5 @@
-import { isValidFiveFieldCron } from "@domain/services/cronForTimeframe";
 import { REGISTRY } from "@adapters/indicators/IndicatorRegistry";
+import { isValidFiveFieldCron } from "@domain/services/cronForTimeframe";
 import { z } from "zod";
 
 const TimeframeSchema = z.enum(["1m", "5m", "15m", "30m", "1h", "2h", "4h", "1d", "1w"]);
@@ -33,8 +33,16 @@ export const KNOWN_ASSET_SOURCES = ["binance", "yahoo"] as const;
 // in src/adapters/indicators/IndicatorRegistry.ts (with metadata, compute,
 // chartScript, promptFragments), and the tf-web wizard pickers — by design.
 export const KNOWN_INDICATOR_IDS = [
-  "ema_stack", "vwap", "bollinger", "rsi", "macd", "atr", "volume",
-  "swings_bos", "structure_levels", "liquidity_pools",
+  "ema_stack",
+  "vwap",
+  "bollinger",
+  "rsi",
+  "macd",
+  "atr",
+  "volume",
+  "swings_bos",
+  "structure_levels",
+  "liquidity_pools",
 ] as const;
 export type IndicatorId = (typeof KNOWN_INDICATOR_IDS)[number];
 
@@ -220,7 +228,24 @@ export const WatchSchema = z
     }),
     optimization: z
       .object({
-        reviewer_skip_when_detector_corroborated: z.boolean().default(true),
+        /**
+         * When true, the scheduler skips sending a `review` signal to alive
+         * setups the detector just corroborated this tick — the
+         * corroboration's score delta is taken as sufficient signal until
+         * the next tick. Saves one reviewer LLM call per corroborated
+         * setup per tick at the cost of bypassing the reviewer's
+         * independent quality scoring.
+         *
+         * **Default `false`**: keep the reviewer in the pipeline so its
+         * verdict (STRENGTHEN / WEAKEN / NEUTRAL) updates the setup quality
+         * signal every tick — the finalizer's prompt explicitly references
+         * "reviewer ticks", and a score climbing purely on detector
+         * corroborations skews the system toward false-positives that the
+         * finalizer then rejects (observed in prod : 0 reviewer calls in
+         * 7d, 0 % conversion to TRACKING). Set to `true` only when cost
+         * matters more than signal accuracy.
+         */
+        reviewer_skip_when_detector_corroborated: z.boolean().default(false),
         /**
          * If true, the detector may emit a setup with `initial_score ≥
          * threshold` AND `expected_maturation_ticks = 1`, in which case the

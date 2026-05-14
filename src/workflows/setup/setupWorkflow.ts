@@ -294,6 +294,21 @@ export async function setupWorkflow(initial: InitialEvidence): Promise<SetupStat
 
     const before = { status: state.status, score: state.score };
 
+    // Flip state to INVALIDATED **before** the `await persistEvent`. The
+    // price feed can deliver dozens of breach signals per second when the
+    // price oscillates around the invalidation level, and Temporal queues
+    // each one to fire this handler. If we flipped the status AFTER the
+    // await, every queued signal would read `state.status === "REVIEWING"`,
+    // pass the `isActive` guard above, and emit its own PriceInvalidated
+    // event — observed in production as 1516 events on a single setup in
+    // one hour. Setting the state synchronously inside the handler turn
+    // means signals 2..N short-circuit at the guard. Pattern mirrors the
+    // TTL handler (`state.status = "EXPIRED"` before persist). The persist
+    // is idempotent under the existing event-store retry policy, so
+    // mutating state before commit doesn't risk a desynced workflow on
+    // transient activity failures.
+    state.status = "INVALIDATED";
+
     const stored = await dbActivities.persistEvent({
       event: {
         setupId: initial.setupId,
@@ -321,7 +336,6 @@ export async function setupWorkflow(initial: InitialEvidence): Promise<SetupStat
     });
 
     state.sequence = stored.sequence;
-    state.status = "INVALIDATED";
 
     if (everConfirmed) {
       await notifyActivities.notifyTelegramInvalidatedAfterConfirmed({

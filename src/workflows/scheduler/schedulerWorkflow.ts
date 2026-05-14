@@ -12,6 +12,7 @@ import {
 import { UNRECOVERABLE_ERROR_NAMES } from "../../domain/errors";
 import { type InitialEvidence, setupWorkflow } from "../setup/setupWorkflow";
 import type * as schedulerActivities from "./activities";
+import { shouldSendReviewSignal } from "./reviewerGating";
 
 const SHARED_NON_RETRYABLE = [...UNRECOVERABLE_ERROR_NAMES];
 
@@ -218,8 +219,22 @@ async function runOneTick(
     ...verdict.corroborations.map((c) => c.setup_id),
     ...dedup.corroborateInstead.map((c) => c.setupId),
   ]);
+  // Whether to skip the reviewer for setups the detector just corroborated.
+  // Pre-fix this branch was hardcoded to "always skip on corroborate" and
+  // the config flag was dead — production saw 0 reviewer LLM calls over
+  // 7 days while detector + finalizer ran normally, because the detector
+  // corroborated every alive setup every tick. Default is `false` so the
+  // reviewer is part of the pipeline by default; the flag is an opt-in
+  // cost optimization. See `shouldSendReviewSignal` for the truth table.
+  const reviewerSkipOnCorroborate = watch.optimization.reviewer_skip_when_detector_corroborated;
   for (const setup of alive) {
-    if (!corroboratedIds.has(setup.id)) {
+    if (
+      shouldSendReviewSignal({
+        setupId: setup.id,
+        corroboratedIds,
+        reviewerSkipOnCorroborate,
+      })
+    ) {
       await getExternalWorkflowHandle(setup.workflowId).signal("review", { tickSnapshotId });
     }
   }

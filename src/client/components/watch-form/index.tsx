@@ -3,8 +3,8 @@ import { WatchEditTabs } from "@client/components/watch-form/edit-tabs";
 import { SectionAdvanced } from "@client/components/watch-form/section-advanced";
 import { SectionAnalyzers } from "@client/components/watch-form/section-analyzers";
 import { SectionAsset } from "@client/components/watch-form/section-asset";
-import { SectionIndicators } from "@client/components/watch-form/section-indicators";
 import { SectionBudget } from "@client/components/watch-form/section-budget";
+import { SectionIndicators } from "@client/components/watch-form/section-indicators";
 import { SectionLifecycle } from "@client/components/watch-form/section-lifecycle";
 import { SectionNotifications } from "@client/components/watch-form/section-notifications";
 import { SectionSchedule } from "@client/components/watch-form/section-schedule";
@@ -61,7 +61,11 @@ const SENSIBLE_DEFAULTS = {
     min_risk_reward_ratio: 2,
   },
   optimization: {
-    reviewer_skip_when_detector_corroborated: true,
+    // Off by default — see docblock in domain/schemas/WatchesConfig.ts.
+    // Keeps the reviewer in the pipeline so its STRENGTHEN/WEAKEN/NEUTRAL
+    // verdict updates each tick instead of letting score climb on detector
+    // corroborations alone (which historically led to 0 % finalizer GO).
+    reviewer_skip_when_detector_corroborated: false,
     allow_same_tick_fast_path: true,
   },
   costs: { fees_pct: 0.1, slippage_pct: 0.05 },
@@ -212,7 +216,9 @@ export function WatchForm({ initial, preset, mode, onSubmit }: WatchFormProps) {
   const onInvalid = (errors: FieldErrors): void => {
     const first = firstError(errors);
     toast.error(
-      first ? `Champ invalide — ${first.path} : ${first.message}` : "Le formulaire contient des erreurs.",
+      first
+        ? `Champ invalide — ${first.path} : ${first.message}`
+        : "Le formulaire contient des erreurs.",
     );
   };
 
