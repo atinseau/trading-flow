@@ -5,10 +5,11 @@ import {
   formatInvalidatedAfterConfirmedPreview,
   formatRejectedPreview,
   formatReviewerVerdictPreview,
-  formatSLHitPreview,
   formatSetupCreatedPreview,
+  formatSLHitPreview,
   formatTPHitPreview,
 } from "@domain/notify/formatTelegramText";
+import { computeTtlExpiresAt } from "@domain/pipeline/computeTtlExpiresAt";
 import {
   closeReasonFromState,
   initialTrackingState,
@@ -22,8 +23,7 @@ import { applyVerdict, type SetupRuntimeState } from "@domain/scoring/applyVerdi
 import { verdictToEvent } from "@domain/scoring/verdictToEvent";
 import type { SetupStatus } from "@domain/state-machine/setupTransitions";
 import { isTerminal } from "@domain/state-machine/setupTransitions";
-import type { ReplaySetupSnapshot } from "./activities";
-import type { buildReplayActivities } from "./activities";
+import type { buildReplayActivities, ReplaySetupSnapshot } from "./activities";
 
 /**
  * Pure orchestration for a single replay tick. Extracted from the
@@ -250,10 +250,11 @@ export async function processTick(
       currentScore: ns.initial_score,
       invalidationLevel: ns.key_levels.invalidation,
     };
-    const tfMs = timeframeMinutes(watch.timeframes.primary) * 60_000;
-    const ttlExpiresAt = new Date(
-      tickAtDate.getTime() + watch.setup_lifecycle.ttl_candles * tfMs,
-    );
+    const ttlExpiresAt = computeTtlExpiresAt({
+      fromTickAt: tickAtDate,
+      ttlCandles: watch.setup_lifecycle.ttl_candles,
+      primaryTimeframe: watch.timeframes.primary,
+    });
     alive.set(setupId, {
       id: setupId,
       snapshot: snap,

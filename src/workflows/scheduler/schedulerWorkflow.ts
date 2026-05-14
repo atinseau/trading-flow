@@ -1,3 +1,4 @@
+import { computeTtlExpiresAt } from "@domain/pipeline/computeTtlExpiresAt";
 import {
   condition,
   defineQuery,
@@ -187,9 +188,11 @@ async function runOneTick(
       invalidationLevel: newSetup.keyLevels.invalidation,
       initialScore: newSetup.initialScore,
       ttlCandles: watch.setup_lifecycle.ttl_candles,
-      ttlExpiresAt: new Date(
-        Date.now() + watch.setup_lifecycle.ttl_candles * 3600_000,
-      ).toISOString(),
+      ttlExpiresAt: computeTtlExpiresAt({
+        fromTickAt: new Date(),
+        ttlCandles: watch.setup_lifecycle.ttl_candles,
+        primaryTimeframe: watch.timeframes.primary,
+      }).toISOString(),
       scoreThresholdFinalizer: watch.setup_lifecycle.score_threshold_finalizer,
       scoreThresholdDead: watch.setup_lifecycle.score_threshold_dead,
       scoreMax: watch.setup_lifecycle.score_max,
