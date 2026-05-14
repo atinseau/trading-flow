@@ -26,6 +26,7 @@ import type { SetupStatus } from "@domain/state-machine/setupTransitions";
 import { isTerminal } from "@domain/state-machine/setupTransitions";
 import { applyCorroboration } from "../../domain/pipeline/applyCorroboration";
 import { applyPriceCheck } from "../../domain/pipeline/applyPriceCheck";
+import { shouldSendReviewSignal } from "../scheduler/reviewerGating";
 import type { buildReplayActivities, ReplaySetupSnapshot } from "./activities";
 
 /**
@@ -367,8 +368,23 @@ export async function processTick(
   }
 
   // 4) Reviewer for each REVIEWING setup.
+  // Reuses the same gating helper as live's schedulerWorkflow (Drift I
+  // fix : replay previously ran the reviewer unconditionally, ignoring
+  // the per-watch `reviewer_skip_when_detector_corroborated` flag).
+  // `corroboratedIds` was populated in phase 2.
+  const reviewerSkipOnCorroborate =
+    watch.optimization?.reviewer_skip_when_detector_corroborated ?? false;
   for (const setup of [...alive.values()]) {
     if (setup.runtime.status !== "REVIEWING") continue;
+    if (
+      !shouldSendReviewSignal({
+        setupId: setup.id,
+        corroboratedIds,
+        reviewerSkipOnCorroborate,
+      })
+    ) {
+      continue; // detector corroborated this tick + flag is on → skip reviewer
+    }
     if (overCap()) return { costUsd: tickCost };
     const r = await llm.runReviewerReplay({
       sessionId,
