@@ -24,6 +24,7 @@ import { applyVerdict, type SetupRuntimeState } from "@domain/scoring/applyVerdi
 import { verdictToEvent } from "@domain/scoring/verdictToEvent";
 import type { SetupStatus } from "@domain/state-machine/setupTransitions";
 import { isTerminal } from "@domain/state-machine/setupTransitions";
+import { applyCorroboration } from "../../domain/pipeline/applyCorroboration";
 import type { buildReplayActivities, ReplaySetupSnapshot } from "./activities";
 
 /**
@@ -198,10 +199,64 @@ export async function processTick(
       initial_score: number;
       raw_observation?: string;
     }>;
+    corroborations?: Array<{
+      setup_id: string;
+      evidence?: string[];
+      confidence_delta_suggested: number;
+    }>;
   };
   const newSetups = detVerdict.new_setups ?? [];
 
-  // 2) Persist SetupCreated for each new setup.
+  // --- 2) Apply detector corroborations to alive setups ---
+  // Drift A : prior to 2026-05-14 this phase didn't exist — `corroborations`
+  // from the detector verdict were silently dropped in replay, leaving
+  // score trajectories divergent from live the moment the detector
+  // corroborated anything. The helper produces the same Strengthened /
+  // Weakened events with the same `source` discriminant in both
+  // pipelines.
+  // Reserved for Task 6 (Drift I — gate reviewer on corroborated setups);
+  // populated here, consumed in phase 4. Mirrors `schedulerWorkflow.ts`'s
+  // `reviewer_skip_when_detector_corroborated` gating in live.
+  const corroboratedIds = new Set<string>();
+  for (const corr of detVerdict.corroborations ?? []) {
+    const setup = alive.get(corr.setup_id);
+    if (!setup) continue;
+    corroboratedIds.add(corr.setup_id);
+
+    const result = applyCorroboration({
+      state: setup.runtime,
+      delta: corr.confidence_delta_suggested,
+      scoring: {
+        scoreMax: watch.setup_lifecycle.score_max,
+        scoreThresholdFinalizer: watch.setup_lifecycle.score_threshold_finalizer,
+        scoreThresholdDead: watch.setup_lifecycle.score_threshold_dead,
+      },
+      detectorPromptVersion: det.promptVersion,
+    });
+
+    if (result.kind !== "applied") continue;
+    setup.runtime = result.next;
+    setup.snapshot = {
+      ...setup.snapshot,
+      currentScore: result.next.score,
+      invalidationLevel: result.next.invalidationLevel,
+    };
+
+    await db.appendReplayEvent({
+      sessionId,
+      event: {
+        setupId: setup.id,
+        occurredAt: new Date(tickAt),
+        ...result.event,
+      },
+    });
+
+    if (result.next.status === "EXPIRED") {
+      alive.delete(setup.id);
+    }
+  }
+
+  // 3) Persist SetupCreated for each new setup.
   for (const ns of newSetups) {
     const setupId = newUuid();
     const setupCreatedPreview = formatSetupCreatedPreview({
@@ -269,7 +324,7 @@ export async function processTick(
     });
   }
 
-  // 3) Reviewer for each REVIEWING setup.
+  // 4) Reviewer for each REVIEWING setup.
   for (const setup of [...alive.values()]) {
     if (setup.runtime.status !== "REVIEWING") continue;
     if (overCap()) return { costUsd: tickCost };
@@ -334,7 +389,7 @@ export async function processTick(
     }
   }
 
-  // 4) Finalizer for each FINALIZING setup.
+  // 5) Finalizer for each FINALIZING setup.
   for (const setup of [...alive.values()]) {
     if (setup.runtime.status !== "FINALIZING") continue;
     if (overCap()) return { costUsd: tickCost };
@@ -451,7 +506,7 @@ export async function processTick(
     }
   }
 
-  // 5) Intra-candle tracking simulation for TRACKING setups.
+  // 6) Intra-candle tracking simulation for TRACKING setups.
   const trackingSetups = [...alive.values()].filter(
     (s): s is AliveSetup & { tracking: TrackingState } =>
       s.runtime.status === "TRACKING" && s.tracking !== undefined,
