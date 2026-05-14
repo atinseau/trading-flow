@@ -25,7 +25,11 @@ describe("extractObservations", () => {
   test("returns observations for Weakened", () => {
     const p: EventPayload = {
       type: "Weakened",
-      data: { reasoning: "ok", observations: [{ kind: "vol", text: "drop" }] },
+      data: {
+        reasoning: "ok",
+        observations: [{ kind: "vol", text: "drop" }],
+        source: "reviewer_full",
+      },
     };
     expect(extractObservations(p)).toEqual([{ kind: "vol", text: "drop" }]);
   });
@@ -62,7 +66,7 @@ describe("extractReasoning", () => {
   test("returns reasoning for Weakened", () => {
     const p: EventPayload = {
       type: "Weakened",
-      data: { reasoning: "trend down", observations: [] },
+      data: { reasoning: "trend down", observations: [], source: "reviewer_full" },
     };
     expect(extractReasoning(p)).toBe("trend down");
   });

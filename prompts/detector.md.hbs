@@ -1,8 +1,11 @@
 {{!--
-  version: detector_v5
+  version: detector_v6
   description: Modular indicators. Skeleton template — Indicators block,
                classification block, few-shot, and output schema are
-               composed by PromptBuilder from active plugins.
+               composed by PromptBuilder from active plugins. v6 adds the
+               bidirectional corroboration calibration table and the
+               "omit instead of +0" rule (paired with system prompt's
+               ON ALIVE SETUPS section).
 --}}
 
 # Free-form pattern detection on a chart
@@ -58,6 +61,23 @@ proposed with a lower score and tighter invalidation.
 {{#each aliveSetups}}
 - **#{{this.id}}** — `{{this.patternHint}}` `{{this.direction}}` | invalidation `{{this.invalidationLevel}}` | score `{{this.currentScore}}/100` | age `{{this.ageInCandles}}` candles
 {{/each}}
+
+### Corroboration calibration
+
+For each alive setup, you may emit ONE corroboration entry — or omit it.
+The `confidence_delta_suggested` field is signed `[-20, +20]`:
+
+| Delta | When to use |
+|-------|-------------|
+| `+10..+20` | Pattern materially advanced — decisive close, fresh confirmation candle, new touchpoint |
+| `+1..+5`  | Still visible with mild new evidence |
+|  `0`      | Don't use. **Omit the setup from `corroborations` instead** |
+| `-1..-10` | Pattern weakening — drift away from trigger, structure stressed, lower-high after a prior STRENGTHEN, volume drying on the trend leg |
+| `-15..-20`| Pattern no longer visible — decisive break, key level reclaimed, no longer printable on this tick's chart |
+
+**Omission is the "nothing new" signal.** It's not laziness — it's the
+correct output when you have no new evidence to cite, positive or
+negative. Corroborate ONLY when you can quantify a change.
 {{else}}
 *(no alive setups — you are free to propose new candidates)*
 {{/if}}
@@ -93,11 +113,14 @@ profile *fit* this pattern type?
 {{/if}}
 ## Fail-closed rules
 
-**When in doubt, propose NOTHING.** Better to miss an opportunity than
-generate a false signal that pollutes the pipeline.
+**When in doubt, propose NOTHING and corroborate NOTHING.** Better to
+miss a strengthening than inflate a fading setup, and better to miss a
+new opportunity than generate a false signal that pollutes the pipeline.
 
 - If you cannot fix a clear invalidation level → do not propose the setup.
 - If a pattern has no confirmation AND no exceptional context → `ignore_reason`.
+- If you can't quantify the change on an alive setup (positive OR negative)
+  → omit it from `corroborations`. No `+0` entries.
 
 ## Output format
 

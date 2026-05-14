@@ -1,7 +1,11 @@
 {{!--
-  version: reviewer_v5
+  version: reviewer_v6
   description: Modular indicators. Skeleton — fresh-data scalars and
                output spec composed by PromptBuilder from active plugins.
+               v6 tightens the NEUTRAL default (commit discipline after 2
+               consecutive NEUTRALs) and aligns with the system prompt's
+               expanded WEAKEN trigger taxonomy + same-tick corroboration
+               awareness.
 --}}
 
 # Refining an active setup
@@ -87,18 +91,33 @@ per setup lifecycle. Round 2 is FINAL — produce a complete verdict.
 
 | Delta | When to use |
 |-------|-------------|
-| `+15 / +20` | Strong confluence |
-| `+5 / +10` | 1 clear additional signal |
-| `0` (NEUTRAL) | Nothing new |
-| `-5 / -10` | 1 contrary signal |
-| `-15 / -25` | Multiple contrary signals |
-| INVALIDATE | Structure clearly broken |
+| `+15 / +20` | Strong confluence — multiple independent NEW signals aligned with setup direction |
+| `+5 / +10` | 1 clear additional signal beyond what previous ticks already counted |
+| `0` (NEUTRAL) | Truly inert tick — no new evidence either way |
+| `-5 / -10` | 1 contrary signal (see system-prompt WEAKEN triggers) |
+| `-15 / -25` | Multiple contrary signals or major structural deterioration |
+| INVALIDATE | Structure clearly broken (see INVALIDATE rules) |
 
 ## Fail-closed rules
 
-- **Nothing notable since previous tick** → `NEUTRAL`.
-- **Ambiguous signals** → `NEUTRAL`.
 - **Hesitating between WEAKEN and INVALIDATE** → choose WEAKEN.
+  INVALIDATE is a stop, not an entry filter; be permissive about
+  WEAKENing instead.
+
+## Commit discipline (anti-NEUTRAL-drift)
+
+NEUTRAL is a legitimate verdict when the tick is genuinely inert — but
+the finalizer reads back the history and a trail of NEUTRALs adds zero
+information while inflating maturation counts.
+
+- If the previous 2 reviewer verdicts on this setup are both NEUTRAL,
+  **commit** on this tick. Either find a positive STRENGTHEN trigger
+  cited from the fresh data, or accept a WEAKEN from the trigger
+  taxonomy. Three consecutive NEUTRALs means the reviewer is dodging,
+  not analyzing.
+- A NEUTRAL must still carry concrete observations — never an empty
+  array, never filler. If you cannot cite observations, the setup is
+  not inert, you are.
 
 ## Output format
 

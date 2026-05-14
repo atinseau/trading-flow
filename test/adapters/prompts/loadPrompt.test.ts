@@ -7,7 +7,7 @@ afterEach(() => {
 
 test("loadPrompt('detector') returns rendered template + version", async () => {
   const result = await loadPrompt("detector");
-  expect(result.version).toBe("detector_v5");
+  expect(result.version).toBe("detector_v6");
   expect(typeof result.render).toBe("function");
 
   // Render with sample context — uses new template variables from PromptBuilder
@@ -30,7 +30,7 @@ test("loadPrompt('detector') returns rendered template + version", async () => {
 
 test("loadPrompt('reviewer') extracts version", async () => {
   const result = await loadPrompt("reviewer");
-  expect(result.version).toBe("reviewer_v5");
+  expect(result.version).toBe("reviewer_v6");
 });
 
 test("loadPrompt('finalizer') extracts version", async () => {

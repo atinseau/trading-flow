@@ -11,9 +11,7 @@ import type { Verdict } from "@domain/schemas/Verdict";
  * keeping them in lockstep through a shared function eliminates the
  * risk of silent drift when a payload field is added.
  */
-export function verdictToEvent(
-  verdict: Verdict,
-): { type: EventTypeName; payload: EventPayload } {
+export function verdictToEvent(verdict: Verdict): { type: EventTypeName; payload: EventPayload } {
   switch (verdict.type) {
     case "STRENGTHEN":
       return {
@@ -32,7 +30,11 @@ export function verdictToEvent(
         type: "Weakened",
         payload: {
           type: "Weakened",
-          data: { reasoning: verdict.reasoning, observations: verdict.observations },
+          data: {
+            reasoning: verdict.reasoning,
+            observations: verdict.observations,
+            source: "reviewer_full",
+          },
         },
       };
     case "NEUTRAL":

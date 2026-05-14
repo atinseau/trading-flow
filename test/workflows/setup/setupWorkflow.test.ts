@@ -538,6 +538,143 @@ describe("SetupWorkflow", () => {
     });
   }, 30_000);
 
+  test("corroborate race: N concurrent corroborate signals all apply cumulatively, none lost", async () => {
+    // Mirror of the priceCheck race test. Pre-fix, the corroborate handler
+    // mutated `state.score` AFTER awaiting persist — so two concurrent
+    // corroborate signals both read the same pre-mutation score and the
+    // second's update silently clobbered the first's in-memory value (the
+    // events log still recorded both, but workflow state was lossy). After
+    // the race fix, state mutates BEFORE the await, so the second handler
+    // reads the post-first-mutation score and accumulates correctly.
+    const taskQueue = uniqueQueue("corroborate-race");
+    const persistedDeltas: number[] = [];
+    const seqCounter = new Map<string, number>();
+    const fakeActivities = {
+      ...defaultActivityStubs(),
+      persistEvent: async (input: {
+        event: { setupId: string; type: string; scoreDelta?: number; scoreAfter?: number };
+        setupUpdate: unknown;
+      }) => {
+        if (input.event.type === "Strengthened") {
+          persistedDeltas.push(input.event.scoreDelta ?? 0);
+          await new Promise((r) => setTimeout(r, 80));
+        }
+        const prev = seqCounter.get(input.event.setupId) ?? 0;
+        const sequence = prev + 1;
+        seqCounter.set(input.event.setupId, sequence);
+        return {
+          ...input.event,
+          sequence,
+          id: `evt-${input.event.setupId}-${sequence}`,
+          occurredAt: new Date(),
+        };
+      },
+    };
+
+    const worker = await Worker.create({
+      connection: env.nativeConnection,
+      taskQueue,
+      workflowsPath: require.resolve("@workflows/setup/setupWorkflow"),
+      activities: fakeActivities,
+    });
+
+    await worker.runUntil(async () => {
+      const handle = await env.client.workflow.start(setupWorkflow, {
+        // initialScore 25, threshold 80. Three +5 corroborations should
+        // leave score at 40 — proving each handler observed the previous
+        // mutation rather than reading the pre-mutation snapshot.
+        args: [{ ...baseInitial, setupId: "test-corr-race", initialScore: 25 }],
+        workflowId: `test-corr-race-${__testCounter}`,
+        taskQueue,
+      });
+
+      await Promise.all([
+        handle.signal("corroborate", { confidenceDelta: 5, evidence: [] }),
+        handle.signal("corroborate", { confidenceDelta: 5, evidence: [] }),
+        handle.signal("corroborate", { confidenceDelta: 5, evidence: [] }),
+      ]);
+
+      // Drain by querying state after persists complete.
+      const start = Date.now();
+      while (Date.now() - start < 5_000) {
+        const state = await handle.query(getStateQuery);
+        if (state.score === 40 && persistedDeltas.length === 3) break;
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      const finalState = await handle.query(getStateQuery);
+      expect(finalState.score).toBe(40); // 25 + 5 + 5 + 5
+
+      await handle.signal("close", { reason: "test_done" });
+      await handle.result();
+    });
+
+    // Each handler must have observed the prior mutation; the deltas
+    // persisted should each be exactly +5 (no lost increment, no
+    // double-count).
+    expect(persistedDeltas).toEqual([5, 5, 5]);
+  }, 30_000);
+
+  test("corroborate with negative delta -> Weakened event + score floored at 0", async () => {
+    // The detector schema now allows confidence_delta_suggested ∈ [-20, 20].
+    // A negative delta represents "pattern weakening / no longer visible"
+    // and should produce a Weakened event with source = detector_decorroboration.
+    // The score must floor at 0, mirroring applyVerdict's clamp.
+    const taskQueue = uniqueQueue("corroborate-negative");
+    const persisted: Array<{ type: string; scoreDelta: number; scoreAfter: number }> = [];
+
+    const fakeActivities = {
+      ...defaultActivityStubs(),
+      persistEvent: makePersistEvent((input) => {
+        persisted.push({
+          type: input.event.type,
+          scoreDelta: (input.event as { scoreDelta?: number }).scoreDelta ?? 0,
+          scoreAfter: (input.event as { scoreAfter?: number }).scoreAfter ?? 0,
+        });
+      }),
+    };
+
+    const worker = await Worker.create({
+      connection: env.nativeConnection,
+      taskQueue,
+      workflowsPath: require.resolve("@workflows/setup/setupWorkflow"),
+      activities: fakeActivities,
+    });
+
+    await worker.runUntil(async () => {
+      const handle = await env.client.workflow.start(setupWorkflow, {
+        // Start at 25, -10 → 15 (Weakened), -20 → 0 (Weakened, floored).
+        args: [
+          { ...baseInitial, setupId: "test-corr-neg", initialScore: 25, scoreThresholdDead: -1 },
+        ],
+        workflowId: `test-corr-neg-${__testCounter}`,
+        taskQueue,
+      });
+
+      await handle.signal("corroborate", { confidenceDelta: -10, evidence: [] });
+      await handle.signal("corroborate", { confidenceDelta: -20, evidence: [] });
+
+      const start = Date.now();
+      while (Date.now() - start < 3_000) {
+        const state = await handle.query(getStateQuery);
+        if (state.score === 0) break;
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      const finalState = await handle.query(getStateQuery);
+      expect(finalState.score).toBe(0);
+      // status stays REVIEWING because scoreThresholdDead = -1 (so 0 doesn't trip EXPIRED).
+      expect(finalState.status).toBe("REVIEWING");
+
+      await handle.signal("close", { reason: "test_done" });
+      await handle.result();
+    });
+
+    const weakenedEvents = persisted.filter((e) => e.type === "Weakened");
+    expect(weakenedEvents).toHaveLength(2);
+    // First weaken : 25 - 10 = 15. Second : 15 - 20 = -5 floored to 0, actual delta -15.
+    expect(weakenedEvents[0]).toMatchObject({ type: "Weakened", scoreDelta: -10, scoreAfter: 15 });
+    expect(weakenedEvents[1]).toMatchObject({ type: "Weakened", scoreDelta: -15, scoreAfter: 0 });
+  }, 30_000);
+
   // --- kill signal path -----------------------------------------------------
 
   test("kill signal in REVIEWING -> KILLED + Killed event persisted + notification sent + workflow exits", async () => {

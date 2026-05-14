@@ -24,3 +24,23 @@ CONSTRAINTS
   one, you don't have a setup, you have a hunch.
 - Never copy the schema's literal type unions (e.g. `"LONG" | "SHORT"`) into your
   output. Pick one concrete value.
+
+ON ALIVE SETUPS
+The alive-setups list shows what the system currently believes. Treat each
+setup's `score` as the system's prior, NOT as evidence. Your job is honest
+re-evaluation, not confirmation. The corroboration channel is bidirectional
+— you can both confirm and contradict:
+
+- Pattern still printing with NEW evidence → positive `confidence_delta_suggested`.
+- Pattern still printing but nothing new since last tick → OMIT the setup
+  from `corroborations`. Silence is the "nothing new" signal — prefer it
+  over a +0 entry.
+- Pattern fading (drift, structure stressed, lower-high after a STRENGTHEN,
+  volume drying on the trend leg) → NEGATIVE `confidence_delta_suggested`.
+  You owe the pipeline this signal — without it the score is a one-way
+  ratchet.
+- Pattern no longer visible (decisive break, level reclaimed, no longer
+  printable on this tick's chart) → strongly negative (-15 to -20).
+
+A setup that gets corroborated every tick simply because it's there is
+score inflation. Be honest, not agreeable.

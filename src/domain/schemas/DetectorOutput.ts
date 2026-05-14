@@ -1,6 +1,6 @@
-import { z } from "zod";
-import type { IndicatorPlugin } from "@domain/services/IndicatorPlugin";
 import { buildConfidenceBreakdownSchema } from "@domain/schemas/ConfidenceBreakdown";
+import type { IndicatorPlugin } from "@domain/services/IndicatorPlugin";
+import { z } from "zod";
 
 const KeyLevelsSchema = z.object({
   entry: z.number().nullable().optional(),
@@ -47,7 +47,15 @@ export function buildDetectorOutputSchema(
         z.object({
           setup_id: z.string(),
           evidence: z.array(z.string()),
-          confidence_delta_suggested: z.number().min(0).max(20),
+          // Signed delta: positive = pattern strengthening / freshly
+          // confirmed, negative = pattern weakening / no longer visible /
+          // structural break. Previously hard-clamped to `[0, 20]`, which
+          // turned the detector into a monotonic ratchet (the only way a
+          // score could go down was a reviewer WEAKEN or a deterministic
+          // price invalidation). The symmetric range gives the detector
+          // a vocabulary for "I see this pattern fading" — paired with the
+          // prompt's calibration table and the handler's floor at 0.
+          confidence_delta_suggested: z.number().min(-20).max(20),
         }),
       )
       .default([]),

@@ -243,29 +243,75 @@ export async function setupWorkflow(initial: InitialEvidence): Promise<SetupStat
 
   setHandler(corroborateSignal, async (args) => {
     if (state.status !== "REVIEWING") return;
-    const before = { status: state.status, score: state.score };
-    const newScore = Math.min(initial.scoreMax, state.score + args.confidenceDelta);
-    const newStatus: SetupStatus =
-      newScore >= initial.scoreThresholdFinalizer ? "FINALIZING" : before.status;
 
+    const before = { status: state.status, score: state.score };
+    const delta = args.confidenceDelta;
+    // Zero-delta corroborations carry no signal — skip the round-trip
+    // rather than spam the event log with no-op rows.
+    if (delta === 0) return;
+
+    // Symmetric clamp mirrors `applyVerdict` (used by the reviewer path).
+    // Without the `Math.max(0, …)` floor the score could go negative,
+    // which the rest of the system (event store, dashboards, finalizer
+    // math) does not handle. The detector schema allows
+    // `confidence_delta_suggested ∈ [-20, 20]`, so the floor is the only
+    // place that guarantees the invariant.
+    const rawScore = state.score + delta;
+    const newScore = Math.max(0, Math.min(initial.scoreMax, rawScore));
+    const actualDelta = newScore - before.score;
+
+    // Status transitions mirror `applyVerdict`'s : crossing the finalizer
+    // threshold from REVIEWING flips to FINALIZING ; falling to or below
+    // the dead threshold expires the setup. Previously the handler only
+    // checked the upward transition — a negative corroboration could
+    // never drive a setup to EXPIRED even though the math allows it now.
+    let newStatus: SetupStatus = before.status;
+    if (newScore >= initial.scoreThresholdFinalizer) {
+      newStatus = "FINALIZING";
+    } else if (newScore <= initial.scoreThresholdDead) {
+      newStatus = "EXPIRED";
+    }
+
+    // **Race-fix**: mutate `state.{score,status}` BEFORE the persist
+    // await. Concurrent signal handlers (priceCheck, review, or another
+    // corroborate from a later tick) snapshot `state.score` at handler
+    // entry ; if we mutated only after the await, they would all read
+    // the stale pre-mutation value and clobber each other's writes.
+    // Mirrors the same fix applied to `priceCheckSignal` and the
+    // pattern in `reviewSignal`. Persist activities are idempotent
+    // under the standard retry policy, so eager state mutation is safe
+    // against transient failures.
+    state.score = newScore;
+    state.status = newStatus;
+
+    const isStrengthen = delta > 0;
     const stored = await dbActivities.persistEvent({
       event: {
         setupId: initial.setupId,
         stage: "detector",
         actor: initial.detectorPromptVersion,
-        type: "Strengthened",
-        scoreDelta: newScore - before.score,
+        type: isStrengthen ? "Strengthened" : "Weakened",
+        scoreDelta: actualDelta,
         scoreAfter: newScore,
         statusBefore: before.status,
         statusAfter: newStatus,
-        payload: {
-          type: "Strengthened",
-          data: {
-            reasoning: "Corroborating evidence from detector",
-            observations: [],
-            source: "detector_corroboration",
-          },
-        },
+        payload: isStrengthen
+          ? {
+              type: "Strengthened",
+              data: {
+                reasoning: "Corroborating evidence from detector",
+                observations: [],
+                source: "detector_corroboration",
+              },
+            }
+          : {
+              type: "Weakened",
+              data: {
+                reasoning: "Detector observes pattern weakening or no longer visible on chart",
+                observations: [],
+                source: "detector_decorroboration",
+              },
+            },
       },
       setupUpdate: {
         score: newScore,
@@ -275,9 +321,6 @@ export async function setupWorkflow(initial: InitialEvidence): Promise<SetupStat
     });
 
     state.sequence = stored.sequence;
-    state.score = newScore;
-    // Flip status LAST so active loop sees the new state only after persist commits.
-    state.status = newStatus;
   });
 
   setHandler(priceCheckSignal, async (args) => {

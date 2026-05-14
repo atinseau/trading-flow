@@ -49,6 +49,14 @@ export const StrengthenedPayload = z.object({
 export const WeakenedPayload = z.object({
   reasoning: z.string(),
   observations: z.array(ObservationSchema),
+  // Mirrors `StrengthenedPayload.source` — discriminates whether the
+  // weakening came from the reviewer's full quality evaluation
+  // (`reviewer_full`) or from the detector observing the pattern fading
+  // / no longer present (`detector_decorroboration`). The detector
+  // path emits no `observations[]` (it's a corroboration-channel signal,
+  // not a structured analysis), so consumers reading observations
+  // should ignore Weakened payloads with this source.
+  source: z.enum(["reviewer_full", "detector_decorroboration"]),
   freshDataSummary: FreshDataSummary.optional(),
   ...TelegramPreviewField,
 });

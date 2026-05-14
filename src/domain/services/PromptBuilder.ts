@@ -1,9 +1,10 @@
 // src/domain/services/PromptBuilder.ts
-import { loadPrompt, type LoadedPrompt } from "@adapters/prompts/loadPrompt";
+
 import type { IndicatorRegistry } from "@adapters/indicators/IndicatorRegistry";
+import { type LoadedPrompt, loadPrompt } from "@adapters/prompts/loadPrompt";
+import type { WatchConfig } from "@domain/schemas/WatchesConfig";
 import type { FewShotEngine } from "@domain/services/FewShotEngine";
 import type { IndicatorPlugin } from "@domain/services/IndicatorPlugin";
-import type { WatchConfig } from "@domain/schemas/WatchesConfig";
 
 export class PromptBuilder {
   private detector: LoadedPrompt | null = null;
@@ -142,9 +143,10 @@ function composeOutputFormatTable(
   plugins: ReadonlyArray<IndicatorPlugin>,
   _htfEnabled: boolean,
 ): string {
-  const breakdownRow = plugins.length === 0
-    ? "| `new_setups[i].\"clarity\"` | number 0-100 | Visual pattern clarity |"
-    : "| `new_setups[i].confidence_breakdown` | object | Per-axis 0-25 scores; sum ≈ initial_score |";
+  const breakdownRow =
+    plugins.length === 0
+      ? '| `new_setups[i]."clarity"` | number 0-100 | Visual pattern clarity |'
+      : "| `new_setups[i].confidence_breakdown` | object | Per-axis 0-25 scores; sum ≈ initial_score |";
   return [
     "Respond with a strict JSON object. All fields below REQUIRED.",
     "",
@@ -153,11 +155,11 @@ function composeOutputFormatTable(
     "| `corroborations` | array | Alive setups reinforced this tick |",
     "| `corroborations[i].setup_id` | string | ID of an alive setup |",
     "| `corroborations[i].evidence` | array<string> | Quantified observations |",
-    "| `corroborations[i].confidence_delta_suggested` | number 0..20 | Delta |",
+    "| `corroborations[i].confidence_delta_suggested` | number -20..20 | Signed delta — see calibration table |",
     "| `new_setups` | array | New setups proposed |",
     "| `new_setups[i].type` | string | Free-form label |",
-    "| `new_setups[i].direction` | string | \"LONG\" / \"SHORT\" |",
-    "| `new_setups[i].pattern_category` | string | \"event\" / \"accumulation\" |",
+    '| `new_setups[i].direction` | string | "LONG" / "SHORT" |',
+    '| `new_setups[i].pattern_category` | string | "event" / "accumulation" |',
     "| `new_setups[i].expected_maturation_ticks` | int 1-6 | Reviewer ticks expected |",
     breakdownRow,
     "| `new_setups[i].key_levels.entry` | number optional | Entry |",
