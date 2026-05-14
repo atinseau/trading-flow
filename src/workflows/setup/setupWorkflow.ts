@@ -12,8 +12,9 @@ import {
   workflowInfo,
 } from "@temporalio/workflow";
 import { UNRECOVERABLE_ERROR_NAMES } from "../../domain/errors";
-import { deriveCloseOutcome, shouldTriggerFeedback } from "../../domain/feedback/closeOutcome";
+import { deriveCloseOutcome } from "../../domain/feedback/closeOutcome";
 import { buildPriceInvalidationEvent } from "../../domain/pipeline/priceInvalidationEvent";
+import { shouldRunFeedback } from "../../domain/pipeline/shouldRunFeedback";
 import type { Verdict } from "../../domain/schemas/Verdict";
 import { applyVerdict } from "../../domain/scoring/applyVerdict";
 import { verdictToEvent } from "../../domain/scoring/verdictToEvent";
@@ -685,27 +686,25 @@ export async function setupWorkflow(initial: InitialEvidence): Promise<SetupStat
           // runs with parentClosePolicy:ABANDON so the parent setup workflow
           // can complete immediately even if the feedback loop is still
           // running — feedback analysis must not block the trading hot path.
-          if (initial.feedbackEnabled) {
-            const closeOutcome = deriveCloseOutcome({
-              finalStatus: "CLOSED",
-              trackingResult,
-              everConfirmed: true,
+          const closeOutcome = deriveCloseOutcome({
+            finalStatus: "CLOSED",
+            trackingResult,
+            everConfirmed: true,
+          });
+          if (shouldRunFeedback({ closeOutcome, watchFeedbackEnabled: initial.feedbackEnabled })) {
+            await startChild(feedbackLoopWorkflow, {
+              workflowId: feedbackWorkflowId(initial.setupId),
+              args: [
+                {
+                  setupId: initial.setupId,
+                  watchId: initial.watchId,
+                  closeOutcome,
+                  scoreAtClose: state.score,
+                },
+              ],
+              parentClosePolicy: ParentClosePolicy.ABANDON,
+              cancellationType: ChildWorkflowCancellationType.ABANDON,
             });
-            if (shouldTriggerFeedback(closeOutcome)) {
-              await startChild(feedbackLoopWorkflow, {
-                workflowId: feedbackWorkflowId(initial.setupId),
-                args: [
-                  {
-                    setupId: initial.setupId,
-                    watchId: initial.watchId,
-                    closeOutcome,
-                    scoreAtClose: state.score,
-                  },
-                ],
-                parentClosePolicy: ParentClosePolicy.ABANDON,
-                cancellationType: ChildWorkflowCancellationType.ABANDON,
-              });
-            }
           }
         } else {
           const stored = await dbActivities.persistEvent({

@@ -5,6 +5,7 @@ import { InvalidConfigError } from "@domain/errors";
 import { extractObservations, extractReasoning } from "@domain/events/payloadAccessors";
 import type { CloseReason } from "@domain/feedback/closeOutcome";
 import type { LessonAction, LessonCategory } from "@domain/feedback/lessonAction";
+import { shouldRunFeedback } from "@domain/pipeline/shouldRunFeedback";
 import type { NewReplayEvent, StoredReplayEvent } from "@domain/ports/ReplayEventStore";
 import {
   buildReplayFeedbackContext,
@@ -17,8 +18,8 @@ import { type FeedbackOutput, FeedbackOutputSchema } from "@domain/schemas/Feedb
 import { buildIndicatorsSchema } from "@domain/schemas/Indicators";
 import { type ReviewerLlmOutput, ReviewerLlmOutputSchema } from "@domain/schemas/ReviewerOutput";
 import { type Verdict, VerdictSchema } from "@domain/schemas/Verdict";
-import { computeHtfContext } from "@domain/services/htfContext";
 import { renderHtfChart } from "@domain/services/htfChartRenderer";
+import { computeHtfContext } from "@domain/services/htfContext";
 import { inferImageMimeType } from "@domain/services/imageMimeType";
 import { classifyRegime } from "@domain/services/marketRegime";
 import { getTradingSession } from "@domain/services/tradingSession";
@@ -836,8 +837,20 @@ export function buildReplayActivities(deps: ReplayActivityDeps) {
         setupId: input.setupId,
       });
 
-      if (session.feedbackMode === "skip") {
-        childLog.info({}, "runFeedbackAnalysisReplay skipped (feedbackMode=skip)");
+      if (
+        !shouldRunFeedback({
+          closeOutcome: { reason: input.closeReason, everConfirmed: input.everConfirmed },
+          watchFeedbackEnabled: session.configSnapshot.feedback?.enabled ?? true,
+          sessionFeedbackMode: session.feedbackMode,
+        })
+      ) {
+        childLog.info(
+          {
+            feedbackMode: session.feedbackMode,
+            watchFeedbackEnabled: session.configSnapshot.feedback?.enabled,
+          },
+          "runFeedbackAnalysisReplay skipped",
+        );
         return {
           skipped: true,
           summary: "",
@@ -947,8 +960,11 @@ export function buildReplayActivities(deps: ReplayActivityDeps) {
       // `runFeedbackAnalysis` produces from its FeedbackContextChunk[].
       const llmImages = contextChunks
         .filter(
-          (c): c is ReplayFeedbackChunk & { content: { kind: "image" } & { artifactUri: string; mimeType: string } } =>
-            c.content.kind === "image",
+          (
+            c,
+          ): c is ReplayFeedbackChunk & {
+            content: { kind: "image" } & { artifactUri: string; mimeType: string };
+          } => c.content.kind === "image",
         )
         .map((c) => ({
           sourceUri: c.content.artifactUri,
@@ -1082,11 +1098,16 @@ export function buildReplayActivities(deps: ReplayActivityDeps) {
      * half-open on the left so consecutive calls don't double-process
      * the boundary candle.
      */
-    async fetchRangeCandles(input: {
-      sessionId: string;
-      from: string;
-      to: string;
-    }): Promise<{ candles: Array<{ timestamp: string; open: number; high: number; low: number; close: number; volume: number }> }> {
+    async fetchRangeCandles(input: { sessionId: string; from: string; to: string }): Promise<{
+      candles: Array<{
+        timestamp: string;
+        open: number;
+        high: number;
+        low: number;
+        close: number;
+        volume: number;
+      }>;
+    }> {
       const session = await deps.sessionsRepo.get(input.sessionId);
       if (!session) throw new Error(`Replay session ${input.sessionId} not found`);
       const watch = session.configSnapshot;
@@ -1178,4 +1199,3 @@ function mapActionToProposedPayload(
       };
   }
 }
-

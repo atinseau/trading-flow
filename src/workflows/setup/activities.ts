@@ -10,8 +10,8 @@ import {
   formatInvalidatedAfterConfirmedPreview,
   formatRejectedPreview,
   formatReviewerVerdictPreview,
-  formatSLHitPreview,
   formatSetupCreatedPreview,
+  formatSLHitPreview,
   formatTPHitPreview,
 } from "@domain/notify/formatTelegramText";
 import type { NewEvent, SetupStateUpdate } from "@domain/ports/EventStore";
@@ -194,7 +194,10 @@ export function buildSetupActivities(deps: ActivityDeps) {
       // last OHLCV candle). The previous proxy `recentHigh` was the 50-period
       // high — biased toward 1.0 in `positionInWeeklyRange` and just wrong.
       const fetcher = deps.marketDataFetchers.get(watch.asset.source);
-      const livePrice = snap.lastClose ?? ((snap.indicators as Record<string, unknown>).recentHigh as number | undefined) ?? 0;
+      const livePrice =
+        snap.lastClose ??
+        ((snap.indicators as Record<string, unknown>).recentHigh as number | undefined) ??
+        0;
       const htf = fetcher
         ? await computeHtfContext({
             marketDataFetcher: fetcher,
@@ -587,8 +590,7 @@ export function buildSetupActivities(deps: ActivityDeps) {
         includeReasoning,
       });
 
-      const images =
-        includeChartImage && input.chartUri ? [{ uri: input.chartUri }] : undefined;
+      const images = includeChartImage && input.chartUri ? [{ uri: input.chartUri }] : undefined;
 
       const result = await deps.notifier.send({
         chatId: deps.infra.notifications.telegram.chat_id,
@@ -769,8 +771,7 @@ export function buildSetupActivities(deps: ActivityDeps) {
         rawObservation: input.rawObservation,
       });
 
-      const images =
-        includeChartImage && input.chartUri ? [{ uri: input.chartUri }] : undefined;
+      const images = includeChartImage && input.chartUri ? [{ uri: input.chartUri }] : undefined;
 
       const result = await deps.notifier.sendWithButtons({
         chatId: deps.infra.notifications.telegram.chat_id,
@@ -812,8 +813,7 @@ export function buildSetupActivities(deps: ActivityDeps) {
       const childLog = log.child({ watchId: input.watchId, asset: input.asset });
       const watch = await deps.watchById(input.watchId);
       if (!watch) return null;
-      const event =
-        input.verdict === "STRENGTHEN" ? "setup_strengthened" : "setup_weakened";
+      const event = input.verdict === "STRENGTHEN" ? "setup_strengthened" : "setup_weakened";
       if (!watch.notify_on.includes(event)) {
         childLog.debug({ event }, "notification skipped (not in notify_on)");
         return null;
@@ -931,4 +931,3 @@ export function buildSetupActivities(deps: ActivityDeps) {
     },
   };
 }
-
