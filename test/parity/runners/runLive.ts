@@ -53,6 +53,16 @@ export async function runLive(
     );
   }
 
+  // Per-tick reviewer verdict. The live workflow's `runReviewer` activity
+  // is a single function reference, but we want to vary the returned
+  // verdict per tick. Track which tick is currently being processed via
+  // a closure (`currentReviewTickIdx`) ; the runner sets it BEFORE
+  // signaling `review` and the stub reads it on activity invocation.
+  // This is preferable to a "call count" because the reviewer is gated
+  // (skipped on corroborated ticks) — a call counter would drift if
+  // reviewerSkipOnCorroborate is on.
+  let currentReviewTickIdx = -1;
+
   const fakeActivities = {
     ...defaultActivityStubs(),
     persistEvent: makePersistEvent((input) => {
@@ -85,7 +95,15 @@ export async function runLive(
         occurredAt: new Date().toISOString(),
       });
     }),
-    runReviewer: async () => baseRunReviewerReturn({ type: "NEUTRAL", observations: [] }),
+    runReviewer: async () => {
+      // Per-tick override : the runner sets currentReviewTickIdx before
+      // sending the `review` signal. If no override is declared on that
+      // tick (or the index isn't set yet — happens during fast-path or
+      // workflow-internal review calls), default to NEUTRAL.
+      const tick = scenario.ticks[currentReviewTickIdx];
+      const verdict = tick?.reviewerVerdict ?? { type: "NEUTRAL", observations: [] };
+      return baseRunReviewerReturn(verdict);
+    },
     runFinalizer: async () => {
       if (!finalizerTick?.finalizerDecision) {
         return {
@@ -156,7 +174,9 @@ export async function runLive(
 
     // For each scenario tick, fan in the matching signal(s).
     let expectedScore = scenario.setup.initialScore;
-    for (const tick of scenario.ticks) {
+    for (let tickIdx = 0; tickIdx < scenario.ticks.length; tickIdx++) {
+      const tick = scenario.ticks[tickIdx];
+      if (!tick) continue;
       const corroborations = tick.detectorVerdict.corroborations ?? [];
       const targetCorroboration = corroborations.find((c) => c.setup_id === scenario.setup.setupId);
 
@@ -188,14 +208,19 @@ export async function runLive(
       // optimization flag is on, the reviewer is skipped.
       const skipReview = reviewerSkipOnCorroborate && targetCorroboration !== undefined;
       if (!skipReview && tick.reviewerVerdict) {
-        // The default reviewer stub returns NEUTRAL ; override per-tick
-        // via the scenario's `reviewerVerdict` is not supported here
-        // (would require swapping the worker activities mid-run). For
-        // Task 10 the corroboration-positive scenario has no reviewer
-        // verdicts on any tick (reviewer is fully skipped) so this
-        // branch never fires. Future scenarios with reviewer paths will
-        // need a per-tick activity override mechanism.
+        // Tell the runReviewer stub which tick it's serving. The stub
+        // closes over `currentReviewTickIdx` and reads
+        // `scenario.ticks[idx].reviewerVerdict` on invocation.
+        currentReviewTickIdx = tickIdx;
         await handle.signal("review", { tickSnapshotId: `snap-${tick.tickAt}` });
+        // Wait for the reviewer to land before proceeding. The
+        // `review` handler runs `runReviewer` then persists an event,
+        // mutating `state.status` / `state.score`. If we don't wait,
+        // the subsequent `close` signal (sent below) may flip state to
+        // CLOSED before the reviewer persists, causing the persisted
+        // event to have `statusBefore = "CLOSED"` instead of the
+        // expected "REVIEWING" — a real cross-pipeline drift.
+        await waitForReviewerSettled(handle, tick.reviewerVerdict.type, 10_000);
       }
 
       // Intra-candle tracking prices : sent only AFTER the workflow has
@@ -215,9 +240,14 @@ export async function runLive(
 
     // If the workflow is still alive (no terminal transition happened),
     // close it explicitly so worker.runUntil drains cleanly. If it
-    // already terminated (CLOSED / REJECTED / INVALIDATED), the close
-    // signal is a no-op.
-    await handle.signal("close", { reason: "parity-runner-done" });
+    // already terminated (CLOSED / REJECTED / INVALIDATED / EXPIRED),
+    // the signal call throws WorkflowNotFoundError — swallow it, the
+    // workflow already finished and `handle.result()` will resolve.
+    try {
+      await handle.signal("close", { reason: "parity-runner-done" });
+    } catch {
+      // workflow already terminal — ignore
+    }
     await handle.result();
   });
 
@@ -261,4 +291,43 @@ async function waitForScore(
     await new Promise((r) => setTimeout(r, 25));
   }
   throw new Error(`Timeout waiting for workflow score=${target} after ${timeoutMs}ms`);
+}
+
+/**
+ * Polls the workflow until the reviewer's effect on workflow state is
+ * observable. The shape of "settled" depends on the verdict type :
+ *
+ * - INVALIDATE → status becomes INVALIDATED.
+ * - STRENGTHEN/WEAKEN → score moves OR status flips (to FINALIZING /
+ *   EXPIRED). Since we don't track the expected score change here,
+ *   we wait for any of {FINALIZING, EXPIRED, INVALIDATED} OR a brief
+ *   timeout (the persist activity is fast).
+ * - NEUTRAL → no state change ; just sleep briefly to let the persist
+ *   activity drain.
+ *
+ * This is heuristic but adequate for the parity harness — the goal is
+ * to avoid sending the `close` signal between the reviewer's
+ * `runReviewer` activity completing and its `persistEvent` call,
+ * which would cause the persisted event to carry the wrong
+ * `statusBefore` (CLOSED instead of the expected REVIEWING).
+ */
+async function waitForReviewerSettled(
+  handle: { query: <T>(name: string) => Promise<T> },
+  verdictType: string,
+  timeoutMs: number,
+): Promise<void> {
+  if (verdictType === "INVALIDATE") {
+    await waitForStatus(handle, "INVALIDATED", timeoutMs);
+    return;
+  }
+  // For STRENGTHEN/WEAKEN/NEUTRAL we don't have a precise post-state
+  // to check (NEUTRAL doesn't mutate state at all). A short bounded
+  // sleep is sufficient — the persist activity is in-memory in the
+  // test environment.
+  const start = Date.now();
+  while (Date.now() - start < 500) {
+    const state = await handle.query<{ status: string }>("getState");
+    if (state.status !== "REVIEWING") return;
+    await new Promise((r) => setTimeout(r, 25));
+  }
 }
