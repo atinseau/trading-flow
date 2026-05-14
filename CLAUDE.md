@@ -1,106 +1,237 @@
+# trading-flow — Claude operating notes
 
-Default to using Bun instead of Node.js.
+Multi-asset trading bot. 3-stage LLM pipeline (Detector → Reviewer → Finalizer)
+orchestrated by Temporal, event-sourced in Postgres, Telegram for human-in-the-
+loop. Bun + TypeScript strict + Drizzle + Biome.
 
-- Use `bun <file>` instead of `node <file>` or `ts-node <file>`
-- Use `bun test` instead of `jest` or `vitest`
-- Use `bun build <file.html|file.ts|file.css>` instead of `webpack` or `esbuild`
-- Use `bun install` instead of `npm install` or `yarn install` or `pnpm install`
-- Use `bun run <script>` instead of `npm run <script>` or `yarn run <script>` or `pnpm run <script>`
-- Use `bunx <package> <command>` instead of `npx <package> <command>`
-- Bun automatically loads .env, so don't use dotenv.
+For the **why / what** of the system: `README.md` and `docs/superpowers/specs/`.
+This file is the **how-to-not-break-it** for an AI assistant.
 
-## APIs
+---
 
-- `Bun.serve()` supports WebSockets, HTTPS, and routes. Don't use `express`.
-- `bun:sqlite` for SQLite. Don't use `better-sqlite3`.
-- `Bun.redis` for Redis. Don't use `ioredis`.
-- `Bun.sql` for Postgres. Don't use `pg` or `postgres.js`.
-- `WebSocket` is built-in. Don't use `ws`.
-- Prefer `Bun.file` over `node:fs`'s readFile/writeFile
-- Bun.$`ls` instead of execa.
+## Architectural rules (enforced by Biome — `biome.json`)
 
-## Testing
+- `src/domain/**` is **pure**. No imports of `adapters/`, `workflows/`,
+  `drizzle-orm`, `@temporalio/*`, `@anthropic-ai/*`. Domain talks to the world
+  via ports (`src/domain/ports/`).
+- `src/workflows/**` (except `activities.ts`) cannot import `src/adapters/**`.
+  Workflows orchestrate; activities are the only place adapters touch I/O.
+- Path aliases: `@domain/*`, `@adapters/*`, `@workflows/*`, `@config/*`,
+  `@observability/*`, `@cli/*`, `@client/*`, `@shared/*`, `@test-fakes/*`,
+  `@test-helpers/*` (see `tsconfig.json`). Workflow bundles need the
+  `TsconfigPathsPlugin` (`src/workers/workflowBundlerOptions.ts`) — re-use it
+  for any new worker.
 
-Use `bun test` to run tests.
+## Temporal gotchas (all have bitten the codebase at least once)
 
-```ts#index.test.ts
-import { test, expect } from "bun:test";
+### 1. `Date` payloads cross activity boundaries as ISO strings
 
-test("hello world", () => {
-  expect(1).toBe(1);
-});
-```
+Temporal's default payload converter serializes `Date` to a string and does NOT
+revive it. TypeScript types lie. **Always coerce at the workflow / store
+boundary** — `new Date(x)` accepts both shapes. Reference impls:
 
-## Frontend
+- `coerceSessionWindow` — `src/workflows/replay/replaySessionWorkflow.ts`
+- Store-side coerce — `src/adapters/persistence/PostgresReplayEventStore.ts`
 
-Use HTML imports with `Bun.serve()`. Don't use `vite`. HTML imports fully support React, CSS, Tailwind.
+### 2. Mutate workflow state BEFORE `await persistEvent` in signal handlers
 
-Server:
+Signal handlers run cooperatively. While one handler is `await`ing, the next
+queued invocation of the same (or another) handler runs. If you flip the status
+*after* the await, both handlers pass the `isActive` guard and double-emit
+events (observed in production: 1516 duplicate `PriceInvalidated` events on a
+single setup in one hour).
 
-```ts#index.ts
-import index from "./index.html"
+Reference impls : `priceCheckSignal` and `corroborateSignal` handlers in
+`src/workflows/setup/setupWorkflow.ts` — both flip `state.status` BEFORE the
+persist await, with comments explaining the race.
 
-Bun.serve({
-  routes: {
-    "/": index,
-    "/api/users/:id": {
-      GET: (req) => {
-        return new Response(JSON.stringify({ id: req.params.id }));
-      },
-    },
-  },
-  // optional websocket support
-  websocket: {
-    open: (ws) => {
-      ws.send("Hello, world!");
-    },
-    message: (ws, message) => {
-      ws.send(message);
-    },
-    close: (ws) => {
-      // handle close
-    }
-  },
-  development: {
-    hmr: true,
-    console: true,
-  }
-})
-```
+### 3. Workflow code must be deterministic
 
-HTML files can import .tsx, .jsx or .js files directly and Bun's bundler will transpile & bundle automatically. `<link>` tags can point to stylesheets and Bun's CSS bundler will bundle.
+Workflow bundles are webpack-built and run in a V8 isolate. No `Date.now()`
+(use `workflowInfo()` or pass through an activity), no `Math.random()` outside
+`@temporalio/workflow`'s `uuid4`, no `Bun.*` APIs, no Node I/O. Side effects
+belong in activities.
 
-```html#index.html
-<html>
-  <body>
-    <h1>Hello, world!</h1>
-    <script type="module" src="./frontend.tsx"></script>
-  </body>
-</html>
-```
+### 4. Workflow signal payloads can be batched
 
-With the following `frontend.tsx`:
+The `replayTick` signal accepts both `tickAt?: string` (single) and
+`tickAts?: string[]` (batch up to 50). When designing a new signal, prefer
+batching from day 1 — a Step-5 UI button that fires 5 separate signals will
+hammer the worker on the round-trip.
 
-```tsx#frontend.tsx
-import React from "react";
-import { createRoot } from "react-dom/client";
+## The "extract → unit-test → consume in workflow" pattern
 
-// import .css files directly and it works
-import './index.css';
+When workflow decision logic is non-trivial, extract it into a sibling pure
+function and unit-test the truth table. This is how dead-config bugs are
+prevented — see the docblock at `src/workflows/scheduler/reviewerGating.ts:1`
+for the cautionary tale (the `reviewer_skip_when_detector_corroborated` flag
+was silently ignored in production for 7 days because the decision was
+inlined in the workflow with no test).
 
-const root = createRoot(document.body);
+Examples in the repo :
 
-export default function Frontend() {
-  return <h1>Hello, world!</h1>;
-}
+- `src/workflows/scheduler/reviewerGating.ts` (boolean decision)
+  + `test/workflows/scheduler/reviewerGating.test.ts` — truth-table
+- `src/workflows/replay/replaySessionWorkflow.ts::coerceSessionWindow`
+  + `test/workflows/replay/coerceSessionWindow.test.ts`
+- `src/workflows/replay/processTick.ts` (orchestration extracted from the
+  workflow body so a 21KB tick can be tested without TestWorkflowEnvironment)
+- `src/workflows/scheduler/preFilter.ts`, `src/workflows/scheduler/dedup.ts`
+- `src/client/components/replay/derivePlayheadAt.ts`,
+  `src/client/components/replay/replayStepGating.ts` (UI-state helpers
+  extracted for unit test)
 
-root.render(<Frontend />);
-```
+## Replay subsystem — strict isolation contract
 
-Then, run index.ts
+Spec: `docs/superpowers/specs/2026-05-08-replay-mode-design.md` §10 lists 10
+invariants. They are not negotiable — violating them means live trades can be
+silently corrupted by a replay session.
+
+- Replay code (`src/workflows/replay/**`, `src/adapters/persistence/PostgresReplay*`)
+  **MUST NOT** write to live tables: `setups`, `events`, `tick_snapshots`,
+  `llm_calls`, `lessons`, `lesson_events`, `watch_states`, `watch_configs`,
+  `watch_config_revisions`, `artifacts`.
+- Replay-owned tables: `replay_sessions`, `replay_events`, `replay_llm_calls`.
+  Plus the **shared** `llm_response_cache` (read + write — that's why a second
+  replay run is free).
+- No live Telegram from replay: use `domain/notify/formatTelegramText.ts`
+  formatters and attach to `data.telegramPreview` on the persisted replay
+  event.
+- Replay workflow starts no child workflows, no Temporal Schedules, no timers.
+  Only signals (`replayTick`, `pause`, `resume`, `terminate`) drive it.
+- The single deliberate live write is `POST /api/replay/sessions/:id/events/:eventId/promote`
+  which materializes a `FeedbackLessonProposed` replay event into the live
+  `lessons` table — explicit, idempotent (`inputHash = "replay-promote:{eventId}"`).
+
+When in doubt, read the replay activity (`src/workflows/replay/activities.ts`)
+side-by-side with the live equivalent. The replay path is **controlled
+duplication** of live — diverging behavior is a bug. The spec preamble (lines
+9-43) documents where reality diverged from the original Strategy-1 spec.
+
+## Prompt versioning + LLM response cache
+
+- Prompts: `prompts/<role>.md.hbs` (user template, Handlebars) +
+  `prompts/<role>.system.md`.
+- Versions tracked in-file as a Handlebars comment header:
+  `{{!-- version: <role>_v<N> --}}`. Current : `detector_v6`, `reviewer_v6`,
+  `finalizer_v4`, `feedback_v1`.
+- `computeInputHash` (`src/domain/services/inputHash.ts`) keys the response
+  cache on `promptVersion`, `ohlcvSnapshot`, `chartUri`, `indicators`,
+  `indicatorParams` (defaults stripped), `activeLessonIds` (sorted).
+- **Bumping a prompt version invalidates the cache.** Bump on behavior changes
+  (rewording an instruction, adding/removing a section, schema changes). Do
+  NOT bump on cosmetic whitespace edits — you'll burn LLM budget re-filling
+  the cache on replay.
+
+## Tests
+
+Same shape as `package.json` scripts. Four levels :
+
+| Scope | Command | Notes |
+|---|---|---|
+| Domain | `bun test test/domain` | Pure, fast. No external deps. |
+| Adapters | `bun test test/adapters` | Uses testcontainers Postgres for DB-backed adapters. |
+| Workflows | `bun test test/workflows` | `@temporalio/testing` `TestWorkflowEnvironment` (downloads Temporal CLI on first run). |
+| E2E | `RUN_E2E=1 bun test test/e2e/...` | Requires `bun run compose:dev` stack up. 4 suites : `full-pipeline`, `feedback-loop`, `replay-pipeline`, `web-smoke`. |
+| LLM smoke | `RUN_LLM_CLAUDE=1` / `RUN_LLM_OPENROUTER=1` | Costs real money. Live API call. |
+| Telegram | `RUN_LIVE_TELEGRAM=1` | Hits the real bot. |
+
+Test-side aliases : `@test-fakes/*` → `test/fakes/*`, `@test-helpers/*` →
+`test/helpers/*`.
+
+## Dev commands you'll actually need
 
 ```sh
-bun --hot ./index.ts
+bun run compose:dev    # Full stack with dev overrides + Claude OAuth bootstrap
+bun run compose:sync   # Restart tf-web only (e.g. after env edits)
+bun run compose:nuke   # down -v (wipes Postgres + Temporal state)
+bun run logs:workers   # Tail scheduler + analysis + notification
+
+bun run db:generate    # Drizzle migration from schema diff
+bun run db:migrate     # Apply pending migrations
+
+# Direct DB (port only exposed by compose:dev overlay)
+PGPASSWORD=$POSTGRES_PASSWORD psql -h localhost -U trading_flow -d trading_flow
+
+# Force a tick manually
+bun run src/cli/force-tick.ts <watchId>
+
+# Setup admin
+bun run src/cli/{list,show,kill}-setup.ts ...
+
+# Lessons admin (same as Telegram inline buttons / web UI buttons)
+bun run src/cli/{list,show,approve,reject,pin,unpin,archive}-lesson.ts ...
+
+# Cost report
+bun run src/cli/cost-report.ts
 ```
 
-For more information, read the Bun API docs in `node_modules/bun-types/docs/**.mdx`.
+**Hot-reload asymmetry** : `tf-web` bind-mounts `./src` + `bun --watch` →
+instant. Workers run from a baked image — a code change needs
+`compose:dev` rebuild (or `docker compose up -d --build <worker>`).
+
+## Where things live (quick map)
+
+- **Schema** (14 tables, drizzle) : `src/adapters/persistence/schema.ts`
+- **Migrations** : `migrations/*.sql` (16 files, generated by drizzle).
+- **Infra config** : `src/config/InfraConfig.ts` (Zod-validated env, single
+  entry point. 4 task queues : scheduler, analysis, notifications, replay).
+- **Workflows** : `src/workflows/{setup,scheduler,replay,feedback,price-monitor,marketClock,notification}/`
+- **Activities** : `src/workflows/<domain>/activities.ts` (only place adapters
+  touch I/O).
+- **Workers** : `src/workers/*-worker.ts` — note that `analysis-worker.ts`
+  hosts BOTH analysis + replay queues in one process (two `Worker.create()`
+  on a shared connection).
+- **Frontend** : `src/client/` (React 19 + React-Router + Radix + Tailwind 4,
+  served by `src/client/server.ts` via `Bun.serve`. 16 routes in
+  `src/client/frontend.tsx`).
+- **Prompts** : `prompts/*.md.hbs` + `prompts/*.system.md` (versioned).
+- **Operational CLI** : `src/cli/*.ts` (20 scripts).
+
+## `docs/superpowers/` is epoch-frozen
+
+`docs/superpowers/specs/` and `docs/superpowers/plans/` are **dated design
+records**. Don't edit them post-hoc. If a design changes, write a new dated
+spec. `specs/2026-05-08-replay-mode-design.md` has a special preamble noting
+where reality diverged from the spec — that's the convention to follow when
+a spec drifts (an explicit "post-spec implementation note" at the top).
+
+Useful starting points :
+
+- `specs/2026-04-28-trading-flow-design.md` — overall architecture
+- `specs/2026-04-29-feedback-loop-design.md` — lessons subsystem
+- `specs/2026-05-08-replay-mode-design.md` — replay mode (incl. §10
+  invariants)
+- `specs/2026-04-30-indicators-modularization-design.md` — indicator plugins
+- `specs/2026-04-29-market-hours-awareness-design.md` — market clock workflow
+
+## Logging / observability
+
+- `getLogger({ component: "..." })` from `@observability/logger` (pino — JSON
+  in containers, pretty in dev).
+- Health endpoints per worker : scheduler 8081, analysis 8082, notification
+  8083, web 8084 (all 127.0.0.1-bound in dev only).
+
+## Conventions
+
+- Biome enforced (`bunx @biomejs/biome check`). Run `--write` before committing.
+- Workflow file naming : `<domain>Workflow.ts` (e.g. `setupWorkflow.ts`,
+  `replaySessionWorkflow.ts`, `schedulerWorkflow.ts`).
+- Signals / queries : camelCase string names (`replayTick`, `getReplayState`).
+- DB tables : `snake_case` plural (drizzle).
+- Status / state-machine values : `UPPER_SNAKE` (`TRACKING`, `INVALIDATED`,
+  `EXPIRED_NO_FILL`, ...). Constrained by Postgres `CHECK` constraints —
+  adding a new value requires a migration.
+- `setups.outcome` allowed values : see `setups_outcome_chk` in `schema.ts`.
+
+## Default to Bun (project uses Bun ≥ 1.3)
+
+Always `bun run <script>` / `bun test` / `bunx`. Project's `package.json`
+scripts cover everything you'll need — prefer them over raw bun invocations.
+`Bun.serve` is already wired in `src/client/server.ts`. Don't reach for
+Express/Vite/Webpack-CLI/etc.
+
+The project uses **`pg` + drizzle** (not `Bun.sql`), **`grammy`** for Telegram
+(not Bun built-ins), **no Redis** (`Bun.redis` is irrelevant). When in doubt
+about a runtime API, grep the existing code rather than reaching for a generic
+Bun-idiomatic solution.
