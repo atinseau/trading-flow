@@ -13,6 +13,7 @@ import {
 } from "@temporalio/workflow";
 import { UNRECOVERABLE_ERROR_NAMES } from "../../domain/errors";
 import { deriveCloseOutcome, shouldTriggerFeedback } from "../../domain/feedback/closeOutcome";
+import { buildPriceInvalidationEvent } from "../../domain/pipeline/priceInvalidationEvent";
 import type { Verdict } from "../../domain/schemas/Verdict";
 import { applyVerdict } from "../../domain/scoring/applyVerdict";
 import { verdictToEvent } from "../../domain/scoring/verdictToEvent";
@@ -352,28 +353,22 @@ export async function setupWorkflow(initial: InitialEvidence): Promise<SetupStat
     // transient activity failures.
     state.status = "INVALIDATED";
 
-    const stored = await dbActivities.persistEvent({
-      event: {
-        setupId: initial.setupId,
-        stage: "system",
-        actor: "price_monitor",
-        type: "PriceInvalidated",
-        scoreDelta: 0,
-        scoreAfter: before.score,
-        statusBefore: before.status,
-        statusAfter: "INVALIDATED",
-        payload: {
-          type: "PriceInvalidated",
-          data: {
-            currentPrice: args.currentPrice,
-            invalidationLevel: state.invalidationLevel,
-            observedAt: args.observedAt,
-          },
-        },
-      },
-      setupUpdate: {
+    const event = buildPriceInvalidationEvent({
+      state: {
+        status: before.status,
         score: before.score,
-        status: "INVALIDATED",
+        invalidationLevel: state.invalidationLevel,
+        direction: state.direction,
+      },
+      currentPrice: args.currentPrice,
+      observedAt: args.observedAt,
+      trigger: "price_monitor",
+    });
+    const stored = await dbActivities.persistEvent({
+      event: { setupId: initial.setupId, ...event },
+      setupUpdate: {
+        score: event.scoreAfter,
+        status: event.statusAfter,
         invalidationLevel: state.invalidationLevel,
       },
     });

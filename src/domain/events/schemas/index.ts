@@ -123,6 +123,7 @@ export const PriceInvalidatedPayload = z.object({
   currentPrice: z.number(),
   invalidationLevel: z.number(),
   observedAt: z.iso.datetime(),
+  ...TelegramPreviewField,
 });
 
 export const KilledPayload = z.object({

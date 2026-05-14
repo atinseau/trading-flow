@@ -10,6 +10,7 @@ import {
   formatTPHitPreview,
 } from "@domain/notify/formatTelegramText";
 import { computeTtlExpiresAt } from "@domain/pipeline/computeTtlExpiresAt";
+import { buildPriceInvalidationEvent } from "@domain/pipeline/priceInvalidationEvent";
 import {
   closeReasonFromState,
   initialTrackingState,
@@ -596,34 +597,32 @@ export async function persistTrackerEvent(
     return;
   }
   if (evt.kind === "PriceInvalidated") {
-    const preview = formatInvalidatedAfterConfirmedPreview({
-      asset: setup.snapshot.asset,
-      timeframe: setup.snapshot.timeframe,
-      reason: "price_below_invalidation",
+    const event = buildPriceInvalidationEvent({
+      state: setup.runtime,
+      currentPrice: evt.currentPrice,
+      observedAt: evt.observedAt.toISOString(),
+      trigger: "tracker",
     });
+    const everConfirmed = setup.scoreAtConfirmation !== undefined;
+    const preview = everConfirmed
+      ? formatInvalidatedAfterConfirmedPreview({
+          asset: setup.snapshot.asset,
+          timeframe: setup.snapshot.timeframe,
+          reason: "price_below_invalidation",
+        })
+      : undefined;
+    const eventWithPreview = preview
+      ? {
+          ...event,
+          payload: { ...event.payload, data: { ...event.payload.data, telegramPreview: preview } },
+        }
+      : event;
     await db.appendReplayEvent({
       sessionId,
       event: {
         setupId: setup.id,
         occurredAt: evt.observedAt,
-        stage: "tracker",
-        actor: "replay-tracker",
-        type: "Invalidated",
-        scoreDelta: 0,
-        scoreAfter: setup.runtime.score,
-        statusBefore: beforeStatus,
-        statusAfter: "INVALIDATED",
-        payload: {
-          type: "Invalidated",
-          data: {
-            reason: "price_below_invalidation",
-            trigger: "tracker",
-            priceAtInvalidation: evt.currentPrice,
-            invalidationLevel: evt.invalidationLevel,
-            deterministic: true,
-            telegramPreview: preview,
-          },
-        },
+        ...eventWithPreview,
       },
     });
     return;

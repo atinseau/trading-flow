@@ -1,5 +1,6 @@
 import { condition, defineSignal, proxyActivities, setHandler } from "@temporalio/workflow";
 import { UNRECOVERABLE_ERROR_NAMES } from "../../domain/errors";
+import { buildPriceInvalidationEvent } from "../../domain/pipeline/priceInvalidationEvent";
 import type * as activities from "./activities";
 
 const SHARED_NON_RETRYABLE = [...UNRECOVERABLE_ERROR_NAMES];
@@ -101,26 +102,20 @@ export async function trackingLoop(args: TrackingArgs): Promise<TrackingResult> 
       (args.direction === "SHORT" && tick.currentPrice >= args.invalidationLevel);
 
     if (invalidated) {
-      await dbActivities.persistEvent({
-        event: {
-          setupId: args.setupId,
-          stage: "tracker",
-          actor: "tracker_v1",
-          type: "PriceInvalidated",
-          scoreDelta: 0,
-          scoreAfter: args.scoreAtConfirmation,
-          statusBefore: "TRACKING",
-          statusAfter: "INVALIDATED",
-          payload: {
-            type: "PriceInvalidated",
-            data: {
-              currentPrice: tick.currentPrice,
-              invalidationLevel: args.invalidationLevel,
-              observedAt: tick.observedAt,
-            },
-          },
+      const event = buildPriceInvalidationEvent({
+        state: {
+          status: "TRACKING",
+          score: args.scoreAtConfirmation,
+          invalidationLevel: args.invalidationLevel,
+          direction: args.direction,
         },
-        setupUpdate: { score: args.scoreAtConfirmation, status: "INVALIDATED" },
+        currentPrice: tick.currentPrice,
+        observedAt: tick.observedAt,
+        trigger: "tracker",
+      });
+      await dbActivities.persistEvent({
+        event: { setupId: args.setupId, ...event },
+        setupUpdate: { score: event.scoreAfter, status: event.statusAfter },
       });
       await notifyActivities.notifyTelegramInvalidatedAfterConfirmed({
         watchId: args.watchId,
