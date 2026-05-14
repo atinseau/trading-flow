@@ -81,6 +81,49 @@ Examples in the repo :
   `src/client/components/replay/replayStepGating.ts` (UI-state helpers
   extracted for unit test)
 
+## Pipeline coherence (live ↔ replay)
+
+The live pipeline (`setupWorkflow.ts` + `schedulerWorkflow.ts`) and the
+replay pipeline (`processTick.ts`) MUST stay logically equivalent on the
+same input. Strategy 3 (controlled duplication, see
+`docs/superpowers/specs/2026-05-08-replay-mode-design.md`) accepts some
+infrastructure duplication for clear isolation, but **decisions that
+drive scoring or state transitions are shared helpers**, not duplicated
+logic.
+
+The shared decisions live in `src/domain/pipeline/`:
+
+- `applyCorroboration` — detector signed corroboration → Strengthened /
+  Weakened event with the correct `source` discriminant
+  (`detector_corroboration` / `detector_decorroboration`). Score clamp
+  `[0, scoreMax]` + finalizer/dead threshold transitions.
+- `applyPriceCheck` — REVIEWING / FINALIZING price breach → strict
+  inequality (LONG `<`, SHORT `>`) → `PriceInvalidated` via the canonical
+  builder. TRACKING is a separate channel.
+- `buildPriceInvalidationEvent` — canonical event builder used in both
+  REVIEWING (`trigger: "price_monitor"`) and TRACKING (`trigger:
+  "tracker"`) breach branches, with the appropriate Telegram preview.
+- `computeTtlExpiresAt` — `fromTickAt + ttl_candles × timeframe`. Used
+  by both pipelines. The pre-fix live bug was hardcoding `× 3600_000`
+  for hours instead of multiplying by the actual timeframe minutes.
+- `shouldRunFeedback` — combined `watch.feedback.enabled` gate +
+  replay session feedback mode + outcome eligibility.
+- `timeframeToMinutes` / `timeframeToMs` — single source of truth for
+  candle duration math.
+
+When adding a new pipeline feature : if it makes a scoring or state
+decision, extract it into `src/domain/pipeline/` first and consume from
+both pipelines. The cross-pipeline harness (`bun run test:parity`)
+catches drift if you forget. **Workflow-bundle constraint** : value
+imports from workflow-bundled files (`setupWorkflow.ts`,
+`processTick.ts`, etc.) must use **relative paths** because webpack
+doesn't honor `@domain/*` aliases for runtime imports inside the
+Temporal V8 sandbox. `import type` via the alias is erased and safe.
+
+See `docs/superpowers/specs/2026-05-14-pipeline-coherence-design.md`
+for the rationale + the original drift audit (11 drifts, 5 parity
+scenarios + 7 helper extractions).
+
 ## Replay subsystem — strict isolation contract
 
 Spec: `docs/superpowers/specs/2026-05-08-replay-mode-design.md` §10 lists 10
@@ -125,13 +168,14 @@ duplication** of live — diverging behavior is a bug. The spec preamble (lines
 
 ## Tests
 
-Same shape as `package.json` scripts. Four levels :
+Same shape as `package.json` scripts. Five levels :
 
 | Scope | Command | Notes |
 |---|---|---|
 | Domain | `bun test test/domain` | Pure, fast. No external deps. |
 | Adapters | `bun test test/adapters` | Uses testcontainers Postgres for DB-backed adapters. |
 | Workflows | `bun test test/workflows` | `@temporalio/testing` `TestWorkflowEnvironment` (downloads Temporal CLI on first run). |
+| Parity | `bun run test:parity` | Cross-pipeline regression : same scenarios run against live (`setupWorkflow`) and replay (`processTick`), captured event chains diffed via `compareCanonical`. 5 scenarios, ~5s. |
 | E2E | `RUN_E2E=1 bun test test/e2e/...` | Requires `bun run compose:dev` stack up. 4 suites : `full-pipeline`, `feedback-loop`, `replay-pipeline`, `web-smoke`. |
 | LLM smoke | `RUN_LLM_CLAUDE=1` / `RUN_LLM_OPENROUTER=1` | Costs real money. Live API call. |
 | Telegram | `RUN_LIVE_TELEGRAM=1` | Hits the real bot. |

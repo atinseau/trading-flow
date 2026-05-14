@@ -360,6 +360,17 @@ Le code replay (`src/workflows/replay/**`, `src/adapters/persistence/PostgresRep
 Voir [`docs/superpowers/specs/2026-05-08-replay-mode-design.md`](docs/superpowers/specs/2026-05-08-replay-mode-design.md)
 pour les 10 invariants d'isolation.
 
+### Parity live ↔ replay
+
+Le replay est harnessé pour parity event-à-event vs live :
+`bun run test:parity` lance 5 scénarios canoniques (corroboration
+positive / négative, reviewer-invalidate, price-breach,
+feedback-disabled) sur **les deux pipelines** et compare les event
+chains via `compareCanonical`. Les décisions de scoring / transitions
+d'état vivent dans `src/domain/pipeline/` et sont consommées par les
+deux pipelines — la harness garantit qu'une régression sera repérée.
+Voir [`docs/superpowers/specs/2026-05-14-pipeline-coherence-design.md`](docs/superpowers/specs/2026-05-14-pipeline-coherence-design.md).
+
 ### Promote a lesson from replay
 
 Quand le replay déclenche une feedback analysis et produit une proposition de
@@ -497,6 +508,7 @@ E2E_WATCH_ID=btc-1h    # override default watchId for force-tick e2e
 | Domain | `bun test test/domain` | < 1s | aucun (pur) |
 | Adapters | `bun test test/adapters` | 5-30s | testcontainers Postgres (auto) |
 | Workflows | `bun test test/workflows` | 5-60s | `@temporalio/testing` (download Temporal CLI au 1er run) |
+| Parity | `bun run test:parity` | ~5s | `@temporalio/testing` (5 scénarios cross-pipeline : live ↔ replay event-chain diff) |
 | Client | `bun test test/client` | 1-5s | aucun |
 | E2E | `RUN_E2E=1 bun run test:e2e[:replay|:web|:feedback]` | 30s-3min | stack `compose:dev` up + Claude OAuth token |
 | LLM smoke | `RUN_LLM_CLAUDE=1 bun run test:llm:claude` | variable | clé Claude + $ |
