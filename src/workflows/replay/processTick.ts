@@ -25,6 +25,7 @@ import { verdictToEvent } from "@domain/scoring/verdictToEvent";
 import type { SetupStatus } from "@domain/state-machine/setupTransitions";
 import { isTerminal } from "@domain/state-machine/setupTransitions";
 import { applyCorroboration } from "../../domain/pipeline/applyCorroboration";
+import { applyPriceCheck } from "../../domain/pipeline/applyPriceCheck";
 import type { buildReplayActivities, ReplaySetupSnapshot } from "./activities";
 
 /**
@@ -167,6 +168,47 @@ export async function processTick(
         },
       });
       alive.delete(setup.id);
+    }
+  }
+
+  // -------- 0.5) REVIEWING/FINALIZING price-breach check --------
+  // Drift D fix : prior to 2026-05-14 replay had no equivalent of live's
+  // priceCheckSignal handler for REVIEWING/FINALIZING setups. A setup
+  // whose price moved through the invalidation level between detector
+  // ticks would only be invalidated when its TTL expired. Now we scan
+  // every candle since the previous tick and invalidate at the first
+  // candle whose worst-case price (low for LONG, high for SHORT) breaches.
+  const breachCandidates = [...alive.values()].filter(
+    (s) => s.runtime.status === "REVIEWING" || s.runtime.status === "FINALIZING",
+  );
+  if (breachCandidates.length > 0) {
+    const breachFrom = prevTickAt ?? new Date(tickAtDate.getTime() - 1).toISOString();
+    const { candles: breachCandles } = await db.fetchRangeCandles({
+      sessionId,
+      from: breachFrom,
+      to: tickAt,
+    });
+    for (const c of breachCandles) {
+      for (const setup of breachCandidates) {
+        if (setup.runtime.status !== "REVIEWING" && setup.runtime.status !== "FINALIZING") continue;
+        const worstPrice = setup.runtime.direction === "LONG" ? c.low : c.high;
+        const result = applyPriceCheck({
+          state: setup.runtime,
+          currentPrice: worstPrice,
+          observedAt: c.timestamp,
+        });
+        if (result.kind !== "applied") continue;
+        setup.runtime = result.next;
+        await db.appendReplayEvent({
+          sessionId,
+          event: {
+            setupId: setup.id,
+            occurredAt: new Date(c.timestamp),
+            ...result.event,
+          },
+        });
+        alive.delete(setup.id);
+      }
     }
   }
 

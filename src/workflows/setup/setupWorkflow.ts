@@ -14,7 +14,7 @@ import {
 import { UNRECOVERABLE_ERROR_NAMES } from "../../domain/errors";
 import { deriveCloseOutcome } from "../../domain/feedback/closeOutcome";
 import { applyCorroboration } from "../../domain/pipeline/applyCorroboration";
-import { buildPriceInvalidationEvent } from "../../domain/pipeline/priceInvalidationEvent";
+import { applyPriceCheck } from "../../domain/pipeline/applyPriceCheck";
 import { shouldRunFeedback } from "../../domain/pipeline/shouldRunFeedback";
 import type { Verdict } from "../../domain/schemas/Verdict";
 import { applyVerdict } from "../../domain/scoring/applyVerdict";
@@ -284,54 +284,37 @@ export async function setupWorkflow(initial: InitialEvidence): Promise<SetupStat
   });
 
   setHandler(priceCheckSignal, async (args) => {
-    // In TRACKING phase, the trackingLoop has its own `trackingPrice` handler.
-    // The priceMonitor activity dispatches signal name based on status, but if a
-    // stale priceCheck arrives during TRACKING we no-op (no invalidation logic).
-    if (state.status === "TRACKING") return;
-
-    const breached =
-      (state.direction === "LONG" && args.currentPrice < state.invalidationLevel) ||
-      (state.direction === "SHORT" && args.currentPrice > state.invalidationLevel);
-    if (!breached) return;
-    if (!isActive(state.status)) return;
-
-    const before = { status: state.status, score: state.score };
-
-    // Flip state to INVALIDATED **before** the `await persistEvent`. The
-    // price feed can deliver dozens of breach signals per second when the
-    // price oscillates around the invalidation level, and Temporal queues
-    // each one to fire this handler. If we flipped the status AFTER the
-    // await, every queued signal would read `state.status === "REVIEWING"`,
-    // pass the `isActive` guard above, and emit its own PriceInvalidated
-    // event — observed in production as 1516 events on a single setup in
-    // one hour. Setting the state synchronously inside the handler turn
-    // means signals 2..N short-circuit at the guard. Pattern mirrors the
-    // TTL handler (`state.status = "EXPIRED"` before persist). The persist
-    // is idempotent under the existing event-store retry policy, so
-    // mutating state before commit doesn't risk a desynced workflow on
-    // transient activity failures.
-    state.status = "INVALIDATED";
-
-    const event = buildPriceInvalidationEvent({
+    const result = applyPriceCheck({
       state: {
-        status: before.status,
-        score: before.score,
+        status: state.status,
+        score: state.score,
         invalidationLevel: state.invalidationLevel,
         direction: state.direction,
       },
       currentPrice: args.currentPrice,
       observedAt: args.observedAt,
-      trigger: "price_monitor",
     });
+    if (result.kind !== "applied") return;
+
+    // **Race-fix** : flip `state.status` BEFORE the persist await. The price
+    // feed can deliver dozens of breach signals per second when price
+    // oscillates around the invalidation level — Temporal queues each
+    // one to fire this handler. If we flipped AFTER the await, every
+    // queued handler would read `state.status === "REVIEWING"`, pass the
+    // helper's guard, and emit its own PriceInvalidated event (observed
+    // in production : 1516 events on a single setup in one hour).
+    // Setting state synchronously means signals 2..N short-circuit
+    // at the helper's `not_active` branch.
+    state.status = result.next.status;
+
     const stored = await dbActivities.persistEvent({
-      event: { setupId: initial.setupId, ...event },
+      event: { setupId: initial.setupId, ...result.event },
       setupUpdate: {
-        score: event.scoreAfter,
-        status: event.statusAfter,
+        score: result.next.score,
+        status: result.next.status,
         invalidationLevel: state.invalidationLevel,
       },
     });
-
     state.sequence = stored.sequence;
 
     if (everConfirmed) {
