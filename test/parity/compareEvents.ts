@@ -9,8 +9,16 @@ import type { CapturedEvent } from "./types";
  *
  *   - Replay emits `FeedbackLessonProposed` (proposals only, no live
  *     write), `DetectorTickProcessed` (per-tick bookkeeping), `ReplayMeta`
- *     (session-level annotations).
- *   - Live emits `Killed` (no kill button in replay UI).
+ *     (session-level annotations), and `EntryFilled` (the replay
+ *     intra-candle tracker reports the limit fill ; the live tracker
+ *     gets prices via signal and skips straight to TP/SL checks
+ *     without emitting an EntryFilled marker).
+ *   - Live emits `Killed` (no kill button in replay UI) and
+ *     `SetupCreated` (the parity scenarios seed an alive setup into
+ *     replay's `alive` map directly ; live's setupWorkflow always
+ *     emits SetupCreated at startup. Both pipelines DO emit
+ *     SetupCreated on the detector new_setups path — that path is
+ *     not yet exercised by parity scenarios).
  *
  * What's left is the "canonical" chain — the events both pipelines must
  * produce identically. Drifts are returned as a list, not thrown, so
@@ -21,9 +29,10 @@ const REPLAY_ONLY_TYPES: ReadonlySet<string> = new Set([
   "DetectorTickProcessed",
   "ReplayMeta",
   "FeedbackLessonProposed",
+  "EntryFilled",
 ]);
 
-const LIVE_ONLY_TYPES: ReadonlySet<string> = new Set(["Killed"]);
+const LIVE_ONLY_TYPES: ReadonlySet<string> = new Set(["Killed", "SetupCreated"]);
 
 export type DriftField =
   | "length"
