@@ -1,6 +1,7 @@
 import { Badge } from "@client/components/ui/badge";
 import { Button } from "@client/components/ui/button";
 import { Slider } from "@client/components/ui/slider";
+import { fmtParisShort } from "@client/lib/format";
 import { timeframeToMinutes } from "@client/lib/timeframe";
 import { Loader2, Pause, Play, SkipForward, Square, StepForward } from "lucide-react";
 import { computeStepGating } from "./replayStepGating";
@@ -41,6 +42,13 @@ export function ReplayControls(props: {
   /** Dispatch one or N ticks. The component decides the batch size ; the
    *  parent forwards the array to the /step endpoint in a single signal. */
   onStep: (tickAts: Date[]) => void;
+  /**
+   * Fired once when the user releases the scrubber (pointer up / touch end /
+   * arrow key release). The parent decides whether to open the confirm
+   * dialog based on `targetDate` vs the bot's actual position — the
+   * controls component intentionally stays unaware of that workflow.
+   */
+  onScrubCommit?: (targetDate: Date) => void;
   onPause: () => void;
   onResume: () => void;
   /** Auto-step toggle. The parent owns the loop : it dispatches one step
@@ -189,11 +197,16 @@ export function ReplayControls(props: {
             const v = value[0] ?? 0;
             props.onScrub(new Date(start + (v / 1000) * span));
           }}
+          onValueCommit={(value: number[]) => {
+            if (!props.onScrubCommit) return;
+            const v = value[0] ?? 0;
+            props.onScrubCommit(new Date(start + (v / 1000) * span));
+          }}
         />
         <div className="flex justify-between text-[10px] text-muted-foreground font-mono">
-          <span>{props.windowStartAt.toLocaleString()}</span>
-          <span>{props.playheadAt.toLocaleString()}</span>
-          <span>{props.windowEndAt.toLocaleString()}</span>
+          <span>{fmtParisShort(props.windowStartAt)}</span>
+          <span>{fmtParisShort(props.playheadAt)}</span>
+          <span>{fmtParisShort(props.windowEndAt)}</span>
         </div>
       </div>
     </div>

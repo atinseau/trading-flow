@@ -1,3 +1,4 @@
+import { fmtParisDateTime } from "@client/lib/format";
 import { cn } from "@client/lib/utils";
 import { Link } from "react-router-dom";
 import { Badge } from "../ui/badge";
@@ -27,7 +28,7 @@ const STATUS_BADGE: Record<ReplaySessionStatus, { label: string; class: string }
 };
 
 function fmtDate(iso: string): string {
-  return new Date(iso).toLocaleString();
+  return fmtParisDateTime(iso);
 }
 
 function fmtCost(value: number): string {

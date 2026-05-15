@@ -5,13 +5,14 @@ import {
   AccordionTrigger,
 } from "@client/components/ui/accordion";
 import { Badge } from "@client/components/ui/badge";
+import { fmtParisDateTime } from "@client/lib/format";
 import { cn } from "@client/lib/utils";
 import { FeedbackAnalysisCard } from "./feedback-analysis-card";
 import type { ReplayEventRow } from "./replay-types";
 import { TelegramPreview } from "./telegram-preview";
 
 function fmtTime(iso: string): string {
-  return new Date(iso).toLocaleString();
+  return fmtParisDateTime(iso);
 }
 
 function extractReasoning(event: ReplayEventRow): string | null {

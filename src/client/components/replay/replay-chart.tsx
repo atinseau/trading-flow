@@ -3,6 +3,8 @@ import type {
   ReplayEventRow,
   SetupProjectionRow,
 } from "@client/components/replay/replay-types";
+import { fmtParisShort, fmtParisTime } from "@client/lib/format";
+import { cn } from "@client/lib/utils";
 import {
   CandlestickSeries,
   createChart,
@@ -14,8 +16,10 @@ import {
   type Time,
   type UTCTimestamp,
 } from "lightweight-charts";
-import { useEffect, useMemo, useRef } from "react";
+import { Maximize2, Minimize2 } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { applyIndicatorToChart, type IndicatorPane } from "./applyIndicatorToChart";
+import { ChartLegend } from "./chart-legend";
 import { colorForSetup, visualForEvent } from "./replay-marker-config";
 
 /**
@@ -23,8 +27,11 @@ import { colorForSetup, visualForEvent } from "./replay-marker-config";
  * stacks always read short=blue / mid=amber / long=red and RSI sits on a
  * teal line — regardless of the order plugins appear in the response.
  * Indicators not listed fall back to a generic ramp.
+ *
+ * Exported because the chart legend reads the same source — keeping a
+ * single map avoids the swatches drifting from what's actually drawn.
  */
-const INDICATOR_PALETTES: Record<string, string[]> = {
+export const INDICATOR_PALETTES: Record<string, string[]> = {
   ema_stack: ["#3b82f6", "#f59e0b", "#ef4444"],
   rsi: ["#14b8a6"],
   volume: ["#94a3b8"],
@@ -36,7 +43,7 @@ const INDICATOR_PALETTES: Record<string, string[]> = {
   structure_levels: ["#9ca3af"],
   liquidity_pools: ["#a78bfa"],
 };
-const FALLBACK_PALETTE = ["#94a3b8", "#3b82f6", "#f59e0b", "#10b981", "#a78bfa"];
+export const FALLBACK_PALETTE = ["#94a3b8", "#3b82f6", "#f59e0b", "#10b981", "#a78bfa"];
 
 export type ReplayCandle = {
   timestamp: string;
@@ -105,7 +112,18 @@ export function ReplayChart(props: {
         vertLines: { color: "rgba(60, 64, 72, 0.4)" },
         horzLines: { color: "rgba(60, 64, 72, 0.4)" },
       },
-      timeScale: { timeVisible: true, secondsVisible: false },
+      timeScale: {
+        timeVisible: true,
+        secondsVisible: false,
+        // lightweight-charts defaults to UTC ; we display the bot's UTC
+        // candle timestamps in the user's local Paris time. Both the
+        // x-axis tick labels and the crosshair tooltip need their own
+        // formatter — see `localization` below.
+        tickMarkFormatter: (time: number) => fmtParisTime(time * 1000),
+      },
+      localization: {
+        timeFormatter: (time: number) => fmtParisShort(time * 1000),
+      },
       width: containerRef.current.clientWidth,
       height: 380,
     });
@@ -329,10 +347,76 @@ export function ReplayChart(props: {
     }
   }, [props.setups, props.activeSetupId]);
 
+  // ── fullscreen toggle (native Fullscreen API on the wrapper div) ────
+  const wrapperRef = useRef<HTMLDivElement | null>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  useEffect(() => {
+    const onChange = (): void => {
+      setIsFullscreen(document.fullscreenElement === wrapperRef.current);
+      // The chart's `width` option doesn't auto-track its container, so
+      // we force-resize it whenever fullscreen toggles. Height stays
+      // managed by the wrapper (fixed 380 in normal, full window when FS).
+      const chart = chartRef.current;
+      const wrapper = wrapperRef.current;
+      if (chart && wrapper) {
+        chart.applyOptions({
+          width: wrapper.clientWidth,
+          height: document.fullscreenElement === wrapper ? window.innerHeight - 16 : 380,
+        });
+      }
+    };
+    document.addEventListener("fullscreenchange", onChange);
+    return () => document.removeEventListener("fullscreenchange", onChange);
+  }, []);
+  async function toggleFullscreen(): Promise<void> {
+    const wrapper = wrapperRef.current;
+    if (!wrapper) return;
+    if (document.fullscreenElement === wrapper) {
+      await document.exitFullscreen();
+    } else {
+      await wrapper.requestFullscreen();
+    }
+  }
+
+  // ── event types in the visible window — feeds the chart legend ─────
+  const eventTypesInWindow = useMemo(() => {
+    const playMs = props.playheadAt.getTime();
+    const seen = new Set<string>();
+    for (const e of props.events) {
+      if (new Date(e.occurredAt).getTime() > playMs) continue;
+      if (props.activeSetupId && e.setupId !== props.activeSetupId) continue;
+      seen.add(e.type);
+    }
+    return [...seen].sort();
+  }, [props.events, props.playheadAt, props.activeSetupId]);
+  const visibleIndicatorIds = useMemo(() => {
+    const all = Object.keys(props.indicators ?? {});
+    if (!props.visibleIndicators) return all;
+    return all.filter((id) => props.visibleIndicators?.has(id));
+  }, [props.indicators, props.visibleIndicators]);
+
   return (
     <div
-      ref={containerRef}
-      className="w-full bg-card border border-border rounded-md overflow-hidden"
-    />
+      ref={wrapperRef}
+      className={cn(
+        "relative w-full bg-card border border-border rounded-md overflow-hidden",
+        isFullscreen && "rounded-none border-0",
+      )}
+    >
+      <div ref={containerRef} className="w-full" />
+      <ChartLegend
+        visibleIndicatorIds={visibleIndicatorIds}
+        indicatorPalettes={INDICATOR_PALETTES}
+        eventTypesInWindow={eventTypesInWindow}
+      />
+      <button
+        type="button"
+        onClick={toggleFullscreen}
+        className="absolute top-2 right-2 z-10 inline-flex items-center justify-center size-7 rounded-md border border-border bg-card/85 backdrop-blur text-muted-foreground hover:text-foreground transition-colors"
+        title={isFullscreen ? "Quitter le plein écran (Esc)" : "Plein écran"}
+      >
+        {isFullscreen ? <Minimize2 className="size-3.5" /> : <Maximize2 className="size-3.5" />}
+      </button>
+    </div>
   );
 }

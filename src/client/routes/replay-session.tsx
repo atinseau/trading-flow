@@ -1,4 +1,5 @@
 import { AliveSetupsList } from "@client/components/replay/alive-setups-list";
+import { buildScrubBatch, estimateScrubCost } from "@client/components/replay/buildScrubBatch";
 import { CurrentPhaseCard } from "@client/components/replay/current-phase-card";
 import { DecisionsLog } from "@client/components/replay/decisions-log";
 import { derivePlayheadAt } from "@client/components/replay/derivePlayheadAt";
@@ -7,6 +8,7 @@ import { pickLiveStatus } from "@client/components/replay/pickLiveStatus";
 import { ReplayChart } from "@client/components/replay/replay-chart";
 import { ReplayControls } from "@client/components/replay/replay-controls";
 import type { ReplayEventRow, ReplaySessionStatus } from "@client/components/replay/replay-types";
+import { ScrubConfirmDialog } from "@client/components/replay/scrub-confirm-dialog";
 import { SetupsTabs } from "@client/components/replay/setups-tabs";
 import { ConfirmAction } from "@client/components/shared/confirm-action";
 import { Badge } from "@client/components/ui/badge";
@@ -76,9 +78,27 @@ export function Component() {
   // enabled in the watch config". The user can toggle individual ids
   // without touching the watch.
   const [hiddenIndicatorIds, setHiddenIndicatorIds] = useState<Set<string>>(new Set());
+  // Scrub-confirm modal state — populated on slider release when the
+  // target is forward of the bot. Cancel resets the scrub to null
+  // (visual playhead snaps back to the bot). Confirm dispatches the
+  // batch via `step.mutate({ tickAts })`.
+  const [scrubModal, setScrubModal] = useState<{
+    botAt: Date;
+    targetAt: Date;
+    tickAts: string[];
+    tickCount: number;
+    estimatedCostUsd: number;
+    truncatedToMax: boolean;
+  } | null>(null);
   // Track the last tickAt we dispatched so the auto-step loop advances
   // even if the React Query invalidations haven't refetched yet.
   const lastDispatchedMsRef = useRef<number | null>(null);
+  // True while a scrub-confirm is being processed — guards against Radix's
+  // AlertDialog calling our `onOpenChange(false)` *after* `onConfirm` runs
+  // (DialogPrimitive.Close composes onClick + onOpenChange in that order).
+  // Without the flag, the cancel-side reset of `scrubMs` would overwrite
+  // the confirm-side `scrubMs = targetAt`.
+  const scrubConfirmingRef = useRef(false);
 
   const windowStartAt = session.data ? new Date(session.data.windowStartAt) : null;
   const windowEndAt = session.data ? new Date(session.data.windowEndAt) : null;
@@ -320,6 +340,61 @@ export function Component() {
           }
           setFocusedEventId(null);
         }}
+        onScrubCommit={(targetDate) => {
+          // Ignore commits while the workflow is busy / capped / terminal —
+          // we shouldn't open a "send N ticks" modal when dispatch would
+          // either pile up signals or be rejected.
+          if (step.isPending || workflowBusyForAuto) return;
+          if (
+            effectiveStatus === "COMPLETED" ||
+            effectiveStatus === "FAILED" ||
+            effectiveStatus === "COST_CAPPED" ||
+            effectiveStatus === "PAUSED"
+          ) {
+            return;
+          }
+          if (!ohlcv.data) return;
+          // Bot position = last tickAt the workflow has actually processed,
+          // falling back to the window start when the session is fresh.
+          const botAtMs =
+            live?.lastTickAt != null
+              ? new Date(live.lastTickAt).getTime()
+              : new Date(s.windowStartAt).getTime();
+          const tfMs = timeframeToMinutes(ohlcv.data.timeframe) * 60_000;
+          const batch = buildScrubBatch({
+            botAtMs,
+            targetAtMs: targetDate.getTime(),
+            timeframeMs: tfMs,
+            windowEndMs: new Date(s.windowEndAt).getTime(),
+          });
+          if (batch.tickCount === 0) return; // backward drag or same → no modal
+          // Cost averages from the session's actual breakdown.
+          const detStage = cost.data?.byStage.find((b) => b.stage === "detector");
+          const revStage = cost.data?.byStage.find((b) => b.stage === "reviewer");
+          const detectorAvg =
+            detStage && detStage.calls > 0 ? detStage.totalCostUsd / detStage.calls : null;
+          const reviewerAvg =
+            revStage && revStage.calls > 0 ? revStage.totalCostUsd / revStage.calls : null;
+          const ticksProcessed = (events.data ?? []).filter(
+            (e) => e.type === "DetectorTickProcessed",
+          ).length;
+          const estimatedCostUsd = estimateScrubCost({
+            costUsdSoFar: cost.data?.costUsdSoFar ?? s.costUsdSoFar,
+            ticksProcessed,
+            aliveSetupsCount: live?.aliveSetups.length ?? 0,
+            detectorAvgUsdPerCall: detectorAvg,
+            reviewerAvgUsdPerCall: reviewerAvg,
+            tickCount: batch.tickCount,
+          });
+          setScrubModal({
+            botAt: new Date(botAtMs),
+            targetAt: batch.effectiveTargetAt,
+            tickAts: batch.tickAts,
+            tickCount: batch.tickCount,
+            estimatedCostUsd,
+            truncatedToMax: batch.truncatedToMax,
+          });
+        }}
         onPause={() => {
           setAutoStepActive(false);
           pause.mutate();
@@ -327,6 +402,41 @@ export function Component() {
         onResume={() => resume.mutate()}
         autoStepActive={autoStepActive}
         onToggleAuto={() => setAutoStepActive((v) => !v)}
+      />
+      <ScrubConfirmDialog
+        open={scrubModal !== null}
+        onOpenChange={(open) => {
+          if (open) return;
+          if (scrubConfirmingRef.current) {
+            // This close was fired by AlertDialog's internal Close composition
+            // immediately after our onConfirm. Skip the cancel-side reset so
+            // the forward scrubMs we just set survives.
+            scrubConfirmingRef.current = false;
+            return;
+          }
+          // Cancel button / Esc / backdrop — bring the visual playhead back
+          // to the bot (clearing scrubMs makes derivePlayheadAt return the
+          // bot's last event).
+          setScrubModal(null);
+          setScrubMs(null);
+        }}
+        botAt={scrubModal?.botAt ?? new Date()}
+        targetAt={scrubModal?.targetAt ?? new Date()}
+        tickCount={scrubModal?.tickCount ?? 0}
+        estimatedCostUsd={scrubModal?.estimatedCostUsd ?? 0}
+        truncatedToMax={scrubModal?.truncatedToMax ?? false}
+        onConfirm={() => {
+          if (!scrubModal) return;
+          scrubConfirmingRef.current = true;
+          const { tickAts, targetAt } = scrubModal;
+          step.mutate(tickAts.length === 1 ? { tickAt: tickAts[0] as string } : { tickAts });
+          // Snap the playhead to the batch's effective end so the chart
+          // visually leads the workflow ; events land async.
+          setScrubMs(targetAt.getTime());
+          lastDispatchedMsRef.current = targetAt.getTime();
+          setFocusedEventId(null);
+          setScrubModal(null);
+        }}
       />
 
       {/* Two-column: left = chart already above; below: tabs/list + log.

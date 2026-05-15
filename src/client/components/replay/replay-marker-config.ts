@@ -41,7 +41,9 @@ export function visualForEvent(eventType: string): MarkerVisual | null {
     case "Weakened":
       return { shape: "square", position: "belowBar", text: "−" };
     case "Neutral":
-      return { shape: "circle", position: "belowBar" };
+      // Distinguish from DetectorTickProcessed (same shape+position) — a
+      // single tick can emit both and they were stacking indistinguishably.
+      return { shape: "circle", position: "belowBar", text: "·" };
     case "Confirmed":
       return { shape: "arrowUp", position: "belowBar", text: "GO" };
     case "Rejected":
@@ -55,10 +57,15 @@ export function visualForEvent(eventType: string): MarkerVisual | null {
     case "TrailingMoved":
       return { shape: "circle", position: "aboveBar", text: "T" };
     case "Expired":
-      return { shape: "circle", position: "aboveBar", text: "X" };
+      // Terminal state — use arrowDown like other "setup is dead" events
+      // (Rejected, Invalidated) so it reads as terminal at a glance.
+      return { shape: "arrowDown", position: "aboveBar", text: "EXP" };
     case "Invalidated":
-    case "PriceInvalidated":
       return { shape: "arrowDown", position: "aboveBar", text: "INV" };
+    case "PriceInvalidated":
+      // Price-monitor-driven invalidation (vs reviewer-driven "INV") —
+      // separate label so an audit can tell which branch triggered.
+      return { shape: "arrowDown", position: "aboveBar", text: "PRC" };
     case "Killed":
       return { shape: "square", position: "aboveBar", text: "K" };
     case "FeedbackLessonProposed":
@@ -67,3 +74,27 @@ export function visualForEvent(eventType: string): MarkerVisual | null {
       return null;
   }
 }
+
+/**
+ * Human-readable label per event type — used by the chart legend so the
+ * marker shape/text vocabulary doesn't stay esoteric. Kept in sync with
+ * `visualForEvent` by colocation : when adding a new event, add both.
+ */
+export const EVENT_LABELS: Record<string, string> = {
+  DetectorTickProcessed: "Detector tick (no signal)",
+  SetupCreated: "Setup créé",
+  Strengthened: "Score renforcé",
+  Weakened: "Score affaibli",
+  Neutral: "Reviewer neutre (pas de delta)",
+  Confirmed: "Setup confirmé (GO)",
+  Rejected: "Setup rejeté (NO_GO)",
+  EntryFilled: "Entrée remplie",
+  TPHit: "Take-profit touché",
+  SLHit: "Stop-loss touché",
+  TrailingMoved: "Trailing stop déplacé",
+  Expired: "Setup expiré (TTL/dead score)",
+  Invalidated: "Setup invalidé (reviewer)",
+  PriceInvalidated: "Setup invalidé (price monitor)",
+  Killed: "Setup tué manuellement",
+  FeedbackLessonProposed: "Leçon proposée (feedback)",
+};

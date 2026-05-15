@@ -1,9 +1,10 @@
+import { fmtParisDateTime } from "@client/lib/format";
 import { cn } from "@client/lib/utils";
 import { colorForSetup } from "./replay-marker-config";
 import type { ReplayEventRow } from "./replay-types";
 
 function fmtTime(iso: string): string {
-  return new Date(iso).toLocaleString();
+  return fmtParisDateTime(iso);
 }
 
 function shortReason(e: ReplayEventRow): string {
