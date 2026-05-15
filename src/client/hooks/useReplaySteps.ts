@@ -130,5 +130,9 @@ export function useReplaySteps(sessionId: string) {
     step: stepMut,
     pause: pauseMut,
     resume: resumeMut,
+    // Exposed so route-level effects (e.g. post-busy refresh after a tick
+    // completes between two slow polls) can re-fetch without duplicating
+    // the queryKey list. Lives here because the keys are local to the hook.
+    invalidateAll,
   };
 }

@@ -1,4 +1,8 @@
-import type { ReplayEventRow, SetupProjectionRow } from "@client/components/replay/replay-types";
+import type {
+  IndicatorSeriesContribution,
+  ReplayEventRow,
+  SetupProjectionRow,
+} from "@client/components/replay/replay-types";
 import {
   CandlestickSeries,
   createChart,
@@ -6,11 +10,33 @@ import {
   type IChartApi,
   type ISeriesApi,
   type ISeriesMarkersPluginApi,
+  type SeriesMarker,
   type Time,
   type UTCTimestamp,
 } from "lightweight-charts";
 import { useEffect, useMemo, useRef } from "react";
+import { applyIndicatorToChart, type IndicatorPane } from "./applyIndicatorToChart";
 import { colorForSetup, visualForEvent } from "./replay-marker-config";
+
+/**
+ * Stable color palettes per indicator id. We pick deterministically so EMA
+ * stacks always read short=blue / mid=amber / long=red and RSI sits on a
+ * teal line — regardless of the order plugins appear in the response.
+ * Indicators not listed fall back to a generic ramp.
+ */
+const INDICATOR_PALETTES: Record<string, string[]> = {
+  ema_stack: ["#3b82f6", "#f59e0b", "#ef4444"],
+  rsi: ["#14b8a6"],
+  volume: ["#94a3b8"],
+  macd: ["#3b82f6", "#f59e0b"],
+  bollinger: ["#a78bfa", "#a78bfa", "#a78bfa"],
+  vwap: ["#10b981"],
+  atr: ["#f97316"],
+  swings_bos: ["#94a3b8"],
+  structure_levels: ["#9ca3af"],
+  liquidity_pools: ["#a78bfa"],
+};
+const FALLBACK_PALETTE = ["#94a3b8", "#3b82f6", "#f59e0b", "#10b981", "#a78bfa"];
 
 export type ReplayCandle = {
   timestamp: string;
@@ -48,6 +74,12 @@ export function ReplayChart(props: {
   windowEndAt: Date;
   playheadAt: Date;
   activeSetupId: string | null;
+  /** Indicator series keyed by plugin id — `OhlcvResponse.indicators`. */
+  indicators?: Record<string, IndicatorSeriesContribution>;
+  /** Pane hint per indicator — `OhlcvResponse.indicatorMeta`. */
+  indicatorMeta?: Record<string, { pane: IndicatorPane }>;
+  /** Subset of indicator ids the user wants to see. `null`/undefined → all. */
+  visibleIndicators?: ReadonlySet<string> | null;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -58,6 +90,11 @@ export function ReplayChart(props: {
   const priceLinesRef = useRef<
     ReturnType<NonNullable<typeof visibleSeriesRef.current>["createPriceLine"]>[]
   >([]);
+  // Indicator markers live in a separate bucket from event markers so the
+  // two effects don't clobber each other when one re-runs.
+  const indicatorMarkersRef = useRef<SeriesMarker<Time>[]>([]);
+  const eventMarkersRef = useRef<SeriesMarker<Time>[]>([]);
+  const indicatorCleanupsRef = useRef<Array<{ cleanup: () => void }>>([]);
 
   // ── mount ──────────────────────────────────────────────────────────
   useEffect(() => {
@@ -151,7 +188,7 @@ export function ReplayChart(props: {
     future.setData(futureData);
   }, [props.candles, playheadSec, windowStartSec]);
 
-  // ── update markers ──────────────────────────────────────────────────
+  // ── update event markers ───────────────────────────────────────────
   useEffect(() => {
     const plugin = markersPluginRef.current;
     if (!plugin) return;
@@ -173,8 +210,58 @@ export function ReplayChart(props: {
         };
       })
       .filter((m): m is NonNullable<typeof m> => m !== null);
-    plugin.setMarkers(markers);
+    eventMarkersRef.current = markers as unknown as SeriesMarker<Time>[];
+    plugin.setMarkers([...eventMarkersRef.current, ...indicatorMarkersRef.current]);
   }, [props.events, props.activeSetupId, props.playheadAt]);
+
+  // ── update indicators (lines / panes / markers / priceLines) ──────
+  const candleTimes = useMemo(
+    () =>
+      props.candles.map((c) => Math.floor(new Date(c.timestamp).getTime() / 1000) as UTCTimestamp),
+    [props.candles],
+  );
+  useEffect(() => {
+    const chart = chartRef.current;
+    const mainSeries = visibleSeriesRef.current;
+    const plugin = markersPluginRef.current;
+    if (!chart || !mainSeries || !plugin) return;
+    // Tear down previously applied indicators ; the helper's cleanup
+    // removes the line series + price lines it created.
+    for (const c of indicatorCleanupsRef.current) c.cleanup();
+    indicatorCleanupsRef.current = [];
+    indicatorMarkersRef.current = [];
+
+    const all = props.indicators ?? {};
+    const meta = props.indicatorMeta ?? {};
+    const visible = props.visibleIndicators;
+    for (const [id, contribution] of Object.entries(all)) {
+      if (visible && !visible.has(id)) continue;
+      const pane: IndicatorPane = meta[id]?.pane ?? "price_overlay";
+      const palette = INDICATOR_PALETTES[id] ?? FALLBACK_PALETTE;
+      const result = applyIndicatorToChart(chart, contribution, {
+        id,
+        pane,
+        candleTimes,
+        mainSeries,
+        markerBucket: indicatorMarkersRef.current,
+        colorPalette: palette,
+      });
+      indicatorCleanupsRef.current.push(result);
+    }
+    // Re-publish the merged marker list (indicator markers may have been
+    // updated by the dispatch).
+    plugin.setMarkers([...eventMarkersRef.current, ...indicatorMarkersRef.current]);
+
+    return () => {
+      // Component unmount or deps change → drop everything we created.
+      for (const c of indicatorCleanupsRef.current) c.cleanup();
+      indicatorCleanupsRef.current = [];
+      indicatorMarkersRef.current = [];
+    };
+    // Re-run on any input change. The chart cleanup-and-reapply is cheap
+    // (it's the same series objects either way), so we accept the extra
+    // work in exchange for simpler deps + Biome compliance.
+  }, [candleTimes, props.indicators, props.indicatorMeta, props.visibleIndicators]);
 
   // ── update price lines from active setups ──────────────────────────
   useEffect(() => {

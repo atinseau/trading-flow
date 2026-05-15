@@ -1,3 +1,5 @@
+import { IndicatorRegistry } from "@adapters/indicators/IndicatorRegistry";
+import { PureJsIndicatorCalculator } from "@adapters/indicators/PureJsIndicatorCalculator";
 import { BinanceFetcher } from "@adapters/market-data/BinanceFetcher";
 import { YahooFinanceFetcher } from "@adapters/market-data/YahooFinanceFetcher";
 import { PostgresLessonEventStore } from "@adapters/persistence/PostgresLessonEventStore";
@@ -126,6 +128,11 @@ const replayApi = makeReplayApi({
   // endpoint stays isolated from them.
   lessonStore: new PostgresLessonStore(db),
   lessonEventStore: new PostgresLessonEventStore(db),
+  // Indicator computation for the chart overlay. Singletons : the registry
+  // is stateless, the calculator is pure JS — sharing one across requests
+  // is fine.
+  indicatorRegistry: new IndicatorRegistry(),
+  indicatorCalculator: new PureJsIndicatorCalculator(),
 });
 
 const adminApi = makeAdminApi({

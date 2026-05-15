@@ -24,9 +24,11 @@ export function DecisionsLog(props: {
   focusedEventId: string | null;
   onFocus: (eventId: string) => void;
 }) {
-  const filtered = props.activeSetupId
-    ? props.events.filter((e) => e.setupId === props.activeSetupId)
-    : props.events;
+  const filtered = (
+    props.activeSetupId
+      ? props.events.filter((e) => e.setupId === props.activeSetupId)
+      : props.events
+  ).sort((eA, eB) => new Date(eB.occurredAt).getTime() - new Date(eA.occurredAt).getTime());
 
   if (filtered.length === 0) {
     return (

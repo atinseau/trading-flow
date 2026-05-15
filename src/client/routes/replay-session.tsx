@@ -2,6 +2,8 @@ import { AliveSetupsList } from "@client/components/replay/alive-setups-list";
 import { CurrentPhaseCard } from "@client/components/replay/current-phase-card";
 import { DecisionsLog } from "@client/components/replay/decisions-log";
 import { derivePlayheadAt } from "@client/components/replay/derivePlayheadAt";
+import { IndicatorToggles } from "@client/components/replay/indicator-toggles";
+import { pickLiveStatus } from "@client/components/replay/pickLiveStatus";
 import { ReplayChart } from "@client/components/replay/replay-chart";
 import { ReplayControls } from "@client/components/replay/replay-controls";
 import type { ReplayEventRow, ReplaySessionStatus } from "@client/components/replay/replay-types";
@@ -10,6 +12,7 @@ import { ConfirmAction } from "@client/components/shared/confirm-action";
 import { Badge } from "@client/components/ui/badge";
 import { Button } from "@client/components/ui/button";
 import { Skeleton } from "@client/components/ui/skeleton";
+import { usePostBusyInvalidation } from "@client/hooks/usePostBusyInvalidation";
 import { useReplaySteps } from "@client/hooks/useReplaySteps";
 import { api } from "@client/lib/api";
 import { timeframeToMinutes } from "@client/lib/timeframe";
@@ -45,13 +48,34 @@ export function Component() {
   const sessionId = params.id ?? "";
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { session, events, setups, ohlcv, cost, workflowState, step, pause, resume } =
-    useReplaySteps(sessionId);
+  const {
+    session,
+    events,
+    setups,
+    ohlcv,
+    cost,
+    workflowState,
+    step,
+    pause,
+    resume,
+    invalidateAll,
+  } = useReplaySteps(sessionId);
+
+  // Workflow tick just finished — pull events / setups / cost / session
+  // fresh so the UI doesn't have to wait up to 8s for the slow idle poll.
+  // The hook fires exactly once per busy→idle edge.
+  usePostBusyInvalidation(workflowState.data?.live?.tickInProgress, () => {
+    void invalidateAll();
+  });
 
   const [activeSetupId, setActiveSetupId] = useState<string | null>(null);
   const [focusedEventId, setFocusedEventId] = useState<string | null>(null);
   const [scrubMs, setScrubMs] = useState<number | null>(null);
   const [autoStepActive, setAutoStepActive] = useState(false);
+  // Indicator-visibility filter for the chart overlay. Defaults to "all
+  // enabled in the watch config". The user can toggle individual ids
+  // without touching the watch.
+  const [hiddenIndicatorIds, setHiddenIndicatorIds] = useState<Set<string>>(new Set());
   // Track the last tickAt we dispatched so the auto-step loop advances
   // even if the React Query invalidations haven't refetched yet.
   const lastDispatchedMsRef = useRef<number | null>(null);
@@ -90,13 +114,27 @@ export function Component() {
   // the human eye to follow the chart updating.
   const live = workflowState.data?.live;
   const workflowBusyForAuto = (live?.tickInProgress ?? false) || (live?.pendingTicks ?? 0) > 0;
+  // Prefer the live workflow status when available — the DB row lags
+  // behind pause/resume signals (see pickLiveStatus docblock).
+  const effectiveStatus = session.data
+    ? pickLiveStatus(session.data.status, live?.status)
+    : ("READY" as ReplaySessionStatus);
   useEffect(() => {
     if (!autoStepActive) return;
     if (!session.data || !ohlcv.data || !windowEndAt) return;
     if (step.isPending) return;
     if (workflowBusyForAuto) return;
-    const status = session.data.status;
-    if (status === "COMPLETED" || status === "FAILED" || status === "COST_CAPPED") {
+    if (
+      effectiveStatus === "COMPLETED" ||
+      effectiveStatus === "FAILED" ||
+      effectiveStatus === "COST_CAPPED"
+    ) {
+      setAutoStepActive(false);
+      return;
+    }
+    // Don't auto-dispatch into a PAUSED workflow — the user explicitly
+    // gated processing; tick the loop only when the workflow accepts work.
+    if (effectiveStatus === "PAUSED") {
       setAutoStepActive(false);
       return;
     }
@@ -127,6 +165,7 @@ export function Component() {
     step.mutate,
     scrubMs,
     workflowBusyForAuto,
+    effectiveStatus,
   ]);
 
   const del = useMutation({
@@ -175,8 +214,11 @@ export function Component() {
         </Link>
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="text-xl font-bold">{s.name ?? `Session ${s.id.slice(0, 8)}`}</h1>
-          <Badge variant="outline" className={cn("text-xs uppercase", STATUS_BADGE[s.status])}>
-            {s.status}
+          <Badge
+            variant="outline"
+            className={cn("text-xs uppercase", STATUS_BADGE[effectiveStatus])}
+          >
+            {effectiveStatus}
           </Badge>
           <span className="text-xs text-muted-foreground font-mono">
             {s.watchId} · lessons={s.lessonsMode} · feedback={s.feedbackMode}
@@ -206,15 +248,44 @@ export function Component() {
         </div>
       )}
       {ohlcv.data && events.data && setups.data && (
-        <ReplayChart
-          candles={ohlcv.data.candles}
-          events={events.data}
-          setups={setups.data}
-          windowStartAt={windowStartAt}
-          windowEndAt={windowEndAt}
-          playheadAt={playheadAt}
-          activeSetupId={activeSetupId}
-        />
+        <>
+          {ohlcv.data.indicators && Object.keys(ohlcv.data.indicators).length > 0 && (
+            <IndicatorToggles
+              availableIds={Object.keys(ohlcv.data.indicators)}
+              visible={
+                new Set(
+                  Object.keys(ohlcv.data.indicators).filter((id) => !hiddenIndicatorIds.has(id)),
+                )
+              }
+              onToggle={(id) => {
+                setHiddenIndicatorIds((prev) => {
+                  const next = new Set(prev);
+                  if (next.has(id)) next.delete(id);
+                  else next.add(id);
+                  return next;
+                });
+              }}
+            />
+          )}
+          <ReplayChart
+            candles={ohlcv.data.candles}
+            events={events.data}
+            setups={setups.data}
+            windowStartAt={windowStartAt}
+            windowEndAt={windowEndAt}
+            playheadAt={playheadAt}
+            activeSetupId={activeSetupId}
+            indicators={ohlcv.data.indicators}
+            indicatorMeta={ohlcv.data.indicatorMeta}
+            visibleIndicators={
+              ohlcv.data.indicators
+                ? new Set(
+                    Object.keys(ohlcv.data.indicators).filter((id) => !hiddenIndicatorIds.has(id)),
+                  )
+                : null
+            }
+          />
+        </>
       )}
 
       {/* Controls */}
@@ -229,7 +300,7 @@ export function Component() {
         }}
         costUsdSoFar={cost.data?.costUsdSoFar ?? s.costUsdSoFar}
         costCapUsd={cost.data?.costCapUsd ?? s.costCapUsd}
-        status={s.status}
+        status={effectiveStatus}
         stepInFlight={step.isPending}
         workflowBusy={workflowState.data?.live?.tickInProgress ?? false}
         pendingTicks={workflowState.data?.live?.pendingTicks ?? 0}

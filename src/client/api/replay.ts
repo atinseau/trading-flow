@@ -1,5 +1,7 @@
+import type { IndicatorRegistry } from "@adapters/indicators/IndicatorRegistry";
 import { NotFoundError, requireParam, safeHandler, ValidationError } from "@client/api/safeHandler";
 import type { Clock } from "@domain/ports/Clock";
+import type { IndicatorCalculator } from "@domain/ports/IndicatorCalculator";
 import type { LessonEventStore } from "@domain/ports/LessonEventStore";
 import type { LessonStore } from "@domain/ports/LessonStore";
 import type { LiveEventQueryByWindow } from "@domain/ports/LiveEventQueryByWindow";
@@ -46,6 +48,13 @@ export type ReplayApiDeps = {
    */
   lessonStore: LessonStore;
   lessonEventStore: LessonEventStore;
+  /**
+   * Used by `/ohlcv` to compute the indicator series alongside the candles,
+   * so the front chart can plot the same EMA / RSI / Volume / etc that the
+   * detector and reviewer saw. Read-only on candle arrays, pure JS, no DB.
+   */
+  indicatorRegistry: IndicatorRegistry;
+  indicatorCalculator: IndicatorCalculator;
 };
 
 const StepBodySchema = z
@@ -392,6 +401,37 @@ export function makeReplayApi(deps: ReplayApiDeps) {
         to,
       });
 
+      // Compute indicator series on the same candle range so the front
+      // chart can overlay exactly what the LLM agents saw. Per-plugin params
+      // fall back to the plugin's defaults when the watch config omits them.
+      // Disabled plugins are filtered out by `resolveActive` ; an empty
+      // matrix (test fixtures or watches with no indicators) yields an
+      // empty `indicators` object.
+      const indicatorMatrix = watch.indicators ?? {};
+      const activePlugins = deps.indicatorRegistry.resolveActive(indicatorMatrix);
+      const paramsByPlugin: Record<string, Record<string, unknown>> = {};
+      for (const p of activePlugins) {
+        const cfg = indicatorMatrix[p.id];
+        paramsByPlugin[p.id] =
+          (cfg?.params as Record<string, unknown> | undefined) ??
+          (p.defaultParams as Record<string, unknown>) ??
+          {};
+      }
+      const indicators =
+        activePlugins.length > 0
+          ? await deps.indicatorCalculator.computeSeries(candles, activePlugins, paramsByPlugin)
+          : {};
+      // Per-id pane hint — the front needs to know whether to render a
+      // contribution on the main price pane (EMA, Bollinger, VWAP, POC,
+      // liquidity pools, swings/BOS) or in a secondary pane stacked below
+      // (RSI, MACD, ATR). The hint lives on the plugin server-side ; we
+      // copy it into the response so the chart can dispatch without
+      // hardcoding a client-side lookup table.
+      const indicatorMeta: Record<string, { pane: "price_overlay" | "secondary" }> = {};
+      for (const p of activePlugins) {
+        indicatorMeta[p.id] = { pane: p.chartPane };
+      }
+
       return Response.json({
         symbol: watch.asset.symbol,
         source,
@@ -401,6 +441,8 @@ export function makeReplayApi(deps: ReplayApiDeps) {
         windowStartAt: session.windowStartAt.toISOString(),
         windowEndAt: session.windowEndAt.toISOString(),
         candles,
+        indicators,
+        indicatorMeta,
       });
     }),
 

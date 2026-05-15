@@ -66,6 +66,12 @@ export function ReplayControls(props: {
   });
   const { stepDisabled, autoDisabled, showBusyBadge, workflowActivelyProcessing } = gate;
   const busy = showBusyBadge;
+  // Tooltip wording must distinguish the two busy states so the user knows
+  // whether to wait (workflow inside processTick, LLM latency) or whether
+  // their previous clicks are still draining (queue depth).
+  const busyTooltip = workflowActivelyProcessing
+    ? "Raisonnement en cours — attends la fin du tick"
+    : `${props.pendingTicks} tick(s) en file — patiente`;
 
   function buildBatch(n: number): Date[] {
     const batch: Date[] = [];
@@ -85,7 +91,7 @@ export function ReplayControls(props: {
           size="sm"
           variant="outline"
           disabled={stepDisabled}
-          title={busy ? "Raisonnement en cours — attends la fin du tick" : "Step 1 bougie"}
+          title={busy ? busyTooltip : "Step 1 bougie"}
           onClick={() => props.onStep(buildBatch(1))}
         >
           {props.stepInFlight || busy ? (
@@ -99,11 +105,7 @@ export function ReplayControls(props: {
           size="sm"
           variant="outline"
           disabled={stepDisabled}
-          title={
-            busy
-              ? "Raisonnement en cours — attends la fin du tick"
-              : "Step 5 bougies (batché en un signal)"
-          }
+          title={busy ? busyTooltip : "Step 5 bougies (batché en un signal)"}
           onClick={() => props.onStep(buildBatch(5))}
         >
           <SkipForward className="size-3.5" />
@@ -117,7 +119,7 @@ export function ReplayControls(props: {
             props.autoStepActive
               ? "Stopper l'auto-step"
               : busy
-                ? "Raisonnement en cours — attends la fin du tick"
+                ? busyTooltip
                 : "Auto-step : avance d'une bougie toutes les ~800ms"
           }
           onClick={props.onToggleAuto}

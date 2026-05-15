@@ -5,7 +5,10 @@
  * — but for v1 the duplication is small and explicit.
  */
 
+import type { IndicatorSeriesContribution } from "@adapters/indicators/plugins/base/types";
 import type { EventPayload } from "@domain/events/schemas";
+
+export type { IndicatorSeriesContribution };
 
 export type ReplaySessionStatus = "READY" | "PAUSED" | "COMPLETED" | "COST_CAPPED" | "FAILED";
 
@@ -91,6 +94,19 @@ export type OhlcvResponse = {
   windowStartAt: string;
   windowEndAt: string;
   candles: OhlcvCandle[];
+  /**
+   * Per-plugin indicator series computed by the backend on the same candle
+   * range. Empty when the watch has no indicators enabled. The plotter
+   * dispatches on `kind` (lines / priceLines / markers / histogram /
+   * compound) — see `applyIndicatorToChart`.
+   */
+  indicators?: Record<string, IndicatorSeriesContribution>;
+  /**
+   * Per-plugin pane hint — `"price_overlay"` puts the contribution on the
+   * main candle pane (EMA, Bollinger, structure levels), `"secondary"`
+   * stacks it in its own pane below (RSI, MACD, ATR).
+   */
+  indicatorMeta?: Record<string, { pane: "price_overlay" | "secondary" }>;
 };
 
 export type CostByStageRow = {

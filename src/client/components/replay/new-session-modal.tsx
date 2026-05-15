@@ -125,8 +125,7 @@ export function NewSessionModal(props: { open: boolean; onClose: () => void }) {
     const best = det * ticks;
     // High case : detector + 1 reviewer/tick + 1 finalizer every 10 ticks
     //   + 1 feedback every 20 ticks (very rough).
-    const high =
-      det * ticks + rev * ticks + fin * (ticks / 10) + feedback * (ticks / 20);
+    const high = det * ticks + rev * ticks + fin * (ticks / 10) + feedback * (ticks / 20);
     return { best, high };
   }, [validation, feedbackMode]);
 

@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, test } from "bun:test";
+import { IndicatorRegistry } from "@adapters/indicators/IndicatorRegistry";
+import { PureJsIndicatorCalculator } from "@adapters/indicators/PureJsIndicatorCalculator";
 import { makeReplayApi, type ReplayApiDeps } from "@client/api/replay";
 import type { WatchRepository, WatchValidationResult } from "@domain/ports/WatchRepository";
 import type { WatchConfig } from "@domain/schemas/WatchesConfig";
@@ -64,6 +66,8 @@ beforeEach(() => {
     signaller,
     lessonStore: new InMemoryLessonStore(),
     lessonEventStore: new InMemoryLessonEventStore(),
+    indicatorRegistry: new IndicatorRegistry(),
+    indicatorCalculator: new PureJsIndicatorCalculator(),
   };
   api = makeReplayApi(deps);
 });
@@ -490,6 +494,61 @@ describe("GET /api/replay/sessions/:id/ohlcv", () => {
     // 200 lookback candles * 60 minutes = 12000 minutes before window start
     const expectedFrom = new Date("2026-04-12T14:00:00.000Z").getTime() - 200 * 60 * 60_000;
     expect(new Date(out.from).getTime()).toBe(expectedFrom);
+  });
+
+  test("response includes indicators map (empty when no indicators enabled)", async () => {
+    const created = await api.create(
+      postCreate({
+        watchId: "btc-1h",
+        windowStartAt: "2026-04-12T14:00:00.000Z",
+        windowEndAt: "2026-04-13T14:00:00.000Z",
+      }),
+    );
+    const body = (await created.json()) as { session: { id: string } };
+    const res = await api.ohlcv(new Request("http://x"), { id: body.session.id });
+    const out = (await res.json()) as { indicators?: Record<string, unknown> };
+    expect(typeof out.indicators).toBe("object");
+    // minimalConfig has no `indicators` matrix → resolveActive returns []
+    // → computeSeries skipped → empty object.
+    expect(Object.keys(out.indicators ?? {})).toEqual([]);
+  });
+
+  test("response includes indicator series for each enabled plugin", async () => {
+    watchRepo.add("btc-1h-rsi", {
+      id: "btc-1h-rsi",
+      asset: { symbol: "BTCUSDT", source: "fake" },
+      timeframes: { primary: "1h", higher: [] },
+      candles: { detector_lookback: 200, reviewer_chart_window: 60 },
+      indicators: {
+        rsi: { enabled: true, params: { period: 14 } },
+        volume: { enabled: true },
+        ema_stack: {
+          enabled: true,
+          params: { period_short: 20, period_mid: 50, period_long: 200 },
+        },
+      },
+    } as unknown as WatchConfig);
+    const created = await api.create(
+      postCreate({
+        watchId: "btc-1h-rsi",
+        windowStartAt: "2026-04-12T14:00:00.000Z",
+        windowEndAt: "2026-04-13T14:00:00.000Z",
+      }),
+    );
+    const body = (await created.json()) as { session: { id: string } };
+    const res = await api.ohlcv(new Request("http://x"), { id: body.session.id });
+    const out = (await res.json()) as {
+      candles: unknown[];
+      indicators: Record<string, { kind: string }>;
+    };
+    // FakeMarketDataFetcher returns [] by default — that's fine for shape
+    // assertions on the indicators map (each plugin computes a contribution
+    // even on an empty series).
+    expect(Object.keys(out.indicators).sort()).toEqual(["ema_stack", "rsi", "volume"].sort());
+    // Each contribution has a `kind` discriminant.
+    for (const id of ["ema_stack", "rsi", "volume"]) {
+      expect(typeof out.indicators[id]?.kind).toBe("string");
+    }
   });
 
   test("unknown source → 404", async () => {
