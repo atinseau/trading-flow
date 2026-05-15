@@ -114,11 +114,13 @@ The shared decisions live in `src/domain/pipeline/`:
 When adding a new pipeline feature : if it makes a scoring or state
 decision, extract it into `src/domain/pipeline/` first and consume from
 both pipelines. The cross-pipeline harness (`bun run test:parity`)
-catches drift if you forget. **Workflow-bundle constraint** : value
-imports from workflow-bundled files (`setupWorkflow.ts`,
-`processTick.ts`, etc.) must use **relative paths** because webpack
-doesn't honor `@domain/*` aliases for runtime imports inside the
-Temporal V8 sandbox. `import type` via the alias is erased and safe.
+catches drift if you forget. **Imports** : both `@domain/*` aliases and
+sibling-relative paths work for value imports in workflow-bundled
+files — `replaySessionWorkflow.ts`, `schedulerWorkflow.ts`, and
+`processTick.ts` all use `@domain/*` for runtime imports in production.
+`setupWorkflow.ts` and `trackingLoop.ts` happen to use relative paths
+exclusively, which is a per-file stylistic choice (not a webpack
+constraint). Pick the convention of the file you're editing.
 
 See `docs/superpowers/specs/2026-05-14-pipeline-coherence-design.md`
 for the rationale + the original drift audit (11 drifts, 5 parity

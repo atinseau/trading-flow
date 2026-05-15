@@ -1,9 +1,8 @@
-// Relative import (not @domain alias) is intentional : this file is consumed
-// by `setupWorkflow.ts` whose webpack bundle (Temporal workflow sandbox) does
-// not honor `@domain/*` aliases for value imports. Sibling helpers like
-// `computeTtlExpiresAt.ts` get away with `@domain/*` because they only use
-// `import type` for aliased paths. `shouldTriggerFeedback` is a runtime
-// symbol, so the path must resolve via Node's standard resolver.
+// Relative import matches the sibling-module convention used elsewhere in
+// `src/domain/`. The `@domain/feedback/closeOutcome` alias also works for
+// runtime imports inside the workflow bundle — `replaySessionWorkflow.ts`
+// and `schedulerWorkflow.ts` use the alias for value imports and ship
+// fine. Pick either ; the sibling-relative form is slightly shorter.
 import { type CloseOutcome, shouldTriggerFeedback } from "../feedback/closeOutcome";
 
 export type ShouldRunFeedbackInput = {

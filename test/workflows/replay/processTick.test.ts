@@ -3,10 +3,9 @@ import type { WatchConfig } from "@domain/schemas/WatchesConfig";
 import { verdictToEvent } from "@domain/scoring/verdictToEvent";
 import {
   type AliveSetup,
-  type ReplayActivityProxies,
   isOverCap,
   processTick,
-  timeframeMinutes,
+  type ReplayActivityProxies,
   withReviewerPreview,
 } from "@workflows/replay/processTick";
 
@@ -144,9 +143,7 @@ function makeActivities(opts: {
     runReviewerReplay: async () => {
       opts.log.reviewer += 1;
       return {
-        verdictJson: JSON.stringify(
-          opts.reviewerVerdict ?? { type: "NEUTRAL", observations: [] },
-        ),
+        verdictJson: JSON.stringify(opts.reviewerVerdict ?? { type: "NEUTRAL", observations: [] }),
         costUsd: opts.reviewerCost ?? 0.05,
         promptVersion: "rev_v1",
         provider: "fake",
@@ -157,9 +154,7 @@ function makeActivities(opts: {
     runFinalizerReplay: async () => {
       opts.log.finalizer += 1;
       return {
-        decisionJson: JSON.stringify(
-          opts.finalizerDecision ?? { go: false, reasoning: "default" },
-        ),
+        decisionJson: JSON.stringify(opts.finalizerDecision ?? { go: false, reasoning: "default" }),
         costUsd: opts.finalizerCost ?? 0.08,
         promptVersion: "fin_v1",
         provider: "fake",
@@ -180,7 +175,10 @@ function makeActivities(opts: {
         cacheHit: false,
       };
     },
-    appendReplayEvent: async (input: { sessionId: string; event: { type: string; setupId: string | null } }) => {
+    appendReplayEvent: async (input: {
+      sessionId: string;
+      event: { type: string; setupId: string | null };
+    }) => {
       seq += 1;
       opts.log.appended.push({ type: input.event.type, setupId: input.event.setupId });
       return {
@@ -206,18 +204,11 @@ function emptyLog(): CallLog {
 
 const sessionId = "00000000-0000-4000-8000-000000000001";
 
-describe("isOverCap + timeframeMinutes (pure helpers)", () => {
+describe("isOverCap (pure helper)", () => {
   test("isOverCap", () => {
     expect(isOverCap(0.5, 0.4, 1)).toBe(false);
     expect(isOverCap(0.5, 0.5, 1)).toBe(true);
     expect(isOverCap(0.5, 0.6, 1)).toBe(true);
-  });
-  test("timeframeMinutes covers all enum values + default", () => {
-    expect(timeframeMinutes("1m")).toBe(1);
-    expect(timeframeMinutes("1h")).toBe(60);
-    expect(timeframeMinutes("1d")).toBe(1440);
-    expect(timeframeMinutes("1w")).toBe(10080);
-    expect(timeframeMinutes("invalid")).toBe(60);
   });
 });
 
@@ -470,8 +461,22 @@ describe("processTick", () => {
         // Entry fills then SL hits in the next candle. The 2nd candle's low
         // (29_450) crosses the SL (29_500) but stays ABOVE the invalidation
         // (29_400), so only SLHit fires, not PriceInvalidated.
-        { timestamp: "2026-04-29T13:00:00Z", open: 29_900, high: 30_100, low: 29_900, close: 30_050, volume: 100 },
-        { timestamp: "2026-04-29T14:00:00Z", open: 30_050, high: 30_100, low: 29_450, close: 29_500, volume: 100 },
+        {
+          timestamp: "2026-04-29T13:00:00Z",
+          open: 29_900,
+          high: 30_100,
+          low: 29_900,
+          close: 30_050,
+          volume: 100,
+        },
+        {
+          timestamp: "2026-04-29T14:00:00Z",
+          open: 30_050,
+          high: 30_100,
+          low: 29_450,
+          close: 29_500,
+          volume: 100,
+        },
       ],
     });
     // Pre-existing TRACKING setup.

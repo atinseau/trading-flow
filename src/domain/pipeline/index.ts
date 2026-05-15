@@ -7,12 +7,11 @@
  * applies — these helpers live in `src/domain/` and have no I/O, no
  * Temporal imports, no adapters.
  *
- * Note for workflow consumers : `setupWorkflow.ts` and other files
- * bundled into Temporal's V8 sandbox MUST import value symbols via
- * relative paths (e.g. `../../domain/pipeline/applyCorroboration`)
- * because webpack does not honor the `@domain/*` tsconfig alias for
- * runtime imports. Type-only imports (`import type ...`) via the alias
- * are erased and therefore safe.
+ * Both `@domain/*` aliases and sibling-relative paths are valid for
+ * import here ; `replaySessionWorkflow.ts`, `schedulerWorkflow.ts`, and
+ * `processTick.ts` use the alias for value imports without issue. The
+ * `setupWorkflow.ts` / `trackingLoop.ts` files happen to use relative
+ * paths everywhere — that's a per-file convention, not a constraint.
  */
 
 export type {

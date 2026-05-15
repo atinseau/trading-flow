@@ -139,7 +139,7 @@ export async function trackingLoop(args: TrackingArgs): Promise<TrackingResult> 
         event: {
           setupId: args.setupId,
           stage: "tracker",
-          actor: "tracker_v1",
+          actor: "tracker",
           type: "SLHit",
           scoreDelta: 0,
           scoreAfter: args.scoreAtConfirmation,
@@ -177,7 +177,7 @@ export async function trackingLoop(args: TrackingArgs): Promise<TrackingResult> 
         event: {
           setupId: args.setupId,
           stage: "tracker",
-          actor: "tracker_v1",
+          actor: "tracker",
           type: "TPHit",
           scoreDelta: 0,
           scoreAfter: args.scoreAtConfirmation,
@@ -213,7 +213,7 @@ export async function trackingLoop(args: TrackingArgs): Promise<TrackingResult> 
           event: {
             setupId: args.setupId,
             stage: "tracker",
-            actor: "tracker_v1",
+            actor: "tracker",
             type: "TrailingMoved",
             scoreDelta: 0,
             scoreAfter: args.scoreAtConfirmation,

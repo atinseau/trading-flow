@@ -9,6 +9,8 @@ import {
   formatSLHitPreview,
   formatTPHitPreview,
 } from "@domain/notify/formatTelegramText";
+import { applyCorroboration } from "@domain/pipeline/applyCorroboration";
+import { applyPriceCheck } from "@domain/pipeline/applyPriceCheck";
 import { computeTtlExpiresAt } from "@domain/pipeline/computeTtlExpiresAt";
 import { buildPriceInvalidationEvent } from "@domain/pipeline/priceInvalidationEvent";
 import {
@@ -24,9 +26,7 @@ import { applyVerdict, type SetupRuntimeState } from "@domain/scoring/applyVerdi
 import { verdictToEvent } from "@domain/scoring/verdictToEvent";
 import type { SetupStatus } from "@domain/state-machine/setupTransitions";
 import { isTerminal } from "@domain/state-machine/setupTransitions";
-import { applyCorroboration } from "../../domain/pipeline/applyCorroboration";
-import { applyPriceCheck } from "../../domain/pipeline/applyPriceCheck";
-import { shouldSendReviewSignal } from "../scheduler/reviewerGating";
+import { shouldSendReviewSignal } from "@workflows/scheduler/reviewerGating";
 import type { buildReplayActivities, ReplaySetupSnapshot } from "./activities";
 
 /**
@@ -91,35 +91,6 @@ export type ProcessTickResult = {
  */
 export function isOverCap(costBefore: number, tickCost: number, capUsd: number): boolean {
   return costBefore + tickCost >= capUsd;
-}
-
-/**
- * Timeframe → minutes lookup. Inlined here so the workflow bundle stays
- * free of the schema tree.
- */
-export function timeframeMinutes(tf: string): number {
-  switch (tf) {
-    case "1m":
-      return 1;
-    case "5m":
-      return 5;
-    case "15m":
-      return 15;
-    case "30m":
-      return 30;
-    case "1h":
-      return 60;
-    case "2h":
-      return 120;
-    case "4h":
-      return 240;
-    case "1d":
-      return 1440;
-    case "1w":
-      return 10080;
-    default:
-      return 60;
-  }
 }
 
 export async function processTick(
