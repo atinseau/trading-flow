@@ -112,9 +112,7 @@ export const getReplayStateQuery = defineQuery<ReplayWorkflowState>("getReplaySt
 // `setupWorkflow` / `schedulerWorkflow`) so a contributor jumping between
 // workflows finds the same numbers.
 
-const llmActivities = proxyActivities<
-  ReturnType<typeof replayActivities.buildReplayActivities>
->({
+const llmActivities = proxyActivities<ReturnType<typeof replayActivities.buildReplayActivities>>({
   startToCloseTimeout: "120s",
   retry: {
     maximumAttempts: 3,
@@ -125,9 +123,7 @@ const llmActivities = proxyActivities<
   },
 });
 
-const dbActivities = proxyActivities<
-  ReturnType<typeof replayActivities.buildReplayActivities>
->({
+const dbActivities = proxyActivities<ReturnType<typeof replayActivities.buildReplayActivities>>({
   startToCloseTimeout: "10s",
   retry: {
     maximumAttempts: 5,
@@ -218,15 +214,26 @@ export async function replaySessionWorkflow(args: ReplaySessionWorkflowArgs): Pr
   });
   setHandler(pauseSignal, () => {
     if (status !== "READY") return;
+    // CLAUDE.md gotcha #2 : flip in-memory state BEFORE any await/promise.
+    // Here the activity call is `void`d (fire-and-forget) so the handler
+    // stays synchronous and a second pause/resume signal can't race past
+    // this guard. Without the DB persist, `GET /api/replay/sessions/:id`
+    // would return the stale "READY" status while the workflow is paused.
     paused = true;
     status = "PAUSED";
     emitReplayMeta("paused", "user_pause");
+    void dbActivities
+      .updateReplaySessionStatus({ sessionId: args.sessionId, status: "PAUSED" })
+      .catch(() => undefined);
   });
   setHandler(resumeSignal, () => {
     if (status !== "PAUSED") return;
     paused = false;
     status = "READY";
     emitReplayMeta("resumed", "user_resume");
+    void dbActivities
+      .updateReplaySessionStatus({ sessionId: args.sessionId, status: "READY" })
+      .catch(() => undefined);
   });
   setHandler(terminateSignal, (a) => {
     terminated = true;

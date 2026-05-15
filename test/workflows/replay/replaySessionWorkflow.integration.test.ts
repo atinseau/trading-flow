@@ -1,9 +1,9 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import type { StoredReplayEvent } from "@domain/ports/ReplayEventStore";
+import type { ReplaySession } from "@domain/replay/ReplaySession";
+import type { WatchConfig } from "@domain/schemas/WatchesConfig";
 import { TestWorkflowEnvironment } from "@temporalio/testing";
 import { Worker } from "@temporalio/worker";
-import type { ReplaySession } from "@domain/replay/ReplaySession";
-import type { StoredReplayEvent } from "@domain/ports/ReplayEventStore";
-import type { WatchConfig } from "@domain/schemas/WatchesConfig";
 import {
   getReplayStateQuery,
   pauseSignal,
@@ -13,6 +13,7 @@ import {
   resumeSignal,
   terminateSignal,
 } from "@workflows/replay/replaySessionWorkflow";
+import { workflowBundlerOptions } from "../../../src/workers/workflowBundlerOptions";
 
 /**
  * Integration tests for `replaySessionWorkflow` using `@temporalio/testing`.
@@ -127,9 +128,28 @@ type FakeActivityState = {
   feedbackCalls: number;
   statusUpdates: Array<{ status: string; failureReason?: string }>;
   detectorNewSetups: Array<unknown>;
-  reviewerVerdict: { type: string; scoreDelta?: number; reasoning?: string; observations?: unknown[]; reason?: string };
-  finalizerDecision: { go: boolean; reasoning: string; entry?: number; stop_loss?: number; take_profit?: number[] };
-  candleRangeOutput: Array<{ timestamp: string; open: number; high: number; low: number; close: number; volume: number }>;
+  reviewerVerdict: {
+    type: string;
+    scoreDelta?: number;
+    reasoning?: string;
+    observations?: unknown[];
+    reason?: string;
+  };
+  finalizerDecision: {
+    go: boolean;
+    reasoning: string;
+    entry?: number;
+    stop_loss?: number;
+    take_profit?: number[];
+  };
+  candleRangeOutput: Array<{
+    timestamp: string;
+    open: number;
+    high: number;
+    low: number;
+    close: number;
+    volume: number;
+  }>;
 };
 
 function makeFakeActivities(state: FakeActivityState, session: ReplaySession) {
@@ -139,7 +159,10 @@ function makeFakeActivities(state: FakeActivityState, session: ReplaySession) {
     updateReplaySessionStatus: async (input: { status: string; failureReason?: string }) => {
       state.statusUpdates.push({ status: input.status, failureReason: input.failureReason });
     },
-    appendReplayEvent: async (input: { sessionId: string; event: { setupId: string | null; payload: unknown; type: string } }) => {
+    appendReplayEvent: async (input: {
+      sessionId: string;
+      event: { setupId: string | null; payload: unknown; type: string };
+    }) => {
       seq += 1;
       const stored = {
         ...input.event,
@@ -206,16 +229,33 @@ function makeFakeActivities(state: FakeActivityState, session: ReplaySession) {
   };
 }
 
+async function waitForCondition(predicate: () => boolean, timeoutMs = 5_000): Promise<void> {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    if (predicate()) return;
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  throw new Error("waitForCondition: timeout");
+}
+
 async function waitForState(
-  handle: { query: typeof env.client.workflow.getHandle extends (id: string) => infer H ? (H extends { query: infer Q } ? Q : never) : never },
+  handle: {
+    query: typeof env.client.workflow.getHandle extends (id: string) => infer H
+      ? H extends { query: infer Q }
+        ? Q
+        : never
+      : never;
+  },
   predicate: (s: { status: string; pendingTicks: number; tickInProgress: boolean }) => boolean,
   timeoutMs = 5_000,
 ): Promise<void> {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
-    const s = (await (handle.query as (q: typeof getReplayStateQuery) => Promise<{ status: string; pendingTicks: number; tickInProgress: boolean }>)(
-      getReplayStateQuery,
-    )) as { status: string; pendingTicks: number; tickInProgress: boolean };
+    const s = (await (
+      handle.query as (
+        q: typeof getReplayStateQuery,
+      ) => Promise<{ status: string; pendingTicks: number; tickInProgress: boolean }>
+    )(getReplayStateQuery)) as { status: string; pendingTicks: number; tickInProgress: boolean };
     if (predicate(s)) return;
     await new Promise((r) => setTimeout(r, 50));
   }
@@ -244,6 +284,11 @@ describe("replaySessionWorkflow integration", () => {
       connection: env.nativeConnection,
       taskQueue,
       workflowsPath: require.resolve("@workflows/replay/replaySessionWorkflow"),
+      // tsconfig path aliases (@domain/*, @adapters/*, …) must be wired into
+      // the workflow bundle's webpack resolver — see CLAUDE.md "Workflow
+      // bundles need the TsconfigPathsPlugin". Without this, webpack fails
+      // to resolve `@domain/errors` and the suite never boots.
+      bundlerOptions: workflowBundlerOptions,
       activities,
     });
 
@@ -258,7 +303,10 @@ describe("replaySessionWorkflow integration", () => {
 
     await worker.runUntil(async () => {
       // Wait for the detector to fire and the queue to drain.
-      await waitForState(handle, (s) => s.pendingTicks === 0 && !s.tickInProgress && state.detectorCalls > 0);
+      await waitForState(
+        handle,
+        (s) => s.pendingTicks === 0 && !s.tickInProgress && state.detectorCalls > 0,
+      );
       await handle.signal(terminateSignal, { reason: "test_done" });
       await waitForState(handle, (s) => s.status === "FAILED");
     });
@@ -310,6 +358,11 @@ describe("replaySessionWorkflow integration", () => {
       connection: env.nativeConnection,
       taskQueue,
       workflowsPath: require.resolve("@workflows/replay/replaySessionWorkflow"),
+      // tsconfig path aliases (@domain/*, @adapters/*, …) must be wired into
+      // the workflow bundle's webpack resolver — see CLAUDE.md "Workflow
+      // bundles need the TsconfigPathsPlugin". Without this, webpack fails
+      // to resolve `@domain/errors` and the suite never boots.
+      bundlerOptions: workflowBundlerOptions,
       activities,
     });
 
@@ -363,6 +416,11 @@ describe("replaySessionWorkflow integration", () => {
       connection: env.nativeConnection,
       taskQueue,
       workflowsPath: require.resolve("@workflows/replay/replaySessionWorkflow"),
+      // tsconfig path aliases (@domain/*, @adapters/*, …) must be wired into
+      // the workflow bundle's webpack resolver — see CLAUDE.md "Workflow
+      // bundles need the TsconfigPathsPlugin". Without this, webpack fails
+      // to resolve `@domain/errors` and the suite never boots.
+      bundlerOptions: workflowBundlerOptions,
       activities,
     });
 
@@ -379,16 +437,26 @@ describe("replaySessionWorkflow integration", () => {
       await handle.signal(replayTickSignal, { tickAt: "2026-04-29T01:00:00.000Z" });
       await waitForState(handle, (s) => s.status === "PAUSED" && s.pendingTicks === 1);
       expect(state.detectorCalls).toBe(0);
+      // The pause signal handler must have fired an updateReplaySessionStatus
+      // to keep the `replay_sessions.status` DB row in sync with the
+      // workflow's in-memory status — otherwise the session endpoint stays
+      // "READY" while the workflow is actually paused, and the UI shows the
+      // wrong button. The handler does this as a fire-and-forget activity,
+      // so we poll briefly for it to land.
+      await waitForCondition(() => state.statusUpdates.some((u) => u.status === "PAUSED"), 2_000);
 
       // Resume → the queued tick runs.
       await handle.signal(resumeSignal);
       await waitForState(handle, (s) => s.pendingTicks === 0 && state.detectorCalls > 0);
+      await waitForCondition(() => state.statusUpdates.some((u) => u.status === "READY"), 2_000);
 
       await handle.signal(terminateSignal, {});
       await waitForState(handle, (s) => s.status === "FAILED");
     });
 
     expect(state.detectorCalls).toBe(1);
+    expect(state.statusUpdates.some((u) => u.status === "PAUSED")).toBe(true);
+    expect(state.statusUpdates.some((u) => u.status === "READY")).toBe(true);
   }, 30_000);
 
   test("reaching windowEndAt → status COMPLETED + status update fired", async () => {
@@ -412,6 +480,11 @@ describe("replaySessionWorkflow integration", () => {
       connection: env.nativeConnection,
       taskQueue,
       workflowsPath: require.resolve("@workflows/replay/replaySessionWorkflow"),
+      // tsconfig path aliases (@domain/*, @adapters/*, …) must be wired into
+      // the workflow bundle's webpack resolver — see CLAUDE.md "Workflow
+      // bundles need the TsconfigPathsPlugin". Without this, webpack fails
+      // to resolve `@domain/errors` and the suite never boots.
+      bundlerOptions: workflowBundlerOptions,
       activities,
     });
 
@@ -467,6 +540,11 @@ describe("replaySessionWorkflow integration", () => {
       connection: env.nativeConnection,
       taskQueue,
       workflowsPath: require.resolve("@workflows/replay/replaySessionWorkflow"),
+      // tsconfig path aliases (@domain/*, @adapters/*, …) must be wired into
+      // the workflow bundle's webpack resolver — see CLAUDE.md "Workflow
+      // bundles need the TsconfigPathsPlugin". Without this, webpack fails
+      // to resolve `@domain/errors` and the suite never boots.
+      bundlerOptions: workflowBundlerOptions,
       activities,
     });
 
