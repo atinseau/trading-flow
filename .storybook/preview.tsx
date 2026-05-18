@@ -1,4 +1,4 @@
-// import "@client/lib/setupLightweightChartsGlobal";  // ⬅ Phase 1.6 / 1.8
+import "@client/lib/setupLightweightChartsGlobal";
 import "../src/client/globals.css";
 import type { Preview } from "@storybook/react-vite";
 

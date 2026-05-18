@@ -27,7 +27,8 @@
       "@client/*": ["./src/client/*"],
       "@shared/*": ["./src/shared/*"],
       "@test-fakes/*": ["./test/fakes/*"],
-      "@test-helpers/*": ["./test/helpers/*"]
+      "@test-helpers/*": ["./test/helpers/*"],
+      "@test-fixtures/*": ["./test/fixtures/*"]
     }
   },
   "include": ["src/**/*", "test/**/*"]
