@@ -49,3 +49,6 @@ TODO.md
 # Dev compose bind-mounted volumes (artifacts, claude workspace)
 .dev-artifacts/
 .dev-claude-workspace/
+
+*storybook.log
+storybook-static
