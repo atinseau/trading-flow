@@ -1,3 +1,7 @@
+import { applyRightOffset } from "@adapters/chart/chartBootstrap";
+import { applyContribution } from "@adapters/chart/contributionRenderer";
+import { allocatePanes } from "@adapters/chart/paneAllocator";
+import { resolveRenderConfig } from "@adapters/indicators/renderConfigByPluginId";
 import type {
   IndicatorSeriesContribution,
   ReplayEventRow,
@@ -18,7 +22,6 @@ import {
 } from "lightweight-charts";
 import { Maximize2, Minimize2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { applyIndicatorToChart, type IndicatorPane } from "./applyIndicatorToChart";
 import { ChartLegend } from "./chart-legend";
 import { colorForSetup, visualForEvent } from "./replay-marker-config";
 
@@ -84,7 +87,7 @@ export function ReplayChart(props: {
   /** Indicator series keyed by plugin id — `OhlcvResponse.indicators`. */
   indicators?: Record<string, IndicatorSeriesContribution>;
   /** Pane hint per indicator — `OhlcvResponse.indicatorMeta`. */
-  indicatorMeta?: Record<string, { pane: IndicatorPane }>;
+  indicatorMeta?: Record<string, { pane: "price_overlay" | "secondary" }>;
   /** Subset of indicator ids the user wants to see. `null`/undefined → all. */
   visibleIndicators?: ReadonlySet<string> | null;
 }) {
@@ -243,8 +246,7 @@ export function ReplayChart(props: {
     const mainSeries = visibleSeriesRef.current;
     const plugin = markersPluginRef.current;
     if (!chart || !mainSeries || !plugin) return;
-    // Tear down previously applied indicators ; the helper's cleanup
-    // removes the line series + price lines it created.
+
     for (const c of indicatorCleanupsRef.current) c.cleanup();
     indicatorCleanupsRef.current = [];
     indicatorMarkersRef.current = [];
@@ -252,33 +254,58 @@ export function ReplayChart(props: {
     const all = props.indicators ?? {};
     const meta = props.indicatorMeta ?? {};
     const visible = props.visibleIndicators;
-    for (const [id, contribution] of Object.entries(all)) {
-      if (visible && !visible.has(id)) continue;
-      const pane: IndicatorPane = meta[id]?.pane ?? "price_overlay";
-      const palette = INDICATOR_PALETTES[id] ?? FALLBACK_PALETTE;
-      const result = applyIndicatorToChart(chart, contribution, {
+
+    // Build the list of visible indicators in the order they appear.
+    const visibleEntries = Object.entries(all).filter(([id]) => !visible || visible.has(id));
+
+    // Pane allocation pass — same logic as in TradingViewChart.
+    const alloc = allocatePanes(
+      visibleEntries.map(([id]) => {
+        const cfg = resolveRenderConfig(id);
+        const pane = meta[id]?.pane ?? cfg.pane;
+        return { id, pane, secondaryPaneStretch: cfg.secondaryPaneStretch };
+      }),
+      Object.fromEntries(visibleEntries.map(([id]) => [id, true])),
+    );
+
+    for (const [id, contribution] of visibleEntries) {
+      const paneIndex = alloc.assignments[id];
+      if (paneIndex === undefined) continue;
+      const renderConfig = resolveRenderConfig(id);
+      const result = applyContribution(chart, contribution, {
         id,
-        pane,
+        renderConfig,
+        paneIndex,
         candleTimes,
         mainSeries,
         markerBucket: indicatorMarkersRef.current,
-        colorPalette: palette,
       });
       indicatorCleanupsRef.current.push(result);
     }
+
+    for (const [idx, stretch] of alloc.stretches) {
+      chart.panes()[idx]?.setStretchFactor(stretch);
+    }
+
+    // Right-offset based on visible price_overlay line count.
+    const priceOverlayCount = visibleEntries.filter(([id]) => {
+      const pane = meta[id]?.pane ?? resolveRenderConfig(id).pane;
+      return pane === "price_overlay";
+    }).length;
+    applyRightOffset(chart, {
+      priceOverlayLineCount: priceOverlayCount,
+      priceLineCount: priceLinesRef.current.length,
+    });
+
     // Re-publish the merged marker list (indicator markers may have been
     // updated by the dispatch).
     plugin.setMarkers([...eventMarkersRef.current, ...indicatorMarkersRef.current]);
 
     return () => {
-      // Component unmount or deps change → drop everything we created.
       for (const c of indicatorCleanupsRef.current) c.cleanup();
       indicatorCleanupsRef.current = [];
       indicatorMarkersRef.current = [];
     };
-    // Re-run on any input change. The chart cleanup-and-reapply is cheap
-    // (it's the same series objects either way), so we accept the extra
-    // work in exchange for simpler deps + Biome compliance.
   }, [candleTimes, props.indicators, props.indicatorMeta, props.visibleIndicators]);
 
   // ── update price lines from active setups ──────────────────────────
