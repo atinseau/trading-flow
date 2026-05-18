@@ -48,7 +48,7 @@ describe("createTradingViewChart", () => {
 
   test("naked: lighter grid + visible candle border + lastValueVisible", () => {
     const { LC, calls } = fakeLC();
-    (globalThis as { LightweightCharts: unknown }).LightweightCharts = LC;
+    (globalThis as { LightweightCharts?: unknown }).LightweightCharts = LC;
     const container = { clientWidth: 800 } as unknown as HTMLDivElement;
     const { dispose } = createTradingViewChart(container, { width: 800, height: 500, naked: true });
     const createCall = calls.find((c) => c.method === "createChart")?.args[0] as {
@@ -67,7 +67,7 @@ describe("createTradingViewChart", () => {
 
   test("non-naked: standard grid + hidden border", () => {
     const { LC, calls } = fakeLC();
-    (globalThis as { LightweightCharts: unknown }).LightweightCharts = LC;
+    (globalThis as { LightweightCharts?: unknown }).LightweightCharts = LC;
     const container = {} as unknown as HTMLDivElement;
     createTradingViewChart(container, { width: 800, height: 500, naked: false });
     const createCall = calls.find((c) => c.method === "createChart")?.args[0] as {
@@ -82,7 +82,7 @@ describe("createTradingViewChart", () => {
 
   test("uses canonical candle palette #26a69a / #ef5350", () => {
     const { LC, calls } = fakeLC();
-    (globalThis as { LightweightCharts: unknown }).LightweightCharts = LC;
+    (globalThis as { LightweightCharts?: unknown }).LightweightCharts = LC;
     createTradingViewChart({} as HTMLDivElement, { width: 800, height: 500, naked: false });
     const addCall = calls.find((c) => c.method === "addSeries")?.args[1] as {
       upColor: string;
