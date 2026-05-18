@@ -4,10 +4,13 @@ import { type Band, BandsPrimitive } from "@adapters/chart/bandsPrimitive";
 function fakeSeries() {
   return {
     priceToCoordinate: (price: number) => price * 2,
-    chart: () => ({
-      timeScale: () => ({
-        timeToCoordinate: (t: number) => t,
-      }),
+  };
+}
+
+function fakeChart() {
+  return {
+    timeScale: () => ({
+      timeToCoordinate: (t: number) => t,
     }),
   };
 }
@@ -18,6 +21,11 @@ describe("BandsPrimitive", () => {
     const series = fakeSeries() as any;
     const bands: Band[] = [{ topPrice: 110, bottomPrice: 100, fillColor: "rgba(255,0,0,0.2)" }];
     const p = new BandsPrimitive(series, bands);
+    // Simulate the attached() lifecycle hook — primitives receive the chart
+    // ref via SeriesAttachedParameter, not via series.chart() (that method
+    // doesn't exist in lightweight-charts v5).
+    // biome-ignore lint/suspicious/noExplicitAny: minimal fake of SeriesAttachedParameter
+    p.attached({ chart: fakeChart() as any, series, requestUpdate: () => {} } as any);
     const views = p.paneViews();
     expect(views.length).toBe(1);
     expect(views[0]?.zOrder?.()).toBe("bottom");
@@ -37,6 +45,8 @@ describe("BandsPrimitive", () => {
       },
     ];
     const p = new BandsPrimitive(series, bands);
+    // biome-ignore lint/suspicious/noExplicitAny: minimal fake of SeriesAttachedParameter
+    p.attached({ chart: fakeChart() as any, series, requestUpdate: () => {} } as any);
     const renderer = p.paneViews()[0]?.renderer();
     const fillRectCalls: Array<{ x: number; y: number; w: number; h: number; style: string }> = [];
     const fakeTarget = {
