@@ -1,12 +1,8 @@
-import {
-  CandlestickSeries,
-  createChart,
-  HistogramSeries,
-  type IChartApi,
-  type ISeriesApi,
-  type Time,
-} from "lightweight-charts";
-import { useEffect, useRef } from "react";
+import { volumePlugin } from "@adapters/indicators/plugins/volume";
+import { resolveRenderConfig } from "@adapters/indicators/renderConfigByPluginId";
+import { TradingViewChart } from "@client/components/charts/TradingViewChart";
+import type { UTCTimestamp } from "lightweight-charts";
+import { useMemo } from "react";
 
 export type AssetCandle = {
   time: number; // unix seconds
@@ -21,85 +17,65 @@ export type AssetCandle = {
  * Full-width interactive candlestick + volume chart.
  * Bigger / more detailed than the per-setup TVChart — used on the asset
  * detail page for browsing.
+ *
+ * Volume is rendered via the unified plugin pipeline (D1): raw bars as a
+ * histogram + volumeMa20 line via a compound contribution.
  */
 export function AssetChart({ candles }: { candles: AssetCandle[] }) {
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const chartRef = useRef<IChartApi | null>(null);
-  const candleSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
-  const volumeSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null);
+  const adapted = useMemo(
+    () =>
+      candles.map((c) => ({
+        time: c.time as UTCTimestamp,
+        open: c.open,
+        high: c.high,
+        low: c.low,
+        close: c.close,
+      })),
+    [candles],
+  );
 
-  useEffect(() => {
-    if (!containerRef.current) return;
-    const chart = createChart(containerRef.current, {
-      layout: { background: { color: "transparent" }, textColor: "rgb(229, 231, 235)" },
-      grid: {
-        vertLines: { color: "rgba(60, 64, 72, 0.4)" },
-        horzLines: { color: "rgba(60, 64, 72, 0.4)" },
-      },
-      timeScale: { timeVisible: true, secondsVisible: false, borderVisible: false },
-      rightPriceScale: { borderVisible: false },
-      width: containerRef.current.clientWidth,
-      height: 480,
-    });
-
-    const candleSeries = chart.addSeries(CandlestickSeries, {
-      upColor: "#10b981",
-      downColor: "#ef4444",
-      borderUpColor: "#10b981",
-      borderDownColor: "#ef4444",
-      wickUpColor: "#10b981",
-      wickDownColor: "#ef4444",
-    });
-    candleSeries.priceScale().applyOptions({ scaleMargins: { top: 0.05, bottom: 0.25 } });
-
-    const volumeSeries = chart.addSeries(HistogramSeries, {
-      priceFormat: { type: "volume" },
-      priceScaleId: "volume",
-    });
-    volumeSeries.priceScale().applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } });
-
-    chartRef.current = chart;
-    candleSeriesRef.current = candleSeries;
-    volumeSeriesRef.current = volumeSeries;
-
-    const onResize = (): void => {
-      if (containerRef.current) chart.applyOptions({ width: containerRef.current.clientWidth });
-    };
-    window.addEventListener("resize", onResize);
-
-    return () => {
-      window.removeEventListener("resize", onResize);
-      chart.remove();
-      chartRef.current = null;
-      candleSeriesRef.current = null;
-      volumeSeriesRef.current = null;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    if (!candleSeriesRef.current || !volumeSeriesRef.current) return;
-    const candleData = candles.map((c) => ({
-      time: c.time as Time,
+  const indicators = useMemo(() => {
+    // Map AssetCandle → Candle domain shape for volumePlugin.computeSeries.
+    const candlesForCompute = candles.map((c) => ({
+      timestamp: new Date(c.time * 1000),
       open: c.open,
       high: c.high,
       low: c.low,
       close: c.close,
+      volume: c.volume,
     }));
-    const volumeData = candles.map((c) => ({
-      time: c.time as Time,
-      value: c.volume,
-      color: c.close >= c.open ? "rgba(16, 185, 129, 0.5)" : "rgba(239, 68, 68, 0.5)",
-    }));
-    candleSeriesRef.current.setData(candleData);
-    volumeSeriesRef.current.setData(volumeData);
-    chartRef.current?.timeScale().fitContent();
+
+    // Raw volume histogram bars with green/red coloring per candle direction.
+    const volumeBars = {
+      kind: "histogram" as const,
+      values: candles.map((c) => ({
+        value: c.volume,
+        color: c.close >= c.open ? "rgba(16, 185, 129, 0.5)" : "rgba(239, 68, 68, 0.5)",
+      })),
+    };
+
+    // volumeMa20 line from the plugin.
+    const maContribution = volumePlugin.computeSeries(candlesForCompute as never);
+
+    return [
+      {
+        id: "volume",
+        plugin: {
+          ...volumePlugin,
+          renderConfig: resolveRenderConfig("volume"),
+        } as never,
+        contribution: { kind: "compound" as const, parts: [volumeBars, maContribution] },
+      },
+    ];
   }, [candles]);
 
   return (
-    <div
-      ref={containerRef}
-      className="w-full bg-card border border-border rounded-md overflow-hidden"
+    <TradingViewChart
+      candles={adapted}
+      height={480}
+      enableControls={false}
+      enableFullscreen={false}
+      indicators={indicators}
     />
   );
 }
