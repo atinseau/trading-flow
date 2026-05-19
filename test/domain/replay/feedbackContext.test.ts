@@ -116,9 +116,35 @@ describe("formatSetupEventsMarkdown", () => {
 });
 
 describe("buildReplayFeedbackContext", () => {
+  // Seed candles anchored on the test's setup window (2026-05-10) instead of
+  // `Date.now()`. The default `generateLinear` walks back from the wall clock,
+  // so the seeded range drifted away from the assertion window as days passed.
+  function makeAnchoredCandles(from: Date, count: number, startPrice = 30_000) {
+    const candles = [];
+    let price = startPrice;
+    for (let i = 0; i < count; i++) {
+      const open = price;
+      const close = price + Math.sin(i / 10) * 5;
+      candles.push({
+        timestamp: new Date(from.getTime() + i * 3_600_000),
+        open,
+        high: Math.max(open, close) + 1,
+        low: Math.min(open, close) - 1,
+        close,
+        volume: 100 + Math.abs(Math.sin(i / 5)) * 200,
+      });
+      price = close;
+    }
+    return candles;
+  }
+
   function setupDeps() {
     const fetcher = new FakeMarketDataFetcher();
-    fetcher.seed("BTCUSDT", "1h", FakeMarketDataFetcher.generateLinear(200, 30_000));
+    fetcher.seed(
+      "BTCUSDT",
+      "1h",
+      makeAnchoredCandles(new Date("2026-05-10T00:00:00Z"), 48),
+    );
     return {
       marketDataFetcher: fetcher,
       chartRenderer: new FakeChartRenderer(),

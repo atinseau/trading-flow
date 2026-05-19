@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { IndicatorRegistry } from "@adapters/indicators/IndicatorRegistry";
 import { FilesystemArtifactStore } from "@adapters/persistence/FilesystemArtifactStore";
 import { PostgresEventStore } from "@adapters/persistence/PostgresEventStore";
 import { PostgresSetupRepository } from "@adapters/persistence/PostgresSetupRepository";
@@ -11,6 +12,8 @@ import { SystemClock } from "@adapters/time/SystemClock";
 import { parseTimeframeToMs } from "@domain/ports/Clock";
 import type { LLMProvider } from "@domain/ports/LLMProvider";
 import type { WatchConfig } from "@domain/schemas/WatchesConfig";
+import { FewShotEngine } from "@domain/services/FewShotEngine";
+import { PromptBuilder } from "@domain/services/PromptBuilder";
 import { TestWorkflowEnvironment } from "@temporalio/testing";
 import { Worker } from "@temporalio/worker";
 import { FakeChartRenderer } from "@test-fakes/FakeChartRenderer";
@@ -83,6 +86,8 @@ const testWatch = {
     injection: { detector: true, reviewer: true, finalizer: true },
     context_providers_disabled: [],
   },
+  indicators: {},
+  costs: { fees_pct: 0.1, slippage_pct: 0.05 },
 } as unknown as WatchConfig;
 
 const testConfig: { watches: WatchConfig[] } = { watches: [testWatch] };
@@ -157,7 +162,10 @@ describe("SetupWorkflow integration (real Postgres + real activities)", () => {
       name: "fake",
       available: true,
       completeImpl: async (input) => {
-        if (input.systemPrompt.includes("Reviewer")) {
+        // The finalizer system prompt mentions "Reviewer" by reference, so we
+        // disambiguate on the role-declaration line "You are the X" — that
+        // string only appears once and uniquely identifies each role.
+        if (input.systemPrompt.includes("You are the Reviewer")) {
           return {
             content: "{}",
             parsed: {
@@ -172,7 +180,7 @@ describe("SetupWorkflow integration (real Postgres + real activities)", () => {
             completionTokens: 50,
           };
         }
-        if (input.systemPrompt.includes("Finalizer")) {
+        if (input.systemPrompt.includes("You are the Finalizer")) {
           return {
             content: "{}",
             parsed: {
@@ -217,12 +225,15 @@ describe("SetupWorkflow integration (real Postgres + real activities)", () => {
       claude: { workspace_dir: "/tmp" },
     };
 
+    const indicatorRegistry = new IndicatorRegistry();
+    const promptBuilder = new PromptBuilder(indicatorRegistry, new FewShotEngine());
+
     const deps: ActivityDeps = {
       marketDataFetchers: new Map([["binance", new FakeMarketDataFetcher()]]),
       chartRenderer: new FakeChartRenderer(),
       indicatorCalculator: new FakeIndicatorCalculator(),
-      indicatorRegistry: null as unknown as ActivityDeps["indicatorRegistry"],
-      promptBuilder: null as unknown as ActivityDeps["promptBuilder"],
+      indicatorRegistry,
+      promptBuilder,
       llmProviders,
       llmCallStore: new FakeLLMCallStore(),
       fundingRateProviders: new Map(),

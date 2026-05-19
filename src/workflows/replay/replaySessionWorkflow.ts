@@ -137,35 +137,24 @@ const dbActivities = proxyActivities<ReturnType<typeof replayActivities.buildRep
 // --- Workflow body -----------------------------------------------------------
 
 export async function replaySessionWorkflow(args: ReplaySessionWorkflowArgs): Promise<void> {
-  // Load the session once at start. Config snapshot is immutable for the
-  // session's lifetime (spec §10 invariant 5), so we trust the cached copy.
-  const { session } = await dbActivities.loadReplaySession({ sessionId: args.sessionId });
-  const watch = session.configSnapshot;
-
-  // Temporal serializes Date payloads as ISO strings across the activity
-  // boundary, so the typed `Date` fields on `session.window*` arrive in the
-  // workflow as strings. `coerceSessionWindow` normalizes both shapes — see
-  // its docblock and the dedicated unit test.
-  const {
-    startMs: windowStartAtMs,
-    endMs: windowEndAtMs,
-    endDate: windowEndAtDate,
-  } = coerceSessionWindow(session);
-
+  // Handlers MUST be registered before any await (Temporal requirement) so
+  // signals/queries arriving during workflow startup — including the moment
+  // we are awaiting `loadReplaySession` below — are not dropped. The state
+  // variables are initialized with safe defaults; loadReplaySession's result
+  // overrides them before the main loop runs.
   const queue: string[] = [];
-  let paused = session.status === "PAUSED";
+  let paused = false;
   let terminated = false;
   let tickInProgress = false;
   let lastTickAt: string | null = null;
-  let costUsdSoFar = session.costUsdSoFar;
-  let status: ReplayWorkflowState["status"] =
-    session.status === "READY" ||
-    session.status === "PAUSED" ||
-    session.status === "COMPLETED" ||
-    session.status === "COST_CAPPED" ||
-    session.status === "FAILED"
-      ? session.status
-      : "READY";
+  let costUsdSoFar = 0;
+  let status: ReplayWorkflowState["status"] = "READY";
+  // Window defaults are permissive (-∞, +∞) so any signal arriving in the
+  // gap between handler registration and session load is accepted; the API
+  // already validates incoming bodies, the window check is defense-in-depth.
+  // Real bounds are assigned after loadReplaySession returns, below.
+  let windowStartAtMs = Number.NEGATIVE_INFINITY;
+  let windowEndAtMs = Number.POSITIVE_INFINITY;
   const alive = new Map<string, AliveSetup>();
 
   /**
@@ -266,6 +255,40 @@ export async function replaySessionWorkflow(args: ReplaySessionWorkflowArgs): Pr
     tickInProgress,
     pendingTicks: queue.length,
   }));
+
+  // Load the session AFTER handlers are registered so signals/queries
+  // arriving during this first activity await are not dropped. Config
+  // snapshot is immutable for the session's lifetime (spec §10 invariant 5),
+  // so we trust the cached copy.
+  const { session } = await dbActivities.loadReplaySession({ sessionId: args.sessionId });
+  const watch = session.configSnapshot;
+
+  // Temporal serializes Date payloads as ISO strings across the activity
+  // boundary, so the typed `Date` fields on `session.window*` arrive in the
+  // workflow as strings. `coerceSessionWindow` normalizes both shapes — see
+  // its docblock and the dedicated unit test.
+  const { startMs, endMs, endDate: windowEndAtDate } = coerceSessionWindow(session);
+  windowStartAtMs = startMs;
+  windowEndAtMs = endMs;
+  costUsdSoFar = session.costUsdSoFar;
+
+  // Reconcile workflow state with the persisted session, but never clobber
+  // state a signal handler has already mutated during the await above.
+  // Handlers run cooperatively while loadReplaySession is in flight; if one
+  // fired (e.g. pauseSignal arrived in the same RPC as signalWithStart),
+  // status/paused are already authoritative.
+  const stateAlreadyMutated = status !== "READY" || paused || terminated;
+  if (!stateAlreadyMutated) {
+    paused = session.status === "PAUSED";
+    status =
+      session.status === "READY" ||
+      session.status === "PAUSED" ||
+      session.status === "COMPLETED" ||
+      session.status === "COST_CAPPED" ||
+      session.status === "FAILED"
+        ? session.status
+        : "READY";
+  }
 
   // ----- main loop: drain the tick queue, respecting pause/terminate ----
 

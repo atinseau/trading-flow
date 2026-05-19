@@ -3,6 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { FeedbackContextProviderRegistry } from "@adapters/feedback-context/FeedbackContextProviderRegistry";
+import { IndicatorRegistry } from "@adapters/indicators/IndicatorRegistry";
 import { FilesystemArtifactStore } from "@adapters/persistence/FilesystemArtifactStore";
 import { PostgresEventStore } from "@adapters/persistence/PostgresEventStore";
 import { PostgresLessonEventStore } from "@adapters/persistence/PostgresLessonEventStore";
@@ -16,6 +17,8 @@ import { parseTimeframeToMs } from "@domain/ports/Clock";
 import type { LLMOutput, LLMProvider } from "@domain/ports/LLMProvider";
 import type { FeedbackOutput } from "@domain/schemas/FeedbackOutput";
 import type { WatchConfig, WatchesConfig } from "@domain/schemas/WatchesConfig";
+import { FewShotEngine } from "@domain/services/FewShotEngine";
+import { PromptBuilder } from "@domain/services/PromptBuilder";
 import { FakeChartRenderer } from "@test-fakes/FakeChartRenderer";
 import { FakeFeedbackContextProvider } from "@test-fakes/FakeFeedbackContextProvider";
 import { FakeIndicatorCalculator } from "@test-fakes/FakeIndicatorCalculator";
@@ -82,6 +85,7 @@ const testWatch = {
     injection: { detector: true, reviewer: true, finalizer: true },
     context_providers_disabled: [],
   },
+  indicators: {},
 } as unknown as WatchConfig;
 
 const testConfig: WatchesConfig = {
@@ -160,12 +164,15 @@ function buildDeps(args: {
     "setup-events": fakeProvider,
   });
 
+  const indicatorRegistry = new IndicatorRegistry();
+  const promptBuilder = new PromptBuilder(indicatorRegistry, new FewShotEngine());
+
   return {
     marketDataFetchers: new Map([["binance", new FakeMarketDataFetcher()]]),
     chartRenderer: new FakeChartRenderer(),
     indicatorCalculator: new FakeIndicatorCalculator(),
-    indicatorRegistry: null as unknown as ActivityDeps["indicatorRegistry"],
-    promptBuilder: null as unknown as ActivityDeps["promptBuilder"],
+    indicatorRegistry,
+    promptBuilder,
     llmProviders,
     llmCallStore: new FakeLLMCallStore(),
     fundingRateProviders: new Map(),

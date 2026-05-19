@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { IndicatorRegistry } from "@adapters/indicators/IndicatorRegistry";
 import { FilesystemArtifactStore } from "@adapters/persistence/FilesystemArtifactStore";
 import { PostgresEventStore } from "@adapters/persistence/PostgresEventStore";
 import { PostgresSetupRepository } from "@adapters/persistence/PostgresSetupRepository";
@@ -11,8 +12,11 @@ import { SystemClock } from "@adapters/time/SystemClock";
 import { parseTimeframeToMs } from "@domain/ports/Clock";
 import type { LLMProvider } from "@domain/ports/LLMProvider";
 import type { WatchConfig } from "@domain/schemas/WatchesConfig";
+import { FewShotEngine } from "@domain/services/FewShotEngine";
+import { PromptBuilder } from "@domain/services/PromptBuilder";
 import { TestWorkflowEnvironment } from "@temporalio/testing";
 import { Worker } from "@temporalio/worker";
+import { workflowBundlerOptions } from "../../src/workers/workflowBundlerOptions";
 import { FakeChartRenderer } from "@test-fakes/FakeChartRenderer";
 import { FakeIndicatorCalculator } from "@test-fakes/FakeIndicatorCalculator";
 import { FakeLLMCallStore } from "@test-fakes/FakeLLMCallStore";
@@ -84,6 +88,11 @@ function makeWatch(id: string): WatchConfig {
       injection: { detector: true, reviewer: true, finalizer: true },
       context_providers_disabled: [],
     },
+    indicators: {
+      rsi: { enabled: true },
+      ema_stack: { enabled: true },
+      atr: { enabled: true },
+    },
   };
   return cfg as WatchConfig;
 }
@@ -125,12 +134,15 @@ async function buildDeps(
   const llmProviders = new Map<string, LLMProvider>();
   llmProviders.set("fake", detectorLLM);
 
+  const indicatorRegistry = new IndicatorRegistry();
+  const promptBuilder = new PromptBuilder(indicatorRegistry, new FewShotEngine());
+
   return {
     marketDataFetchers: new Map([["binance", marketData]]),
     chartRenderer: new FakeChartRenderer(),
     indicatorCalculator: indicators,
-    indicatorRegistry: null as unknown as ActivityDeps["indicatorRegistry"],
-    promptBuilder: null as unknown as ActivityDeps["promptBuilder"],
+    indicatorRegistry,
+    promptBuilder,
     llmProviders,
     llmCallStore: new FakeLLMCallStore(),
     fundingRateProviders: new Map(),
@@ -197,8 +209,19 @@ describe("SchedulerWorkflow integration (real Postgres + real activities)", () =
     if (last) last.volume = 1000;
 
     const indicators = new FakeIndicatorCalculator();
-    // RSI extreme + volume spike should both pass the pre-filter.
-    indicators.set({ rsi: 20, lastVolume: 1000, volumeMa20: 100 });
+    // RSI extreme + volume spike should both pass the pre-filter. We replace
+    // the fixed map (instead of merging via .set()) to drop the legacy
+    // ema20/50/200 keys NEUTRAL_INDICATORS carries — the strict per-plugin
+    // schema would reject them at the activity boundary.
+    indicators.fixed = {
+      rsi: 20,
+      emaShort: 100,
+      emaMid: 100,
+      emaLong: 100,
+      atr: 1,
+      atrMa20: 1,
+      atrZScore200: 0,
+    };
 
     const detectorLLM = new FakeLLMProvider({
       name: "fake",
@@ -232,6 +255,7 @@ describe("SchedulerWorkflow integration (real Postgres + real activities)", () =
       connection: env.nativeConnection,
       taskQueue: "test-sched-create",
       workflowsPath: require.resolve("../../src/workflows/scheduler/schedulerWorkflow.ts"),
+      bundlerOptions: workflowBundlerOptions,
       activities,
     });
 
@@ -279,15 +303,15 @@ describe("SchedulerWorkflow integration (real Postgres + real activities)", () =
 
     // Calm-market indicators: RSI=50, atr=1=atrMa20, volume normal, recent extremes far from price.
     const indicators = new FakeIndicatorCalculator();
-    indicators.set({
+    indicators.fixed = {
       rsi: 50,
+      emaShort: 100,
+      emaMid: 100,
+      emaLong: 100,
       atr: 1,
       atrMa20: 1,
-      lastVolume: 100,
-      volumeMa20: 100,
-      recentHigh: 200,
-      recentLow: 0,
-    });
+      atrZScore200: 0,
+    };
 
     const detectorLLM = new FakeLLMProvider({
       name: "fake",
@@ -309,6 +333,7 @@ describe("SchedulerWorkflow integration (real Postgres + real activities)", () =
       connection: env.nativeConnection,
       taskQueue: "test-sched-calm",
       workflowsPath: require.resolve("../../src/workflows/scheduler/schedulerWorkflow.ts"),
+      bundlerOptions: workflowBundlerOptions,
       activities,
     });
 

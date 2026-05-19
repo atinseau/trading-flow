@@ -6,7 +6,7 @@ import { describe, expect, test } from "bun:test";
 import type { RenderConfig } from "@adapters/chart/contributionRenderer";
 import { TradingViewChart } from "@client/components/charts/TradingViewChart";
 import type { IndicatorPlugin } from "@domain/services/IndicatorPlugin";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render } from "@testing-library/react";
 
 global.ResizeObserver = class {
   observe() {}
@@ -56,7 +56,7 @@ const fakePlugin = (
 describe("<TradingViewChart>", () => {
   test("renders the chart wrapper + control panel when enableControls", () => {
     stubLC();
-    render(
+    const { getByTestId } = render(
       <TradingViewChart
         candles={[]}
         indicators={[
@@ -69,14 +69,14 @@ describe("<TradingViewChart>", () => {
         enableControls
       />,
     );
-    expect(screen.getByTestId("trading-view-chart")).toBeTruthy();
-    expect(screen.getByTestId("indicator-control-panel")).toBeTruthy();
+    expect(getByTestId("trading-view-chart")).toBeTruthy();
+    expect(getByTestId("indicator-control-panel")).toBeTruthy();
     cleanup();
   });
 
   test("when enableControls=false, no panel is rendered", () => {
     stubLC();
-    render(
+    const { queryByTestId } = render(
       <TradingViewChart
         candles={[]}
         indicators={[
@@ -88,13 +88,13 @@ describe("<TradingViewChart>", () => {
         ]}
       />,
     );
-    expect(screen.queryByTestId("indicator-control-panel")).toBeNull();
+    expect(queryByTestId("indicator-control-panel")).toBeNull();
     cleanup();
   });
 
   test("toggling a chip flips visibility state on the chip element", () => {
     stubLC();
-    render(
+    const { getByTestId } = render(
       <TradingViewChart
         candles={[]}
         indicators={[
@@ -108,7 +108,7 @@ describe("<TradingViewChart>", () => {
         initialVisibility={{ rsi: true }}
       />,
     );
-    const chip = screen.getByTestId("indicator-chip-rsi");
+    const chip = getByTestId("indicator-chip-rsi");
     expect(chip.getAttribute("aria-checked")).toBe("true");
     fireEvent.click(chip);
     expect(chip.getAttribute("aria-checked")).toBe("false");

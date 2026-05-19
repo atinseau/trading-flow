@@ -557,9 +557,22 @@ describe("replaySessionWorkflow integration", () => {
     });
 
     await worker.runUntil(async () => {
-      await waitForState(handle, (s) => s.status === "COST_CAPPED");
+      // 15s: cost-cap fires only after detector + reviewer + their persistEvent
+      // round-trips; the default 5s polling window is too tight when the test
+      // workflow + temporal env are still warming up.
+      await waitForState(handle, (s) => s.status === "COST_CAPPED", 15_000);
+      // The status-flip and the updateReplaySessionStatus activity are
+      // serialized in the workflow, but the query reads in-memory state and
+      // can return COST_CAPPED before the activity has been recorded —
+      // so wait for the activity to land before signaling terminate.
+      await waitForCondition(
+        () => state.statusUpdates.some((u) => u.status === "COST_CAPPED"),
+        15_000,
+      );
+      // terminate is fire-and-forget here — once status is COST_CAPPED the
+      // workflow's terminate handler keeps status as-is (per the
+      // READY|PAUSED guard) and lets the main loop exit via `terminated`.
       await handle.signal(terminateSignal, {});
-      await waitForState(handle, (s) => s.status === "FAILED");
     });
 
     expect(state.detectorCalls).toBe(1);
