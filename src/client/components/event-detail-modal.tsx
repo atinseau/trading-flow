@@ -1,5 +1,6 @@
 import type { SetupEvent } from "@client/components/setup/events-timeline";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@client/components/ui/dialog";
+import { renderObservation } from "@client/lib/renderObservation";
 import { Link } from "react-router-dom";
 
 export function EventDetailModal(props: {
@@ -44,11 +45,14 @@ export function EventDetailModal(props: {
                     Observations
                   </p>
                   <ul className="space-y-1">
-                    {props.event.payload.data.observations.map((o) => (
-                      <li key={o} className="border-l-2 border-primary pl-2">
-                        {o}
-                      </li>
-                    ))}
+                    {props.event.payload.data.observations.map((o) => {
+                      const text = renderObservation(o);
+                      return (
+                        <li key={text} className="border-l-2 border-primary pl-2">
+                          {text}
+                        </li>
+                      );
+                    })}
                   </ul>
                 </div>
               )}
