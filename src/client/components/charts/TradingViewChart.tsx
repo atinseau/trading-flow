@@ -209,6 +209,11 @@ export function TradingViewChart(props: TradingViewChartProps): JSX.Element {
         text: m.text,
       });
     }
+    // lightweight-charts requires markers sorted by time ASC — silently
+    // drops out-of-order entries until a redraw re-evaluates. Swings/BOS
+    // emits all highs first then all lows, so without this sort the H
+    // markers were missing until the user scrolled or zoomed.
+    merged.sort((a, b) => Number(a.time) - Number(b.time));
     markersPlugin?.setMarkers(merged);
 
     return () => {
