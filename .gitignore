@@ -53,4 +53,4 @@ TODO.md
 *storybook.log
 storybook-static
 .tmp-screenshots/
-.dev-render-charts/
+.dev-render-charts*/
