@@ -1,13 +1,15 @@
-import { z } from "zod";
 import type { IndicatorPlugin } from "@domain/services/IndicatorPlugin";
-import { swingsBosMetadata } from "./metadata";
-import { computeScalars, computeMarkers } from "./compute";
-import { detectorFragment, reviewerFragment, featuredFewShotExample } from "./promptFragments";
+import { z } from "zod";
 import { CHART_SCRIPT } from "./chartScript";
+import { computeMarkers, computeScalars } from "./compute";
+import { swingsBosMetadata } from "./metadata";
+import { detectorFragment, featuredFewShotExample, reviewerFragment } from "./promptFragments";
 
-const SWINGS_BOS_PARAMS_SCHEMA = z.object({
-  lookback: z.number().int().min(1).max(10),
-}).strict();
+const SWINGS_BOS_PARAMS_SCHEMA = z
+  .object({
+    lookback: z.number().int().min(1).max(10),
+  })
+  .strict();
 
 export const swingsBosPlugin: IndicatorPlugin = {
   ...swingsBosMetadata,
@@ -16,12 +18,18 @@ export const swingsBosPlugin: IndicatorPlugin = {
     const m = computeMarkers(candles, params);
     const markers = [
       ...m.swingHighs.map((s) => ({
-        index: s.index, position: "above" as const, color: "#ef5350",
-        shape: "arrowDown" as const, text: "H",
+        index: s.index,
+        position: "above" as const,
+        color: "#ef5350",
+        shape: "arrowDown" as const,
+        text: "H",
       })),
       ...m.swingLows.map((s) => ({
-        index: s.index, position: "below" as const, color: "#26a69a",
-        shape: "arrowUp" as const, text: "L",
+        index: s.index,
+        position: "below" as const,
+        color: "#26a69a",
+        shape: "arrowUp" as const,
+        text: "L",
       })),
     ];
     return { kind: "markers", markers };
@@ -33,7 +41,12 @@ export const swingsBosPlugin: IndicatorPlugin = {
     lastSwingLowAge: z.number().int().nonnegative().nullable(),
     bosState: z.enum(["bullish", "bearish", "none"]),
   }),
-  chartScript: CHART_SCRIPT, chartPane: "price_overlay",
+  chartScript: CHART_SCRIPT,
+  chartPane: "price_overlay",
+  renderConfig: {
+    pane: "price_overlay",
+    palette: ["#94a3b8"],
+  },
   detectorPromptFragment: detectorFragment,
   reviewerPromptFragment: reviewerFragment,
   featuredFewShotExample,
