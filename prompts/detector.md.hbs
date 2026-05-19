@@ -1,14 +1,18 @@
 {{!--
-  version: detector_v8
-  description: v8 — adds the Recent OHLCV table and prompt_data knobs
-               (recent_ohlcv_count, indicator_history_count …). The
-               chart image stays the primary source of truth ; the
-               numerical block lets the LLM verify exact levels and
-               read indicator series without pixel-reading the chart.
+  version: detector_v9
+  description: v9 — moves the corroboration calibration table (deltas
+               +10..+20 / +1..+5 / -1..-10 / -15..-20 + omit-instead-of-+0)
+               from this user-prompt template into the system prompt
+               (single source of truth). The user prompt now only ships
+               the dynamic list of alive setups ; the calibration rules
+               are immutable system-level guidance.
+               v8 baseline : Recent OHLCV table + prompt_data knobs
+               (recent_ohlcv_count, indicator_history_count). Chart image
+               stays primary ; numerical block lets the LLM verify exact
+               levels without pixel-reading.
                v7 baseline : Modular indicators with classification
                block, few-shot, and output schema composed by
-               PromptBuilder. v6 was the bidirectional corroboration
-               calibration table + omit-instead-of-+0 rule.
+               PromptBuilder.
 --}}
 
 # Free-form pattern detection on a chart
@@ -65,22 +69,7 @@ proposed with a lower score and tighter invalidation.
 - **#{{this.id}}** — `{{this.patternHint}}` `{{this.direction}}` | invalidation `{{this.invalidationLevel}}` | score `{{this.currentScore}}/100` | age `{{this.ageInCandles}}` candles
 {{/each}}
 
-### Corroboration calibration
-
-For each alive setup, you may emit ONE corroboration entry — or omit it.
-The `confidence_delta_suggested` field is signed `[-20, +20]`:
-
-| Delta | When to use |
-|-------|-------------|
-| `+10..+20` | Pattern materially advanced — decisive close, fresh confirmation candle, new touchpoint |
-| `+1..+5`  | Still visible with mild new evidence |
-|  `0`      | Don't use. **Omit the setup from `corroborations` instead** |
-| `-1..-10` | Pattern weakening — drift away from trigger, structure stressed, lower-high after a prior STRENGTHEN, volume drying on the trend leg |
-| `-15..-20`| Pattern no longer visible — decisive break, key level reclaimed, no longer printable on this tick's chart |
-
-**Omission is the "nothing new" signal.** It's not laziness — it's the
-correct output when you have no new evidence to cite, positive or
-negative. Corroborate ONLY when you can quantify a change.
+(Corroboration calibration : see system prompt § "ON ALIVE SETUPS".)
 {{else}}
 *(no alive setups — you are free to propose new candidates)*
 {{/if}}

@@ -26,21 +26,26 @@ CONSTRAINTS
   output. Pick one concrete value.
 
 ON ALIVE SETUPS
-The alive-setups list shows what the system currently believes. Treat each
-setup's `score` as the system's prior, NOT as evidence. Your job is honest
-re-evaluation, not confirmation. The corroboration channel is bidirectional
-— you can both confirm and contradict:
+The alive-setups list (provided in the user prompt) shows what the system
+currently believes. Treat each setup's `score` as the system's prior, NOT
+as evidence. Your job is honest re-evaluation, not confirmation.
 
-- Pattern still printing with NEW evidence → positive `confidence_delta_suggested`.
-- Pattern still printing but nothing new since last tick → OMIT the setup
-  from `corroborations`. Silence is the "nothing new" signal — prefer it
-  over a +0 entry.
-- Pattern fading (drift, structure stressed, lower-high after a STRENGTHEN,
-  volume drying on the trend leg) → NEGATIVE `confidence_delta_suggested`.
-  You owe the pipeline this signal — without it the score is a one-way
-  ratchet.
-- Pattern no longer visible (decisive break, level reclaimed, no longer
-  printable on this tick's chart) → strongly negative (-15 to -20).
+For each alive setup, you may emit ONE corroboration entry — or omit it.
+The corroboration channel is bidirectional; `confidence_delta_suggested`
+is signed in `[-20, +20]`:
+
+| Delta       | When to use |
+|-------------|-------------|
+| `+10..+20`  | Pattern materially advanced — decisive close, fresh confirmation candle, new touchpoint |
+| `+1..+5`    | Still visible with mild new evidence |
+| `0`         | Don't use. **Omit the setup from `corroborations` instead** |
+| `-1..-10`   | Pattern weakening — drift away from trigger, structure stressed, lower-high after a prior STRENGTHEN, volume drying on the trend leg |
+| `-15..-20`  | Pattern no longer visible — decisive break, key level reclaimed, no longer printable on this tick's chart |
+
+**Omission is the "nothing new" signal.** It's not laziness — it's the
+correct output when you have no new evidence to cite, positive or
+negative. Corroborate ONLY when you can quantify a change.
 
 A setup that gets corroborated every tick simply because it's there is
-score inflation. Be honest, not agreeable.
+score inflation. Be honest, not agreeable. Without honest negative deltas,
+the score becomes a one-way ratchet.

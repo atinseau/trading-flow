@@ -7,7 +7,7 @@ afterEach(() => {
 
 test("loadPrompt('detector') returns rendered template + version", async () => {
   const result = await loadPrompt("detector");
-  expect(result.version).toBe("detector_v8");
+  expect(result.version).toBe("detector_v9");
   expect(typeof result.render).toBe("function");
 
   // Render with sample context — uses new template variables from PromptBuilder
@@ -221,6 +221,36 @@ test("each role has a distinct system prompt", async () => {
   const finalizer = await loadPrompt("finalizer");
   expect(detector.systemPrompt).not.toBe(reviewer.systemPrompt);
   expect(reviewer.systemPrompt).not.toBe(finalizer.systemPrompt);
+});
+
+test("detector corroboration calibration lives ONLY in the system prompt (no double-source)", async () => {
+  // Single source of truth invariant : the table must be in system, not in user.
+  // If a future change accidentally drops it back into the user template (or
+  // forgets to remove it from system), this test traps the drift.
+  const detector = await loadPrompt("detector");
+  const userRendered = detector.render({
+    asset: "BTCUSDT",
+    timeframe: "1h",
+    tickAt: "2026-04-28T14:00:00Z",
+    hasIndicators: false,
+    isVolumeActive: false,
+    indicatorFragments: "",
+    classificationBlock: "",
+    fewShotExamples: "",
+    outputFormatTable: "",
+    aliveSetups: [{ id: "s1", patternHint: "x", direction: "LONG", invalidationLevel: 1, currentScore: 50, ageInCandles: 2 }],
+    activeLessons: [],
+  });
+
+  // System owns the calibration table — must contain the delta brackets.
+  expect(detector.systemPrompt).toContain("+10..+20");
+  expect(detector.systemPrompt).toContain("-15..-20");
+  expect(detector.systemPrompt).toMatch(/Omission is the "nothing new" signal/);
+
+  // User template must NOT redefine the table. Only a pointer back to system.
+  expect(userRendered).not.toContain("+10..+20");
+  expect(userRendered).not.toContain("-15..-20");
+  expect(userRendered).toContain('see system prompt § "ON ALIVE SETUPS"');
 });
 
 test("finalizer hasRecentOhlcv renders the OHLCV block + omits it when false", async () => {
