@@ -161,7 +161,10 @@ export function TradingViewChart(props: TradingViewChartProps): JSX.Element {
     indicatorCleanupsRef.current = [];
     indicatorMarkersRef.current = [];
 
-    const ind = props.indicators ?? [];
+    // Drop indicators whose contribution has no renderable parts (e.g.
+    // volume / vwap plugins return empty compound on zero-volume data).
+    // Keeps the chip list + pane allocation clean.
+    const ind = (props.indicators ?? []).filter((i) => !isEmptyContribution(i.contribution));
     const alloc = allocatePanes(
       ind.map((i) => ({
         id: i.id,
@@ -284,13 +287,18 @@ export function TradingViewChart(props: TradingViewChartProps): JSX.Element {
     };
   }, [enableFullscreen, height, toggleFullscreen]);
 
+  // Skip chips for indicators whose contribution is empty — keeps the
+  // toggle UI clean when a plugin self-disables (e.g. volume on a
+  // zero-volume forex feed returns empty compound).
   const chipEntries = useMemo(
     () =>
-      (props.indicators ?? []).map((i) => ({
-        id: i.id,
-        displayName: i.plugin.displayName,
-        swatch: i.plugin.renderConfig.palette[0] ?? "#94a3b8",
-      })),
+      (props.indicators ?? [])
+        .filter((i) => !isEmptyContribution(i.contribution))
+        .map((i) => ({
+          id: i.id,
+          displayName: i.plugin.displayName,
+          swatch: i.plugin.renderConfig.palette[0] ?? "#94a3b8",
+        })),
     [props.indicators],
   );
 
@@ -336,4 +344,17 @@ function countLines(c: IndicatorSeriesContribution): number {
   if (c.kind === "compound") return c.parts.reduce((acc, p) => acc + countLines(p), 0);
   if (c.kind === "priceLines") return c.lines.length;
   return 0;
+}
+
+/** A plugin returns `{ kind: "compound", parts: [] }` when its data
+ *  source is unusable (e.g. volume on zero-volume forex) — those
+ *  contributions should not occupy a pane or a chip. */
+function isEmptyContribution(c: IndicatorSeriesContribution): boolean {
+  if (c.kind === "compound") return c.parts.length === 0;
+  if (c.kind === "lines") return Object.keys(c.series).length === 0;
+  if (c.kind === "priceLines") return c.lines.length === 0;
+  if (c.kind === "markers") return c.markers.length === 0;
+  if (c.kind === "bands") return c.bands.length === 0;
+  if (c.kind === "histogram") return c.values.length === 0;
+  return false;
 }

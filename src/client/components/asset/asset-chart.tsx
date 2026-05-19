@@ -15,14 +15,16 @@ export type AssetCandle = {
 /**
  * Full-width interactive candlestick chart with optional indicator overlays.
  *
- * Used on the asset detail page for browsing. ALL bundled indicators are
- * pre-computed client-side from the candle history (default params per
- * plugin) and exposed via the framework's built-in chip controls — user
- * picks which ones to reveal. Volume defaults visible since it's the most
- * universal context, the rest start hidden.
+ * Every bundled indicator is pre-computed client-side from the candle
+ * history (default params per plugin) and exposed via the framework's
+ * built-in chip controls — user picks which ones to reveal. Plugins that
+ * self-disable on unsupported data (volume + vwap on zero-volume forex
+ * pairs) return an empty compound and TradingViewChart drops them from
+ * the chip list automatically.
  *
- * No backend coupling here : the asset page doesn't know about watches, so
- * the indicator set is the full REGISTRY rather than a watch-config subset.
+ * No backend coupling here : the asset page doesn't know about watches,
+ * so the indicator set is the full REGISTRY rather than a watch-config
+ * subset.
  */
 export function AssetChart({ candles }: { candles: AssetCandle[] }) {
   const adapted = useMemo(
@@ -37,11 +39,6 @@ export function AssetChart({ candles }: { candles: AssetCandle[] }) {
     [candles],
   );
 
-  // Some sources don't provide real volume (Yahoo forex pairs ship 0
-  // everywhere). When that's the case, drop volume + vwap (vwap depends
-  // on volume) so the user doesn't see empty chips for unavailable data.
-  const hasVolume = useMemo(() => candles.some((c) => c.volume > 0), [candles]);
-
   const indicators: IndicatorEntry[] = useMemo(() => {
     const candlesForCompute = candles.map((c) => ({
       timestamp: new Date(c.time * 1000),
@@ -51,22 +48,22 @@ export function AssetChart({ candles }: { candles: AssetCandle[] }) {
       close: c.close,
       volume: c.volume,
     }));
-    return REGISTRY.filter((plugin) => {
-      if (!hasVolume && (plugin.id === "volume" || plugin.id === "vwap")) return false;
-      return true;
-    }).map((plugin) => ({
+    return REGISTRY.map((plugin) => ({
       id: plugin.id,
       plugin: plugin as IndicatorEntry["plugin"],
       // biome-ignore lint/suspicious/noExplicitAny: bypass strict Candle typing for fixture-shaped data
       contribution: plugin.computeSeries(candlesForCompute as any),
     }));
-  }, [candles, hasVolume]);
+  }, [candles]);
 
-  // Start with volume visible (universal context when present), the rest
-  // hidden so the chart remains uncluttered. User reveals via the chips.
+  // Volume defaults visible (universal context when the plugin emits it),
+  // the rest hidden so the chart stays uncluttered. Volume plugins that
+  // self-disable on zero-volume data are filtered out by TradingViewChart
+  // before they reach the chips — `initialVisibility` for volume becomes
+  // a no-op in that case.
   const initialVisibility = useMemo(
-    () => Object.fromEntries(REGISTRY.map((p) => [p.id, hasVolume && p.id === "volume"])),
-    [hasVolume],
+    () => Object.fromEntries(REGISTRY.map((p) => [p.id, p.id === "volume"])),
+    [],
   );
 
   return (

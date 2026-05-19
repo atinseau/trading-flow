@@ -11,8 +11,15 @@ export const volumePlugin: IndicatorPlugin = {
   ...volumeMetadata,
   computeScalars,
   computeSeries: (c) => {
+    // Some data sources (Yahoo forex pairs) ship volume=0 on every candle.
+    // Rendering an empty histogram + flat MA line wastes pane real-estate
+    // and confuses the LLM ("is there data here ?"). Return an empty
+    // compound so TradingViewChart / Playwright skip this indicator
+    // entirely.
+    if (!c.some((candle) => candle.volume > 0)) {
+      return { kind: "compound", parts: [] };
+    }
     const s = computeSeries(c);
-    // Histogram bars (raw volume) + MA20 line — compound so both render.
     return {
       kind: "compound",
       parts: [
