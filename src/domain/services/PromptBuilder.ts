@@ -2,8 +2,10 @@
 
 import type { IndicatorRegistry } from "@adapters/indicators/IndicatorRegistry";
 import { type LoadedPrompt, loadPrompt } from "@adapters/prompts/loadPrompt";
+import type { Candle } from "@domain/schemas/Candle";
 import type { WatchConfig } from "@domain/schemas/WatchesConfig";
 import type { FewShotEngine } from "@domain/services/FewShotEngine";
+import { formatRecentOhlcv } from "@domain/services/formatRecentOhlcv";
 import type { IndicatorPlugin } from "@domain/services/IndicatorPlugin";
 
 export class PromptBuilder {
@@ -45,22 +47,35 @@ export class PromptBuilder {
     aliveSetups: Array<unknown>;
     htf?: { dailyTrend: string };
     indicatorsMatrix: WatchConfig["indicators"];
+    candles: ReadonlyArray<Candle>;
+    promptData: WatchConfig["prompt_data"];
   }): Promise<string> {
     if (!this.detector) await this.warmUp();
     const plugins = this.registry.resolveActive(args.indicatorsMatrix);
     const isVolumeActive = plugins.some((p) => p.id === "volume");
+    const histN = args.promptData.indicator_history_count;
     const indicatorFragments = plugins
-      .map((p) =>
-        p.detectorPromptFragment(
-          args.scalars,
-          args.indicatorsMatrix[p.id]?.params as Record<string, unknown> | undefined,
-        ),
-      )
+      .map((p) => {
+        const params = args.indicatorsMatrix[p.id]?.params as
+          | Record<string, unknown>
+          | undefined;
+        const history =
+          histN > 0 && p.computeScalarHistory
+            ? p.computeScalarHistory([...args.candles], params, histN)
+            : undefined;
+        return p.detectorPromptFragment(args.scalars, params, history);
+      })
       .filter((s): s is string => s != null)
       .join("\n");
     const classificationBlock = composeClassificationBlock(plugins, !!args.htf);
     const fewShotExamples = this.fewShot.compose(plugins);
     const outputFormatTable = composeOutputFormatTable(plugins, !!args.htf);
+    const recentOhlcvTable = formatRecentOhlcv(args.candles, {
+      count: args.promptData.recent_ohlcv_count,
+      decimals: args.promptData.decimals,
+      timestampFormat: args.promptData.timestamp_format,
+      includeVolume: args.promptData.include_volume,
+    });
     return this.detector!.render({
       asset: args.asset,
       timeframe: args.timeframe,
@@ -74,6 +89,9 @@ export class PromptBuilder {
       classificationBlock,
       fewShotExamples,
       outputFormatTable,
+      recentOhlcvTable,
+      hasRecentOhlcv: recentOhlcvTable.length > 0,
+      recentOhlcvCount: args.promptData.recent_ohlcv_count,
     });
   }
 
@@ -85,19 +103,32 @@ export class PromptBuilder {
     htf?: unknown;
     funding?: unknown;
     indicatorsMatrix: WatchConfig["indicators"];
+    candles: ReadonlyArray<Candle>;
+    promptData: WatchConfig["prompt_data"];
   }): Promise<string> {
     if (!this.reviewer) await this.warmUp();
     const plugins = this.registry.resolveActive(args.indicatorsMatrix);
+    const histN = args.promptData.indicator_history_count;
     const reviewerIndicatorFragments = plugins
-      .map((p) =>
-        p.reviewerPromptFragment?.(
-          args.fresh.scalars,
-          args.indicatorsMatrix[p.id]?.params as Record<string, unknown> | undefined,
-        ),
-      )
+      .map((p) => {
+        const params = args.indicatorsMatrix[p.id]?.params as
+          | Record<string, unknown>
+          | undefined;
+        const history =
+          histN > 0 && p.computeScalarHistory
+            ? p.computeScalarHistory([...args.candles], params, histN)
+            : undefined;
+        return p.reviewerPromptFragment?.(args.fresh.scalars, params, history);
+      })
       .filter((s): s is string => typeof s === "string")
       .map((s) => `- ${s}`)
       .join("\n");
+    const recentOhlcvTable = formatRecentOhlcv(args.candles, {
+      count: args.promptData.recent_ohlcv_count,
+      decimals: args.promptData.decimals,
+      timestampFormat: args.promptData.timestamp_format,
+      includeVolume: args.promptData.include_volume,
+    });
     return this.reviewer!.render({
       setup: args.setup,
       history: args.history,
@@ -108,6 +139,9 @@ export class PromptBuilder {
       funding: args.funding,
       hasIndicators: plugins.length > 0,
       reviewerIndicatorFragments,
+      recentOhlcvTable,
+      hasRecentOhlcv: recentOhlcvTable.length > 0,
+      recentOhlcvCount: args.promptData.recent_ohlcv_count,
     });
   }
 }

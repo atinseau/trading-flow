@@ -18,6 +18,14 @@ const MACD_PARAMS_SCHEMA = z
 export const macdPlugin: IndicatorPlugin = {
   ...macdMetadata,
   computeScalars: (candles, params) => computeScalars(candles, params),
+  computeScalarHistory: (candles, params, n) => {
+    const s = computeSeries(candles, params);
+    return {
+      macd: s.macd.slice(-n),
+      signal: s.signal.slice(-n),
+      hist: s.hist.slice(-n),
+    };
+  },
   computeSeries: (candles, params) => {
     const s = computeSeries(candles, params);
     return {

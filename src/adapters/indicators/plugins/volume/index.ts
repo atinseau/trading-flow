@@ -10,6 +10,13 @@ import {
 export const volumePlugin: IndicatorPlugin = {
   ...volumeMetadata,
   computeScalars,
+  computeScalarHistory: (candles, _params, n) => {
+    const s = computeSeries(candles);
+    return {
+      volume: candles.slice(-n).map((c) => c.volume),
+      volumeMa20: s.volumeMa20.slice(-n),
+    };
+  },
   computeSeries: (c) => {
     // Some data sources (Yahoo forex pairs) ship volume=0 on every candle.
     // Rendering an empty histogram + flat MA line wastes pane real-estate

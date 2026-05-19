@@ -14,6 +14,13 @@ export const rsiPlugin: IndicatorPlugin = {
   ...rsiMetadata,
 
   computeScalars: (candles, params) => computeRsiScalar(candles, params),
+  computeScalarHistory: (candles, params, n) => {
+    // Reuse the full-length series already computed for the chart, then
+    // tail-slice. Keeps the calc path single-source-of-truth and avoids
+    // duplicating the Wilder smoothing logic in compute.ts.
+    const full = computeRsiSeries(candles, params);
+    return { rsi: full.slice(-n) };
+  },
   computeSeries: (candles, params) => ({
     kind: "compound",
     parts: [

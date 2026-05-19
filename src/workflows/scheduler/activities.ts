@@ -5,6 +5,7 @@ import { InvalidConfigError } from "@domain/errors";
 import { CandleSchema } from "@domain/schemas/Candle";
 import { buildDetectorOutputSchema } from "@domain/schemas/DetectorOutput";
 import { buildIndicatorsSchema } from "@domain/schemas/Indicators";
+import { dateReviver } from "@domain/services/dateReviver";
 import { getLogger } from "@observability/logger";
 import type { ActivityDeps } from "@workflows/activityDependencies";
 import { z } from "zod";
@@ -12,14 +13,6 @@ import { dedupNewSetups, type ProposedSetup } from "./dedup";
 import { evaluatePreFilter } from "./preFilter";
 
 const log = getLogger({ component: "scheduler-activities" });
-
-function dateReviver(_key: string, value: unknown): unknown {
-  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}T/.test(value)) {
-    const d = new Date(value);
-    if (!Number.isNaN(d.getTime())) return d;
-  }
-  return value;
-}
 
 export function buildSchedulerActivities(deps: ActivityDeps) {
   return {
@@ -184,6 +177,13 @@ export function buildSchedulerActivities(deps: ActivityDeps) {
       const htfEnabled = watch.timeframes.higher.length > 0;
       const detectorOutputSchema = buildDetectorOutputSchema(plugins, htfEnabled);
       const scalars = (snap.indicators ?? {}) as Record<string, unknown>;
+      // Reload the exact candles that produced this snapshot's chart — the
+      // OHLCV JSON is the canonical source of truth (cache-stable across
+      // replay), the raw market feed could have shifted by now.
+      const ohlcvBuf = await deps.artifactStore.get(snap.ohlcvUri);
+      const candles = z
+        .array(CandleSchema)
+        .parse(JSON.parse(ohlcvBuf.toString("utf-8"), dateReviver));
       const userPrompt = await deps.promptBuilder.buildDetectorPrompt({
         asset: snap.asset,
         timeframe: snap.timeframe,
@@ -192,6 +192,8 @@ export function buildSchedulerActivities(deps: ActivityDeps) {
         aliveSetups: Array.isArray(input.aliveSetups) ? input.aliveSetups : [],
         activeLessons: activeLessons.map((l) => ({ title: l.title, body: l.body })),
         indicatorsMatrix: watch.indicators,
+        candles,
+        promptData: watch.prompt_data,
       });
       const result = await resolveAndCall(
         watch.analyzers.detector.provider,

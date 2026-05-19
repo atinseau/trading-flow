@@ -1,24 +1,38 @@
+import { formatScalarHistory } from "@domain/services/formatScalarHistory";
+
 export function detectorFragment(
   s: Record<string, unknown>,
   params?: Record<string, unknown>,
+  history?: Record<string, ReadonlyArray<number | null>>,
 ): string | null {
   const bw = s.bbBandwidthPct;
   const pct = s.bbBandwidthPercentile200;
   if (typeof bw !== "number" || typeof pct !== "number") return null;
   const period = typeof params?.period === "number" ? params.period : 20;
   const stdMul = typeof params?.std_mul === "number" ? params.std_mul : 2;
-  return `**BB(${period}, ${stdMul}σ) bandwidth**: \`${bw.toFixed(2)}%\` — percentile vs last 200 candles: **\`${pct.toFixed(0)}\`** (< 15 = squeeze for THIS asset).`;
+  const lines = [
+    `**BB(${period}, ${stdMul}σ) bandwidth**: \`${bw.toFixed(2)}%\` — percentile vs last 200 candles: **\`${pct.toFixed(0)}\`** (< 15 = squeeze for THIS asset).`,
+  ];
+  const upperSeries = formatScalarHistory(history?.upper, { decimals: 2 });
+  const lowerSeries = formatScalarHistory(history?.lower, { decimals: 2 });
+  if (upperSeries.length > 0) lines.push(`  BB up last: ${upperSeries}`);
+  if (lowerSeries.length > 0) lines.push(`  BB lo last: ${lowerSeries}`);
+  return lines.join("\n");
 }
 
 export function reviewerFragment(
   s: Record<string, unknown>,
   params?: Record<string, unknown>,
+  history?: Record<string, ReadonlyArray<number | null>>,
 ): string | null {
   const bw = s.bbBandwidthPct;
   if (typeof bw !== "number") return null;
   const period = typeof params?.period === "number" ? params.period : 20;
   const stdMul = typeof params?.std_mul === "number" ? params.std_mul : 2;
-  return `BB(${period}, ${stdMul}σ) bandwidth: \`${bw.toFixed(2)}%\` (squeeze if < 4)`;
+  const upperSeries = formatScalarHistory(history?.upper, { decimals: 2, max: 5 });
+  return upperSeries.length > 0
+    ? `BB(${period}, ${stdMul}σ) bandwidth: \`${bw.toFixed(2)}%\` (BB up last 5: ${upperSeries})`
+    : `BB(${period}, ${stdMul}σ) bandwidth: \`${bw.toFixed(2)}%\` (squeeze if < 4)`;
 }
 
 export function featuredFewShotExample(): string {

@@ -4,6 +4,9 @@ import { loadPrompt } from "@adapters/prompts/loadPrompt";
 import { InvalidConfigError } from "@domain/errors";
 // loadPrompt is still used for finalizer (not managed by PromptBuilder)
 import { extractObservations, extractReasoning } from "@domain/events/payloadAccessors";
+import { CandleSchema } from "@domain/schemas/Candle";
+import { dateReviver } from "@domain/services/dateReviver";
+import { formatRecentOhlcv } from "@domain/services/formatRecentOhlcv";
 import {
   formatConfirmedPreview,
   formatExpiredPreview,
@@ -216,6 +219,10 @@ export function buildSetupActivities(deps: ActivityDeps) {
         : null;
 
       const scalars = (snap.indicators ?? {}) as Record<string, unknown>;
+      // ohlcvBuf was already fetched at L145 for the inputHash ; reuse it.
+      const candles = z
+        .array(CandleSchema)
+        .parse(JSON.parse(ohlcvBuf.toString("utf-8"), dateReviver));
       const userPrompt = await deps.promptBuilder.buildReviewerPrompt({
         setup: {
           id: setup.id,
@@ -238,6 +245,8 @@ export function buildSetupActivities(deps: ActivityDeps) {
         funding,
         activeLessons: activeLessons.map((l) => ({ title: l.title, body: l.body })),
         indicatorsMatrix: watch.indicators,
+        candles,
+        promptData: watch.prompt_data,
       });
 
       // Round 1: tick chart only.
@@ -453,6 +462,17 @@ export function buildSetupActivities(deps: ActivityDeps) {
       const regime = latestSnap ? classifyRegime(latestSnap.indicators, htf) : null;
       const session = getTradingSession(deps.clock.now());
 
+      // Load the candles backing latestSnap so the optional mini-OHLCV
+      // block can render — uses the same artifact the chart was made from
+      // (= source of truth for "what the LLM saw").
+      let finalizeCandles: Array<z.infer<typeof CandleSchema>> = [];
+      if (latestSnap) {
+        const buf = await deps.artifactStore.get(latestSnap.ohlcvUri);
+        finalizeCandles = z
+          .array(CandleSchema)
+          .parse(JSON.parse(buf.toString("utf-8"), dateReviver));
+      }
+
       const finalizerPrompt = await loadPrompt("finalizer");
       // Reviewer-tick count = setup events excluding SetupCreated, Confirmed,
       // Expired, and other non-reviewer event types. Drives the maturation rule.
@@ -466,6 +486,19 @@ export function buildSetupActivities(deps: ActivityDeps) {
         slippage_pct: watch.costs.slippage_pct,
         totalPct: (watch.costs.fees_pct + watch.costs.slippage_pct).toFixed(3),
       };
+
+      // Mini OHLCV block — verifies nothing invalidated the setup between
+      // the last reviewer tick and finalize. Capped at 5 bars (small block,
+      // recent context only). Skipped per watch.prompt_data flag.
+      const recentOhlcvTable =
+        watch.prompt_data.include_recent_in_finalizer && finalizeCandles.length > 0
+          ? formatRecentOhlcv(finalizeCandles, {
+              count: 5,
+              decimals: watch.prompt_data.decimals,
+              timestampFormat: watch.prompt_data.timestamp_format,
+              includeVolume: watch.prompt_data.include_volume,
+            })
+          : "";
 
       const userPrompt = finalizerPrompt.render({
         setup: {
@@ -493,6 +526,8 @@ export function buildSetupActivities(deps: ActivityDeps) {
         regime,
         session,
         activeLessons: activeLessons.map((l) => ({ title: l.title, body: l.body })),
+        recentOhlcvTable,
+        hasRecentOhlcv: recentOhlcvTable.length > 0,
       });
 
       const finalizerImages = htfChartUri

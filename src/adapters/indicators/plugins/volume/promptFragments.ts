@@ -1,9 +1,22 @@
-export function detectorFragment(s: Record<string, unknown>): string | null {
+import { formatScalarHistory } from "@domain/services/formatScalarHistory";
+
+export function detectorFragment(
+  s: Record<string, unknown>,
+  _params?: Record<string, unknown>,
+  history?: Record<string, ReadonlyArray<number | null>>,
+): string | null {
   const last = s.lastVolume,
     ma = s.volumeMa20,
     pct = s.volumePercentile200;
   if (typeof last !== "number" || typeof ma !== "number" || typeof pct !== "number") return null;
-  return `**Volume**: last=\`${last.toFixed(0)}\` / MA20=\`${ma.toFixed(0)}\` — percentile (200p): **\`${pct.toFixed(0)}\`** (> 80 spike, < 20 anemic).`;
+  const lines = [
+    `**Volume**: last=\`${last.toFixed(0)}\` / MA20=\`${ma.toFixed(0)}\` — percentile (200p): **\`${pct.toFixed(0)}\`** (> 80 spike, < 20 anemic).`,
+  ];
+  const volSeries = formatScalarHistory(history?.volume, { decimals: 0 });
+  const maSeries = formatScalarHistory(history?.volumeMa20, { decimals: 0 });
+  if (volSeries.length > 0) lines.push(`  Volume last: ${volSeries}`);
+  if (maSeries.length > 0) lines.push(`  MA20 last: ${maSeries}`);
+  return lines.join("\n");
 }
 export function featuredFewShotExample(): string {
   return `### Example — Volume climax reversal (accumulation)

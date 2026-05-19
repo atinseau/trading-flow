@@ -14,6 +14,14 @@ const BOLLINGER_PARAMS_SCHEMA = z
 export const bollingerPlugin: IndicatorPlugin = {
   ...bollingerMetadata,
   computeScalars: (candles, params) => computeScalars(candles, params),
+  computeScalarHistory: (candles, params, n) => {
+    const s = computeSeries(candles, params);
+    return {
+      upper: s.upper.slice(-n),
+      middle: s.middle.slice(-n),
+      lower: s.lower.slice(-n),
+    };
+  },
   computeSeries: (candles, params) => {
     const s = computeSeries(candles, params);
     return { kind: "lines", series: { upper: s.upper, lower: s.lower, middle: s.middle } };

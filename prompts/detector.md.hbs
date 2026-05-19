@@ -1,11 +1,14 @@
 {{!--
-  version: detector_v7
-  description: Modular indicators. Skeleton template — Indicators block,
-               classification block, few-shot, and output schema are
-               composed by PromptBuilder from active plugins. v6 adds the
-               bidirectional corroboration calibration table and the
-               "omit instead of +0" rule (paired with system prompt's
-               ON ALIVE SETUPS section).
+  version: detector_v8
+  description: v8 — adds the Recent OHLCV table and prompt_data knobs
+               (recent_ohlcv_count, indicator_history_count …). The
+               chart image stays the primary source of truth ; the
+               numerical block lets the LLM verify exact levels and
+               read indicator series without pixel-reading the chart.
+               v7 baseline : Modular indicators with classification
+               block, few-shot, and output schema composed by
+               PromptBuilder. v6 was the bidirectional corroboration
+               calibration table + omit-instead-of-+0 rule.
 --}}
 
 # Free-form pattern detection on a chart
@@ -85,6 +88,17 @@ negative. Corroborate ONLY when you can quantify a change.
 ## Chart image
 
 See attached image (Japanese candlestick chart{{#unless hasIndicators}} — no overlays, candles only{{/unless}}).
+
+{{#if hasRecentOhlcv}}
+## Recent OHLCV (last {{recentOhlcvCount}} candles on {{timeframe}}, oldest → newest)
+
+Pixel precision on the chart is limited. When a decision hinges on an exact
+level (retest distance, invalidation breach, swing high/low precision),
+read from this table — the values are float-accurate.
+
+{{{recentOhlcvTable}}}
+
+{{/if}}
 
 ## Setup classification (REQUIRED on every new_setup)
 

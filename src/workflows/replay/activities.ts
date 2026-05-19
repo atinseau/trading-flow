@@ -18,6 +18,7 @@ import { type FeedbackOutput, FeedbackOutputSchema } from "@domain/schemas/Feedb
 import { buildIndicatorsSchema } from "@domain/schemas/Indicators";
 import { type ReviewerLlmOutput, ReviewerLlmOutputSchema } from "@domain/schemas/ReviewerOutput";
 import { type Verdict, VerdictSchema } from "@domain/schemas/Verdict";
+import { formatRecentOhlcv } from "@domain/services/formatRecentOhlcv";
 import { renderHtfChart } from "@domain/services/htfChartRenderer";
 import { computeHtfContext } from "@domain/services/htfContext";
 import { inferImageMimeType } from "@domain/services/imageMimeType";
@@ -316,6 +317,8 @@ export function buildReplayActivities(deps: ReplayActivityDeps) {
         aliveSetups: input.aliveSetups,
         activeLessons: activeLessons.map((l) => ({ title: l.title, body: l.body })),
         indicatorsMatrix: watch.indicators,
+        candles,
+        promptData: watch.prompt_data,
       });
 
       const wrappedProviders = wrapLlmProvidersWithCache(
@@ -455,6 +458,19 @@ export function buildReplayActivities(deps: ReplayActivityDeps) {
 
       const indicators = JSON.parse(input.indicatorsJson) as Record<string, unknown>;
       const reviewerFetcher = deps.marketDataFetchers.get(watch.asset.source);
+      // Reviewer replay : re-fetch the same candle window the detector tick
+      // saw, anchored at `tickAt` for determinism. Used by the
+      // prompt-data OHLCV table (the chart image was captured at the
+      // detector stage and is sufficient by itself, but the textual
+      // table needs the raw candles).
+      const candles = reviewerFetcher
+        ? await reviewerFetcher.fetchOHLCV({
+            asset: watch.asset.symbol,
+            timeframe: watch.timeframes.primary,
+            limit: watch.candles.reviewer_lookback,
+            endTime: tickAt,
+          })
+        : [];
       const htf = reviewerFetcher
         ? await computeHtfContext({
             marketDataFetcher: reviewerFetcher,
@@ -491,6 +507,8 @@ export function buildReplayActivities(deps: ReplayActivityDeps) {
         funding,
         activeLessons: activeLessons.map((l) => ({ title: l.title, body: l.body })),
         indicatorsMatrix: watch.indicators,
+        candles,
+        promptData: watch.prompt_data,
       });
 
       const wrappedProviders = wrapLlmProvidersWithCache(
@@ -707,6 +725,16 @@ export function buildReplayActivities(deps: ReplayActivityDeps) {
       const regime = classifyRegime(latestIndicators, htf);
       const tradingSession = getTradingSession(tickAt);
 
+      // Load 5 candles ending at tickAt for the optional mini-OHLCV block.
+      const finalizeCandles = finalizerFetcher
+        ? await finalizerFetcher.fetchOHLCV({
+            asset: watch.asset.symbol,
+            timeframe: watch.timeframes.primary,
+            limit: 10,
+            endTime: tickAt,
+          })
+        : [];
+
       const finalizerPrompt = await loadPrompt("finalizer");
       const actualReviewerTicks = history.filter((e) =>
         ["Strengthened", "Weakened", "Neutral"].includes(e.type),
@@ -745,6 +773,17 @@ export function buildReplayActivities(deps: ReplayActivityDeps) {
         regime,
         session: tradingSession,
         activeLessons: activeLessons.map((l) => ({ title: l.title, body: l.body })),
+        recentOhlcvTable:
+          watch.prompt_data.include_recent_in_finalizer && finalizeCandles.length > 0
+            ? formatRecentOhlcv(finalizeCandles, {
+                count: 5,
+                decimals: watch.prompt_data.decimals,
+                timestampFormat: watch.prompt_data.timestamp_format,
+                includeVolume: watch.prompt_data.include_volume,
+              })
+            : "",
+        hasRecentOhlcv:
+          watch.prompt_data.include_recent_in_finalizer && finalizeCandles.length > 0,
       });
 
       const wrappedProviders = wrapLlmProvidersWithCache(

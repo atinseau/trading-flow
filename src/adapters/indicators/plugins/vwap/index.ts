@@ -7,6 +7,11 @@ import { detectorFragment } from "./promptFragments";
 export const vwapPlugin: IndicatorPlugin = {
   ...vwapMetadata,
   computeScalars,
+  computeScalarHistory: (candles, _params, n) => {
+    if (!candles.some((c) => c.volume > 0)) return { vwap: [] };
+    const series = computeSeries(candles);
+    return { vwap: series.vwap.slice(-n) };
+  },
   // VWAP needs volume to be meaningful — on a zero-volume feed (Yahoo
   // forex) the weighted average degenerates to the unweighted average,
   // visually a flat dotted line indistinguishable from the last-price

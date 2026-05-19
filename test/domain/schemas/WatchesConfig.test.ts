@@ -45,6 +45,64 @@ test("WatchSchema accepts explicit include_chart_image = false", () => {
   expect(r.data.include_chart_image).toBe(false);
 });
 
+describe("WatchSchema.prompt_data", () => {
+  test("defaults to OHLCV=50, indicator history=10, finalizer mini ON, auto decimals, time format, volume ON", () => {
+    const r = WatchSchema.safeParse(minimalValidWatch);
+    if (!r.success) throw new Error("expected success");
+    expect(r.data.prompt_data.recent_ohlcv_count).toBe(50);
+    expect(r.data.prompt_data.indicator_history_count).toBe(10);
+    expect(r.data.prompt_data.include_recent_in_finalizer).toBe(true);
+    expect(r.data.prompt_data.decimals).toBeNull();
+    expect(r.data.prompt_data.timestamp_format).toBe("time");
+    expect(r.data.prompt_data.include_volume).toBe(true);
+  });
+
+  test("accepts full opt-out (kill switches set to 0 / false)", () => {
+    const w = structuredClone(minimalValidWatch);
+    // biome-ignore lint/suspicious/noExplicitAny: probing schema with extra keys
+    (w as any).prompt_data = {
+      recent_ohlcv_count: 0,
+      indicator_history_count: 0,
+      include_recent_in_finalizer: false,
+      include_volume: false,
+    };
+    const r = WatchSchema.safeParse(w);
+    if (!r.success) throw new Error("expected success");
+    expect(r.data.prompt_data.recent_ohlcv_count).toBe(0);
+    expect(r.data.prompt_data.indicator_history_count).toBe(0);
+  });
+
+  test("rejects out-of-range OHLCV count (>200)", () => {
+    const w = structuredClone(minimalValidWatch);
+    // biome-ignore lint/suspicious/noExplicitAny: probing schema with extra keys
+    (w as any).prompt_data = { recent_ohlcv_count: 250 };
+    expect(WatchSchema.safeParse(w).success).toBe(false);
+  });
+
+  test("rejects negative indicator_history_count", () => {
+    const w = structuredClone(minimalValidWatch);
+    // biome-ignore lint/suspicious/noExplicitAny: probing schema with extra keys
+    (w as any).prompt_data = { indicator_history_count: -1 };
+    expect(WatchSchema.safeParse(w).success).toBe(false);
+  });
+
+  test("rejects invalid timestamp_format", () => {
+    const w = structuredClone(minimalValidWatch);
+    // biome-ignore lint/suspicious/noExplicitAny: probing schema with extra keys
+    (w as any).prompt_data = { timestamp_format: "unix" };
+    expect(WatchSchema.safeParse(w).success).toBe(false);
+  });
+
+  test("accepts explicit decimals override (e.g. 5 for forex)", () => {
+    const w = structuredClone(minimalValidWatch);
+    // biome-ignore lint/suspicious/noExplicitAny: probing schema with extra keys
+    (w as any).prompt_data = { decimals: 5 };
+    const r = WatchSchema.safeParse(w);
+    if (!r.success) throw new Error("expected success");
+    expect(r.data.prompt_data.decimals).toBe(5);
+  });
+});
+
 test("WatchSchema rejects unknown asset.source", () => {
   const w = structuredClone(minimalValidWatch);
   w.asset.source = "kraken";

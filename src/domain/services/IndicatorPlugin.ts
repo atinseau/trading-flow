@@ -45,6 +45,21 @@ export interface IndicatorPlugin extends IndicatorPluginMetadata {
   // Compute
   computeScalars(candles: Candle[], params?: Record<string, unknown>): Record<string, unknown>;
   computeSeries(candles: Candle[], params?: Record<string, unknown>): IndicatorSeriesContribution;
+  /**
+   * Optional : produce the last `n` *scalar* values for each named series
+   * the plugin exposes. Used by the prompt builder to inject a compact
+   * historical view (e.g. `RSI last 10: 42.3 → 45.1 → … → 40.17`) so the
+   * LLM can detect crossings/divergences without pixel-reading the chart.
+   *
+   * Plugins where time-series scalars make no sense (swings, fibonacci,
+   * structure_levels, liquidity_pools — point-in-time anchors) leave it
+   * undefined and PromptBuilder falls back to the spot scalar fragment.
+   */
+  computeScalarHistory?(
+    candles: Candle[],
+    params: Record<string, unknown> | undefined,
+    n: number,
+  ): Record<string, ReadonlyArray<number | null>>;
 
   // Schema
   scalarSchemaFragment(): z.ZodRawShape;
@@ -63,10 +78,15 @@ export interface IndicatorPlugin extends IndicatorPluginMetadata {
   detectorPromptFragment(
     scalars: Record<string, unknown>,
     params?: Record<string, unknown>,
+    /** Optional per-series tail (computed by `computeScalarHistory`, length
+     *  ≤ `watch.prompt_data.indicator_history_count`). Plugins that don't
+     *  use the tail (point-in-time anchors) ignore the third argument. */
+    history?: Record<string, ReadonlyArray<number | null>>,
   ): string | null;
   reviewerPromptFragment?(
     scalars: Record<string, unknown>,
     params?: Record<string, unknown>,
+    history?: Record<string, ReadonlyArray<number | null>>,
   ): string | null;
   readonly contributedPatternTypes?: ReadonlyArray<string>;
   featuredFewShotExample?(): string | null;

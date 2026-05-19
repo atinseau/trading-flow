@@ -1,11 +1,13 @@
 {{!--
-  version: reviewer_v6
-  description: Modular indicators. Skeleton — fresh-data scalars and
-               output spec composed by PromptBuilder from active plugins.
-               v6 tightens the NEUTRAL default (commit discipline after 2
-               consecutive NEUTRALs) and aligns with the system prompt's
-               expanded WEAKEN trigger taxonomy + same-tick corroboration
-               awareness.
+  version: reviewer_v7
+  description: v7 — adds the Recent OHLCV table for float-precision
+               level checks (retest distance, invalidation breach).
+               v6 baseline : Modular indicators with fresh-data scalars
+               and output spec composed by PromptBuilder from active
+               plugins ; tightened NEUTRAL default (commit discipline
+               after 2 consecutive NEUTRALs) ; aligned with system
+               prompt's expanded WEAKEN trigger taxonomy + same-tick
+               corroboration awareness.
 --}}
 
 # Refining an active setup
@@ -61,6 +63,16 @@
 - Mode: naked (chart only).
 {{/if}}
 - Chart image attached (timeframe primary).
+
+{{#if hasRecentOhlcv}}
+### Recent OHLCV (last {{recentOhlcvCount}} candles, oldest → newest)
+
+When a verdict hinges on an exact level (did the invalidation breach this
+tick? how close is the retest of `{{setup.invalidationLevel}}`?), prefer
+these float values over reading off the chart.
+
+{{{recentOhlcvTable}}}
+{{/if}}
 
 {{#if htf}}
 ## Higher-timeframe context

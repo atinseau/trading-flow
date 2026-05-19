@@ -18,6 +18,14 @@ const EMA_STACK_PARAMS_SCHEMA = z
 export const emaStackPlugin: IndicatorPlugin = {
   ...emaStackMetadata,
   computeScalars: (candles, params) => computeScalars(candles, params),
+  computeScalarHistory: (candles, params, n) => {
+    const full = computeSeries(candles, params);
+    return {
+      emaShort: full.emaShort.slice(-n),
+      emaMid: full.emaMid.slice(-n),
+      emaLong: full.emaLong.slice(-n),
+    };
+  },
   computeSeries: (candles, params) => ({ kind: "lines", series: computeSeries(candles, params) }),
   scalarSchemaFragment: () => ({
     emaShort: z.number(),

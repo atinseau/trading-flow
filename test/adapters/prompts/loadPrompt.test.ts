@@ -7,7 +7,7 @@ afterEach(() => {
 
 test("loadPrompt('detector') returns rendered template + version", async () => {
   const result = await loadPrompt("detector");
-  expect(result.version).toBe("detector_v7");
+  expect(result.version).toBe("detector_v8");
   expect(typeof result.render).toBe("function");
 
   // Render with sample context — uses new template variables from PromptBuilder
@@ -30,12 +30,12 @@ test("loadPrompt('detector') returns rendered template + version", async () => {
 
 test("loadPrompt('reviewer') extracts version", async () => {
   const result = await loadPrompt("reviewer");
-  expect(result.version).toBe("reviewer_v6");
+  expect(result.version).toBe("reviewer_v7");
 });
 
 test("loadPrompt('finalizer') extracts version", async () => {
   const result = await loadPrompt("finalizer");
-  expect(result.version).toBe("finalizer_v4");
+  expect(result.version).toBe("finalizer_v5");
 });
 
 test("activeLessons block renders when non-empty and disappears when empty", async () => {

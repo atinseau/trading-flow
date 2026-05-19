@@ -13,6 +13,10 @@ const ATR_PARAMS_SCHEMA = z
 export const atrPlugin: IndicatorPlugin = {
   ...atrMetadata,
   computeScalars: (candles, params) => computeScalars(candles, params),
+  computeScalarHistory: (candles, params, n) => {
+    const s = computeSeries(candles, params);
+    return { atr: s.atr.slice(-n), atrMa20: s.atrMa20.slice(-n) };
+  },
   computeSeries: (candles, params) => {
     const s = computeSeries(candles, params);
     return { kind: "lines", series: { atr: s.atr, atrMa20: s.atrMa20 } };

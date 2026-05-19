@@ -276,6 +276,41 @@ export const WatchSchema = z
     notify_on: z.array(NotifyEventSchema).default([]),
     include_chart_image: z.boolean().default(true),
     include_reasoning: z.boolean().default(true),
+    /**
+     * Numerical-context knobs injected alongside the chart image in the
+     * detector / reviewer / finalizer prompts. The chart is the visual
+     * source of truth ; these knobs let the LLM verify exact levels,
+     * detect crossings, and reason on indicator series the image
+     * compresses (pixel precision ≪ float precision for retest decisions).
+     *
+     * Set `recent_ohlcv_count = 0` AND `indicator_history_count = 0` to
+     * fully revert to the image-only pre-v8 behavior.
+     */
+    prompt_data: z
+      .object({
+        /** Last N candles injected as a Markdown table (O, H, L, C, V).
+         *  Touches detector + reviewer. 0 disables. */
+        recent_ohlcv_count: z.number().int().min(0).max(200).default(50),
+        /** Per enabled indicator, last N scalar values injected in its
+         *  prompt fragment (RSI/EMA/MACD/ATR/Vol/BB/VWAP). Lets the LLM
+         *  detect divergences and crossings numerically. 0 = current
+         *  (point-in-time only) behavior, plugin-by-plugin. */
+        indicator_history_count: z.number().int().min(0).max(50).default(10),
+        /** Mini 5-bar OHLCV + current scalars block in the finalizer
+         *  prompt to verify nothing invalidated the setup between the
+         *  last reviewer tick and finalize. */
+        include_recent_in_finalizer: z.boolean().default(true),
+        /** Decimals used in numerical tables. `null` = auto-detect from
+         *  last close (BTC ~76000 → 2, EURUSD ~1.08 → 5). */
+        decimals: z.number().int().min(0).max(8).nullable().default(null),
+        /** Timestamp column format in the OHLCV table.
+         *  `iso` "2026-05-19T16:30:00Z" | `time` "16:30" | `relative` "tick -5". */
+        timestamp_format: z.enum(["iso", "relative", "time"]).default("time"),
+        /** Include the volume column (set false on assets with unreliable
+         *  volume like FX spot). */
+        include_volume: z.boolean().default(true),
+      })
+      .prefault({}),
     budget: z
       .object({
         max_cost_usd_per_day: z.number().positive().optional(),

@@ -1,6 +1,9 @@
+import { formatScalarHistory } from "@domain/services/formatScalarHistory";
+
 export function detectorFragment(
   s: Record<string, unknown>,
   params?: Record<string, unknown>,
+  history?: Record<string, ReadonlyArray<number | null>>,
 ): string | null {
   const e20 = s.emaShort,
     e50 = s.emaMid,
@@ -9,5 +12,23 @@ export function detectorFragment(
   const ps = typeof params?.period_short === "number" ? params.period_short : 20;
   const pm = typeof params?.period_mid === "number" ? params.period_mid : 50;
   const pl = typeof params?.period_long === "number" ? params.period_long : 200;
-  return `**EMA stack**: ${ps}=\`${e20.toFixed(2)}\` / ${pm}=\`${e50.toFixed(2)}\` / ${pl}=\`${e200.toFixed(2)}\` — alignment = trend regime.`;
+  const decimals = pickDecimals(e20);
+  const lines = [
+    `**EMA stack**: ${ps}=\`${e20.toFixed(decimals)}\` / ${pm}=\`${e50.toFixed(decimals)}\` / ${pl}=\`${e200.toFixed(decimals)}\` — alignment = trend regime.`,
+  ];
+  const sShort = formatScalarHistory(history?.emaShort, { decimals });
+  const sMid = formatScalarHistory(history?.emaMid, { decimals });
+  const sLong = formatScalarHistory(history?.emaLong, { decimals });
+  if (sShort.length > 0) lines.push(`  EMA${ps} last: ${sShort}`);
+  if (sMid.length > 0) lines.push(`  EMA${pm} last: ${sMid}`);
+  if (sLong.length > 0) lines.push(`  EMA${pl} last: ${sLong}`);
+  return lines.join("\n");
+}
+
+function pickDecimals(reference: number): number {
+  const abs = Math.abs(reference);
+  if (abs >= 1000) return 2;
+  if (abs >= 10) return 3;
+  if (abs >= 1) return 4;
+  return 5;
 }

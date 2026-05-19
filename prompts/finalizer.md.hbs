@@ -1,8 +1,11 @@
 {{!--
-  version: finalizer_v4
-  description: Final go/no-go decision. v4 = adds the activeLessons head block
-               (feedback loop integration). v3 was full English translation for
-               optimal LLM performance.
+  version: finalizer_v5
+  description: v5 — adds an optional mini OHLCV block (last 5 candles) to
+               verify nothing has invalidated the setup between the last
+               reviewer tick and the finalize call. Gated by
+               `watch.prompt_data.include_recent_in_finalizer`.
+               v4 baseline : Final go/no-go decision with activeLessons
+               head block (feedback loop integration).
 --}}
 
 # Final GO / NO_GO decision
@@ -41,6 +44,17 @@ evidence wins ties.
 - Tick {{this.sequence}}: `{{this.type}}` (score → {{this.scoreAfter}})
 {{/each}}
 
+{{#if hasRecentOhlcv}}
+## Recent OHLCV (last 5 candles before this finalize)
+
+Check whether any of these candles invalidate the setup *now* (close past
+the invalidation level at `{{setup.invalidationLevel}}`, wick reaching the
+target prematurely, etc.). The history above ends at the last reviewer
+tick — these candles are between that and the present.
+
+{{{recentOhlcvTable}}}
+
+{{/if}}
 {{#if regime}}
 ## Market regime classification
 
