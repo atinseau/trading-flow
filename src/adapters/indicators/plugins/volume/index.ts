@@ -1,9 +1,12 @@
-import { z } from "zod";
 import type { IndicatorPlugin } from "@domain/services/IndicatorPlugin";
-import { volumeMetadata } from "./metadata";
-import { computeScalars, computeSeries } from "./compute";
-import { detectorFragment as detectorPromptFragment, featuredFewShotExample } from "./promptFragments";
+import { z } from "zod";
 import { CHART_SCRIPT } from "./chartScript";
+import { computeScalars, computeSeries } from "./compute";
+import { volumeMetadata } from "./metadata";
+import {
+  detectorFragment as detectorPromptFragment,
+  featuredFewShotExample,
+} from "./promptFragments";
 
 export const volumePlugin: IndicatorPlugin = {
   ...volumeMetadata,
@@ -17,7 +20,15 @@ export const volumePlugin: IndicatorPlugin = {
     lastVolume: z.number().nonnegative(),
     volumePercentile200: z.number().min(0).max(100),
   }),
-  chartScript: CHART_SCRIPT, chartPane: "secondary", secondaryPaneStretch: 13,
+  chartScript: CHART_SCRIPT,
+  chartPane: "secondary",
+  secondaryPaneStretch: 13,
+  renderConfig: {
+    pane: "secondary",
+    palette: ["#94a3b8", "#ab47bc"],
+    secondaryPaneStretch: 13,
+    seriesLabels: { volume: "Volume", volumeMa20: "Vol MA20" },
+  },
   detectorPromptFragment,
   featuredFewShotExample,
   breakdownAxes: ["volume"],
