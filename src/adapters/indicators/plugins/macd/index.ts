@@ -20,7 +20,21 @@ export const macdPlugin: IndicatorPlugin = {
   computeScalars: (candles, params) => computeScalars(candles, params),
   computeSeries: (candles, params) => {
     const s = computeSeries(candles, params);
-    return { kind: "lines", series: { macd: s.macd, signal: s.signal, hist: s.hist } };
+    return {
+      kind: "compound",
+      parts: [
+        { kind: "lines", series: { macd: s.macd, signal: s.signal } },
+        // Histogram with green/red coloring per sign (positive = bullish).
+        {
+          kind: "histogram",
+          values: s.hist.map((v) =>
+            v == null
+              ? null
+              : { value: v, color: v >= 0 ? "rgba(38,166,154,0.6)" : "rgba(239,83,80,0.6)" },
+          ),
+        },
+      ],
+    };
   },
   scalarSchemaFragment: () => ({ macd: z.number(), macdSignal: z.number(), macdHist: z.number() }),
   chartPane: "secondary",
