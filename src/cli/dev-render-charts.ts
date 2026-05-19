@@ -40,6 +40,10 @@ const LIMIT = argNum("limit", 200);
 const WIDTH = argNum("width", 1280);
 const HEIGHT = argNum("height", 720);
 const OUT_DIR = resolve(arg("out", ".dev-render-charts"));
+// `--highres` skips the LLM-bound 1568px cap, keeping the full DPR-2 pixel
+// grid in the output webp. Use for human review only — the prod pipeline
+// always renders in "llm" mode.
+const HIGHRES = process.argv.includes("--highres");
 
 /**
  * Combinations to render. Each entry produces one WebP. Keep the list small
@@ -75,6 +79,10 @@ const COMBOS: Combo[] = [
   {
     name: "19_full_stack",
     ids: REGISTRY.map((p) => p.id as string),
+  },
+  {
+    name: "20_btc_watch_match",
+    ids: ["ema_stack", "rsi", "volume", "swings_bos", "structure_levels", "fibonacci"],
   },
 ];
 
@@ -134,6 +142,7 @@ async function main(): Promise<void> {
         width: WIDTH,
         height: HEIGHT,
         outputUri: `file://${outFile}`,
+        outputMode: HIGHRES ? "highres" : "llm",
       });
       indexEntries.push({ name: combo.name, ids: combo.ids, file: outFile });
       log.info({ combo: combo.name, bytes: result.bytes, sha256: result.sha256.slice(0, 8) }, "rendered");

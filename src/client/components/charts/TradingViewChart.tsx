@@ -1,5 +1,6 @@
 import { applyRightOffset, createTradingViewChart } from "@adapters/chart/chartBootstrap";
 import { applyContribution, type RenderConfig } from "@adapters/chart/contributionRenderer";
+import { countAxisLabels, maxAxisLabelLength } from "@adapters/chart/countAxisLabels";
 import { allocatePanes } from "@adapters/chart/paneAllocator";
 import { cn } from "@client/lib/utils";
 import type { IndicatorSeriesContribution } from "@domain/charts/types";
@@ -192,15 +193,29 @@ export function TradingViewChart(props: TradingViewChartProps): JSX.Element {
       chart.panes()[idx]?.setStretchFactor(stretch);
     }
 
-    const priceOverlayLineCount = ind.reduce((acc, i) => {
-      if (!visibility[i.id]) return acc;
-      if (i.plugin.renderConfig.pane !== "price_overlay") return acc;
-      return acc + countLines(i.contribution);
-    }, 0);
-    applyRightOffset(chart, {
-      priceOverlayLineCount,
-      priceLineCount: props.priceLines?.length ?? 0,
-    });
+    let priceOverlayLineCount = 0;
+    let maxLabelTextLength = 0;
+    for (const i of ind) {
+      if (!visibility[i.id]) continue;
+      if (i.plugin.renderConfig.pane !== "price_overlay") continue;
+      priceOverlayLineCount += countAxisLabels(i.contribution);
+      maxLabelTextLength = Math.max(
+        maxLabelTextLength,
+        maxAxisLabelLength(i.id, i.contribution, i.plugin.renderConfig),
+      );
+    }
+    const priceLineCount = props.priceLines?.length ?? 0;
+    if (priceLineCount > 0) {
+      maxLabelTextLength = Math.max(
+        maxLabelTextLength,
+        ...(props.priceLines ?? []).map((p) => p.title?.length ?? 0),
+      );
+    }
+    applyRightOffset(
+      chart,
+      { density: { priceOverlayLineCount, priceLineCount }, maxLabelTextLength },
+      { widthPx: chart.timeScale().width(), candleCount: props.candles.length },
+    );
 
     const merged: SeriesMarker<Time>[] = [...indicatorMarkersRef.current];
     for (const m of props.markers ?? []) {
@@ -337,13 +352,6 @@ export function TradingViewChart(props: TradingViewChartProps): JSX.Element {
       ) : null}
     </div>
   );
-}
-
-function countLines(c: IndicatorSeriesContribution): number {
-  if (c.kind === "lines") return Object.keys(c.series).length;
-  if (c.kind === "compound") return c.parts.reduce((acc, p) => acc + countLines(p), 0);
-  if (c.kind === "priceLines") return c.lines.length;
-  return 0;
 }
 
 /** A plugin returns `{ kind: "compound", parts: [] }` when its data

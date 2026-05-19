@@ -72,6 +72,11 @@ export class PlaywrightChartRenderer implements ChartRenderer {
     width: number;
     height: number;
     outputUri: string;
+    /** "llm" (default) caps the long side at MAX_LLM_DIMENSION to match
+     *  Claude Vision's auto-resize and avoid wasted image tokens.
+     *  "highres" skips the resize — use only for dev/visual debugging
+     *  where the consumer is a human, not the LLM. */
+    outputMode?: "llm" | "highres";
   }): Promise<ChartRenderResult> {
     if (!this.browser) await this.warmUp();
     const page = await this.acquirePage();
@@ -121,13 +126,14 @@ export class PlaywrightChartRenderer implements ChartRenderer {
         { timeout: 5000 },
       );
       const png = await page.screenshot({ type: "png", omitBackground: false });
-      const buffer = await sharp(png)
-        .resize(MAX_LLM_DIMENSION, MAX_LLM_DIMENSION, {
+      const pipeline = sharp(png);
+      if ((args.outputMode ?? "llm") === "llm") {
+        pipeline.resize(MAX_LLM_DIMENSION, MAX_LLM_DIMENSION, {
           fit: "inside",
           withoutEnlargement: true,
-        })
-        .webp({ quality: 85 })
-        .toBuffer();
+        });
+      }
+      const buffer = await pipeline.webp({ quality: 85 }).toBuffer();
       const sha256 = createHash("sha256").update(buffer).digest("hex");
       // Swap the .png suffix from the caller's outputUri to .webp so the
       // stored artifact matches the actual format.
@@ -171,7 +177,7 @@ export class PlaywrightChartRenderer implements ChartRenderer {
     const modulesDir = dirname(fileURLToPath(import.meta.url));
     const transpiler = new Bun.Transpiler({ loader: "ts", target: "browser" });
     const filenames = [
-      "computeRightOffset.ts",
+      "countAxisLabels.ts",
       "bandsPrimitive.ts",
       "paneAllocator.ts",
       "chartBootstrap.ts",
@@ -234,16 +240,34 @@ export class PlaywrightChartRenderer implements ChartRenderer {
         chart.panes()[idx]?.setStretchFactor(stretch);
       }
 
-      const priceOverlayLineCount = payload.indicators
-        .filter((i) => i.renderConfig.pane === "price_overlay")
-        .length;
-      applyRightOffset(chart, { priceOverlayLineCount, priceLineCount: 0 });
+      let priceOverlayLineCount = 0;
+      let maxLabelTextLength = 0;
+      for (const i of payload.indicators) {
+        if (i.renderConfig.pane !== "price_overlay") continue;
+        priceOverlayLineCount += countAxisLabels(i.contribution);
+        maxLabelTextLength = Math.max(
+          maxLabelTextLength,
+          maxAxisLabelLength(i.id, i.contribution, i.renderConfig),
+        );
+      }
+      // window.innerWidth is stable; chart.timeScale().width() can be 0 at
+      // this point — lightweight-charts hasn't laid out yet (series added,
+      // no fitContent / setVisibleLogicalRange ran). The ~60 px the
+      // price-scale Y column steals is absorbed by the chip-width overhead.
+      const rightPad = computeRightPadCandles(
+        { density: { priceOverlayLineCount, priceLineCount: 0 }, maxLabelTextLength },
+        { widthPx: window.innerWidth, candleCount: payload.candles.length },
+      );
+      applyChartRange(chart, {
+        candleCount: payload.candles.length,
+        leftPad: 3,
+        rightPad,
+      });
 
       if (markerBucket.length > 0 && createSeriesMarkers) {
         createSeriesMarkers(candleSeries).setMarkers(markerBucket);
       }
 
-      chart.timeScale().fitContent();
       requestAnimationFrame(() => requestAnimationFrame(() => {
         window.__chartReady = true;
       }));

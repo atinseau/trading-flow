@@ -53,5 +53,6 @@ TODO.md
 *storybook.log
 storybook-static
 .tmp-screenshots/
+.tmp-debug/
 .dev-render-charts*/
 .wip-backup/
