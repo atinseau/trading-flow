@@ -67,17 +67,22 @@ class BandsRenderer implements IPrimitivePaneRenderer {
   ) {}
 
   draw(target: {
-    useBitmapCoordinateSpace: (
+    useMediaCoordinateSpace: (
       cb: (scope: {
         context: CanvasRenderingContext2D;
-        bitmapSize: { width: number; height: number };
+        mediaSize: { width: number; height: number };
       }) => void,
     ) => void;
   }): void {
     if (!this.chart) return;
     const chart = this.chart;
-    // biome-ignore lint/correctness/useHookAtTopLevel: useBitmapCoordinateSpace is a lightweight-charts API, not a React hook
-    target.useBitmapCoordinateSpace(({ context, bitmapSize }) => {
+    // Use media (CSS-pixel) coordinate space because `priceToCoordinate` and
+    // `timeToCoordinate` both return CSS pixels. Mixing those with the bitmap
+    // space (raw physical pixels) caused the bands to be drawn at half the
+    // intended position on 2× DPR displays — they appeared above the priceLines
+    // and didn't track scale changes accurately.
+    // biome-ignore lint/correctness/useHookAtTopLevel: lightweight-charts API, not a React hook
+    target.useMediaCoordinateSpace(({ context, mediaSize }) => {
       const ts = chart.timeScale();
       for (const band of this.bands) {
         const y1 = this.series.priceToCoordinate(band.topPrice);
@@ -86,8 +91,8 @@ class BandsRenderer implements IPrimitivePaneRenderer {
         const x1 = band.fromTime != null ? (ts.timeToCoordinate(band.fromTime as Time) ?? 0) : 0;
         const x2 =
           band.toTime != null
-            ? (ts.timeToCoordinate(band.toTime as Time) ?? bitmapSize.width)
-            : bitmapSize.width;
+            ? (ts.timeToCoordinate(band.toTime as Time) ?? mediaSize.width)
+            : mediaSize.width;
         context.fillStyle = band.fillColor;
         context.fillRect(x1, Math.min(y1, y2), x2 - x1, Math.abs(y2 - y1));
       }

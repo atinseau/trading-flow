@@ -50,8 +50,8 @@ describe("BandsPrimitive", () => {
     const renderer = p.paneViews()[0]?.renderer();
     const fillRectCalls: Array<{ x: number; y: number; w: number; h: number; style: string }> = [];
     const fakeTarget = {
-      useBitmapCoordinateSpace: (
-        cb: (scope: { context: unknown; bitmapSize: { width: number; height: number } }) => void,
+      useMediaCoordinateSpace: (
+        cb: (scope: { context: unknown; mediaSize: { width: number; height: number } }) => void,
       ) => {
         const ctx = {
           set fillStyle(v: string) {
@@ -63,7 +63,7 @@ describe("BandsPrimitive", () => {
           fillRect: (x: number, y: number, w: number, h: number) =>
             fillRectCalls.push({ x, y, w, h, style: (ctx as unknown as { _fill: string })._fill }),
         };
-        cb({ context: ctx, bitmapSize: { width: 1000, height: 500 } });
+        cb({ context: ctx, mediaSize: { width: 1000, height: 500 } });
       },
     };
     renderer?.draw(fakeTarget as never);
