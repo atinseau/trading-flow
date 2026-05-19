@@ -1,5 +1,5 @@
-import { volumePlugin } from "@adapters/indicators/plugins/volume";
-import { TradingViewChart } from "@client/components/charts/TradingViewChart";
+import { REGISTRY } from "@adapters/indicators/IndicatorRegistry";
+import { type IndicatorEntry, TradingViewChart } from "@client/components/charts/TradingViewChart";
 import type { UTCTimestamp } from "lightweight-charts";
 import { useMemo } from "react";
 
@@ -13,13 +13,16 @@ export type AssetCandle = {
 };
 
 /**
- * Full-width interactive candlestick + volume chart.
- * Bigger / more detailed than the per-setup TVChart — used on the asset
- * detail page for browsing.
+ * Full-width interactive candlestick chart with optional indicator overlays.
  *
- * Volume is rendered via the unified plugin pipeline (D1) — the plugin
- * emits a compound contribution (histogram bars + MA20 line) natively, so
- * no inline shaping is needed here.
+ * Used on the asset detail page for browsing. ALL bundled indicators are
+ * pre-computed client-side from the candle history (default params per
+ * plugin) and exposed via the framework's built-in chip controls — user
+ * picks which ones to reveal. Volume defaults visible since it's the most
+ * universal context, the rest start hidden.
+ *
+ * No backend coupling here : the asset page doesn't know about watches, so
+ * the indicator set is the full REGISTRY rather than a watch-config subset.
  */
 export function AssetChart({ candles }: { candles: AssetCandle[] }) {
   const adapted = useMemo(
@@ -34,7 +37,7 @@ export function AssetChart({ candles }: { candles: AssetCandle[] }) {
     [candles],
   );
 
-  const indicators = useMemo(() => {
+  const indicators: IndicatorEntry[] = useMemo(() => {
     const candlesForCompute = candles.map((c) => ({
       timestamp: new Date(c.time * 1000),
       open: c.open,
@@ -43,22 +46,29 @@ export function AssetChart({ candles }: { candles: AssetCandle[] }) {
       close: c.close,
       volume: c.volume,
     }));
-    return [
-      {
-        id: "volume",
-        plugin: volumePlugin as never,
-        contribution: volumePlugin.computeSeries(candlesForCompute as never),
-      },
-    ];
+    return REGISTRY.map((plugin) => ({
+      id: plugin.id,
+      plugin: plugin as IndicatorEntry["plugin"],
+      // biome-ignore lint/suspicious/noExplicitAny: bypass strict Candle typing for fixture-shaped data
+      contribution: plugin.computeSeries(candlesForCompute as any),
+    }));
   }, [candles]);
+
+  // Start with volume visible (universal context), the rest hidden so the
+  // chart remains uncluttered. User reveals via the framework chips.
+  const initialVisibility = useMemo(
+    () => Object.fromEntries(REGISTRY.map((p) => [p.id, p.id === "volume"])),
+    [],
+  );
 
   return (
     <TradingViewChart
       candles={adapted}
-      height={480}
-      enableControls={false}
-      enableFullscreen={false}
       indicators={indicators}
+      enableControls
+      enableFullscreen
+      initialVisibility={initialVisibility}
+      height={480}
     />
   );
 }
