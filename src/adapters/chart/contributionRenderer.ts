@@ -75,11 +75,13 @@ export function applyContribution(
       case "lines": {
         const entries = Object.entries(c.series);
         entries.forEach(([name, values], idx) => {
+          const style = opts.renderConfig.linesStyles?.[name];
           const series = chart.addSeries(
             LC.LineSeries as never,
             {
               color: pickColor(idx),
-              lineWidth: 2,
+              lineWidth: style?.lineWidth ?? 2,
+              lineStyle: style?.lineStyle ?? 0,
               priceLineVisible: false,
               lastValueVisible: false,
               title: labelFor(name),

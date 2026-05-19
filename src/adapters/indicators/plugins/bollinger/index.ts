@@ -28,8 +28,17 @@ export const bollingerPlugin: IndicatorPlugin = {
   chartPane: "price_overlay",
   renderConfig: {
     pane: "price_overlay",
+    // Same hue for the 3 lines (BB is a single indicator visually) but the
+    // middle SMA20 is dashed + thinner so the eye reads the upper+lower
+    // pair as the envelope and middle as the centerline. Closer to the
+    // TradingView default look.
     palette: ["#a78bfa", "#a78bfa", "#a78bfa"],
     seriesLabels: { upper: "BB up", middle: "BB mid", lower: "BB lo" },
+    linesStyles: {
+      upper: { lineWidth: 1 },
+      middle: { lineWidth: 1, lineStyle: 2 },
+      lower: { lineWidth: 1 },
+    },
   },
   detectorPromptFragment: detectorFragment,
   reviewerPromptFragment: reviewerFragment,

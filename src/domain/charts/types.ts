@@ -62,4 +62,11 @@ export type RenderConfig = {
   seriesLabels?: Readonly<Record<string, string>>;
   /** Pixel stretch factor for secondary panes (defaults 13). */
   secondaryPaneStretch?: number;
+  /** Optional per-series style overrides for `kind: "lines"`. Keyed by
+   *  series name (same key as `seriesLabels`). Lets a plugin make the
+   *  middle of a BB envelope dashed, an MA20 lighter than the raw line,
+   *  etc. */
+  linesStyles?: Readonly<
+    Record<string, { lineWidth?: 1 | 2 | 3 | 4; lineStyle?: 0 | 1 | 2 | 3 | 4 }>
+  >;
 };
