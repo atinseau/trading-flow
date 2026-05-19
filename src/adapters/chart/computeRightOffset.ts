@@ -15,7 +15,7 @@ export function computeRightOffset(opts: {
 }): number {
   const total = opts.priceOverlayLineCount + opts.priceLineCount;
   if (total <= 5) return 5;
-  if (total <= 10) return 8;
-  if (total <= 15) return 12;
-  return 16;
+  if (total <= 10) return 12;
+  if (total <= 15) return 16;
+  return 20;
 }
