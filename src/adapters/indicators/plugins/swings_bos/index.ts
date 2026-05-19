@@ -15,19 +15,23 @@ export const swingsBosPlugin: IndicatorPlugin = {
   computeScalars: (candles, params) => computeScalars(candles, params),
   computeSeries: (candles, params) => {
     const m = computeMarkers(candles, params);
+    // TradingView convention : swing high → arrow pointing up above the
+    // candle (continuing the upward trend the pivot terminates), swing
+    // low → arrow pointing down below the candle. Matches what an LLM
+    // trained on TV screenshots expects to see.
     const markers = [
       ...m.swingHighs.map((s) => ({
         index: s.index,
         position: "above" as const,
         color: "#ef5350",
-        shape: "arrowDown" as const,
+        shape: "arrowUp" as const,
         text: "H",
       })),
       ...m.swingLows.map((s) => ({
         index: s.index,
         position: "below" as const,
         color: "#26a69a",
-        shape: "arrowUp" as const,
+        shape: "arrowDown" as const,
         text: "L",
       })),
     ];

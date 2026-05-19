@@ -26,7 +26,10 @@ export const atrPlugin: IndicatorPlugin = {
   secondaryPaneStretch: 11,
   renderConfig: {
     pane: "secondary",
-    palette: ["#f97316"],
+    // Distinct hues : orange for ATR (the raw indicator), light gray for
+    // its MA20 smoother. Pre-fix both were orange → indistinguishable at
+    // typical LLM render resolution.
+    palette: ["#f97316", "#94a3b8"],
     secondaryPaneStretch: 11,
     seriesLabels: { atr: "ATR", atrMa20: "ATR MA20" },
   },

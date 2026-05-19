@@ -27,7 +27,10 @@ export const emaStackPlugin: IndicatorPlugin = {
   chartPane: "price_overlay",
   renderConfig: {
     pane: "price_overlay",
-    palette: ["#3b82f6", "#f59e0b", "#ef4444"],
+    // Slate for EMA long instead of red — red on a price-overlay line is
+    // read by traders + LLM as a bearish signal / sell level, not a trend
+    // anchor. Slate is neutral, matches TV's default for slow MA.
+    palette: ["#3b82f6", "#f59e0b", "#cbd5e1"],
     seriesLabels: { emaShort: "EMA short", emaMid: "EMA mid", emaLong: "EMA long" },
   },
   detectorPromptFragment: detectorFragment,

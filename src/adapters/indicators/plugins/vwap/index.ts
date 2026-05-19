@@ -13,7 +13,10 @@ export const vwapPlugin: IndicatorPlugin = {
   renderConfig: {
     pane: "price_overlay",
     palette: ["#10b981"],
-    seriesLabels: { vwapSession: "VWAP" },
+    // computeSeries returns `{ vwapSession: ... }` — the seriesLabels key
+    // must match. Was previously named "vwap" which fell back to
+    // `vwap:vwapSession` literal in the legend.
+    seriesLabels: { vwap: "VWAP" },
   },
   detectorPromptFragment: detectorFragment,
 };
