@@ -3,7 +3,6 @@ import { buildScrubBatch, estimateScrubCost } from "@client/components/replay/bu
 import { CurrentPhaseCard } from "@client/components/replay/current-phase-card";
 import { DecisionsLog } from "@client/components/replay/decisions-log";
 import { derivePlayheadAt } from "@client/components/replay/derivePlayheadAt";
-import { IndicatorToggles } from "@client/components/replay/indicator-toggles";
 import { pickLiveStatus } from "@client/components/replay/pickLiveStatus";
 import { ReplayChart } from "@client/components/replay/replay-chart";
 import { ReplayControls } from "@client/components/replay/replay-controls";
@@ -74,10 +73,6 @@ export function Component() {
   const [focusedEventId, setFocusedEventId] = useState<string | null>(null);
   const [scrubMs, setScrubMs] = useState<number | null>(null);
   const [autoStepActive, setAutoStepActive] = useState(false);
-  // Indicator-visibility filter for the chart overlay. Defaults to "all
-  // enabled in the watch config". The user can toggle individual ids
-  // without touching the watch.
-  const [hiddenIndicatorIds, setHiddenIndicatorIds] = useState<Set<string>>(new Set());
   // Scrub-confirm modal state — populated on slider release when the
   // target is forward of the bot. Cancel resets the scrub to null
   // (visual playhead snaps back to the bot). Confirm dispatches the
@@ -268,44 +263,17 @@ export function Component() {
         </div>
       )}
       {ohlcv.data && events.data && setups.data && (
-        <>
-          {ohlcv.data.indicators && Object.keys(ohlcv.data.indicators).length > 0 && (
-            <IndicatorToggles
-              availableIds={Object.keys(ohlcv.data.indicators)}
-              visible={
-                new Set(
-                  Object.keys(ohlcv.data.indicators).filter((id) => !hiddenIndicatorIds.has(id)),
-                )
-              }
-              onToggle={(id) => {
-                setHiddenIndicatorIds((prev) => {
-                  const next = new Set(prev);
-                  if (next.has(id)) next.delete(id);
-                  else next.add(id);
-                  return next;
-                });
-              }}
-            />
-          )}
-          <ReplayChart
-            candles={ohlcv.data.candles}
-            events={events.data}
-            setups={setups.data}
-            windowStartAt={windowStartAt}
-            windowEndAt={windowEndAt}
-            playheadAt={playheadAt}
-            activeSetupId={activeSetupId}
-            indicators={ohlcv.data.indicators}
-            indicatorMeta={ohlcv.data.indicatorMeta}
-            visibleIndicators={
-              ohlcv.data.indicators
-                ? new Set(
-                    Object.keys(ohlcv.data.indicators).filter((id) => !hiddenIndicatorIds.has(id)),
-                  )
-                : null
-            }
-          />
-        </>
+        <ReplayChart
+          candles={ohlcv.data.candles}
+          events={events.data}
+          setups={setups.data}
+          windowStartAt={windowStartAt}
+          windowEndAt={windowEndAt}
+          playheadAt={playheadAt}
+          activeSetupId={activeSetupId}
+          indicators={ohlcv.data.indicators}
+          indicatorMeta={ohlcv.data.indicatorMeta}
+        />
       )}
 
       {/* Controls */}
