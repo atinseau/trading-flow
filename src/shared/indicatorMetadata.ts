@@ -1,6 +1,7 @@
 import { atrMetadata } from "@adapters/indicators/plugins/atr/metadata";
 import { bollingerMetadata } from "@adapters/indicators/plugins/bollinger/metadata";
 import { emaStackMetadata } from "@adapters/indicators/plugins/ema_stack/metadata";
+import { fibonacciMetadata } from "@adapters/indicators/plugins/fibonacci/metadata";
 import { liquidityPoolsMetadata } from "@adapters/indicators/plugins/liquidity_pools/metadata";
 import { macdMetadata } from "@adapters/indicators/plugins/macd/metadata";
 import { rsiMetadata } from "@adapters/indicators/plugins/rsi/metadata";
@@ -21,6 +22,7 @@ export const INDICATOR_METADATA: ReadonlyArray<IndicatorPluginMetadata> = [
   swingsBosMetadata,
   structureLevelsMetadata,
   liquidityPoolsMetadata,
+  fibonacciMetadata,
 ] as const;
 
 export const INDICATOR_METADATA_BY_TAG: Record<string, IndicatorPluginMetadata[]> =

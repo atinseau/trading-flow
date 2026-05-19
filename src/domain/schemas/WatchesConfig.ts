@@ -43,6 +43,7 @@ export const KNOWN_INDICATOR_IDS = [
   "swings_bos",
   "structure_levels",
   "liquidity_pools",
+  "fibonacci",
 ] as const;
 export type IndicatorId = (typeof KNOWN_INDICATOR_IDS)[number];
 

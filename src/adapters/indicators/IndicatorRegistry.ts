@@ -4,6 +4,7 @@ import type { IndicatorPlugin } from "@domain/services/IndicatorPlugin";
 import { atrPlugin } from "./plugins/atr";
 import { bollingerPlugin } from "./plugins/bollinger";
 import { emaStackPlugin } from "./plugins/ema_stack";
+import { fibonacciPlugin } from "./plugins/fibonacci";
 import { liquidityPoolsPlugin } from "./plugins/liquidity_pools";
 import { macdPlugin } from "./plugins/macd";
 import { rsiPlugin } from "./plugins/rsi";
@@ -23,6 +24,7 @@ export const REGISTRY: ReadonlyArray<IndicatorPlugin> = [
   swingsBosPlugin,
   structureLevelsPlugin,
   liquidityPoolsPlugin,
+  fibonacciPlugin,
 ] as const;
 
 export class IndicatorRegistry {

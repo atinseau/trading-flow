@@ -24,8 +24,8 @@ const baseWatch = {
 };
 
 describe("WatchSchema.indicators", () => {
-  test("KNOWN_INDICATOR_IDS exposes 10 plugins", () => {
-    expect(KNOWN_INDICATOR_IDS.length).toBe(10);
+  test("KNOWN_INDICATOR_IDS exposes 11 plugins", () => {
+    expect(KNOWN_INDICATOR_IDS.length).toBe(11);
     expect(KNOWN_INDICATOR_IDS).toContain("rsi");
     expect(KNOWN_INDICATOR_IDS).toContain("ema_stack");
     expect(KNOWN_INDICATOR_IDS).toContain("volume");
