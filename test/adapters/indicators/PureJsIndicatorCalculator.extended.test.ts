@@ -234,18 +234,24 @@ describe("PureJsIndicatorCalculator — extended indicators", () => {
       expect(bbContrib.series["upper"]?.length).toBe(250);
     }
 
-    // macd plugin: lines kind with macd/signal/hist series
+    // macd plugin: compound (lines: macd+signal, histogram: hist)
     const macdContrib = seriesMap["macd"];
-    expect(macdContrib?.kind).toBe("lines");
-    if (macdContrib?.kind === "lines") {
-      expect(macdContrib.series["macd"]?.length).toBe(250);
+    expect(macdContrib?.kind).toBe("compound");
+    if (macdContrib?.kind === "compound") {
+      const macdLines = macdContrib.parts.find((p) => p.kind === "lines");
+      if (macdLines?.kind === "lines") {
+        expect(macdLines.series["macd"]?.length).toBe(250);
+      }
     }
 
-    // rsi plugin: lines kind with rsi series
+    // rsi plugin: compound (lines: rsi, priceLines: 70/30 reference)
     const rsiContrib = seriesMap["rsi"];
-    expect(rsiContrib?.kind).toBe("lines");
-    if (rsiContrib?.kind === "lines") {
-      expect(rsiContrib.series["rsi"]?.length).toBe(250);
+    expect(rsiContrib?.kind).toBe("compound");
+    if (rsiContrib?.kind === "compound") {
+      const rsiLines = rsiContrib.parts.find((p) => p.kind === "lines");
+      if (rsiLines?.kind === "lines") {
+        expect(rsiLines.series["rsi"]?.length).toBe(250);
+      }
     }
   });
 });
