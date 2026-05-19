@@ -123,4 +123,22 @@ describe("vwapPlugin — session edge cases [ported]", () => {
     expect(v4).not.toBeNull();
     expect(v4 as number).toBeCloseTo(expectedVwap, 6);
   });
+
+  describe("computeScalarHistory", () => {
+    test("returns vwap tail of length n on volume-bearing candles", () => {
+      const out = vwapPlugin.computeScalarHistory?.(sampleCandles, undefined, 10);
+      expect(out?.vwap.length).toBe(10);
+    });
+
+    test("returns empty array when all volumes are zero (forex spot)", () => {
+      const zeroVol = sampleCandles.map((c) => ({ ...c, volume: 0 }));
+      const out = vwapPlugin.computeScalarHistory?.(zeroVol, undefined, 10);
+      expect(out).toEqual({ vwap: [] });
+    });
+
+    test("n=0 returns empty array", () => {
+      const out = vwapPlugin.computeScalarHistory?.(sampleCandles, undefined, 0);
+      expect(out).toEqual({ vwap: [] });
+    });
+  });
 });

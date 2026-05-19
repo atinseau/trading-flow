@@ -87,4 +87,31 @@ describe("rsiPlugin", () => {
       rsiPlugin.defaultParams!,
     );
   });
+
+  describe("computeScalarHistory", () => {
+    test("returns rsi key with last n values", () => {
+      const out = rsiPlugin.computeScalarHistory?.(candles(50), undefined, 10);
+      expect(out).toBeDefined();
+      expect(out?.rsi.length).toBe(10);
+    });
+
+    test("tail value matches computeScalars (point-in-time consistency)", () => {
+      const c = candles(50);
+      const spot = rsiPlugin.computeScalars(c).rsi as number;
+      const history = rsiPlugin.computeScalarHistory?.(c, undefined, 10);
+      const lastFromHistory = history?.rsi[history.rsi.length - 1] ?? null;
+      expect(lastFromHistory).not.toBeNull();
+      expect(lastFromHistory).toBeCloseTo(spot, 6);
+    });
+
+    test("truncates to candles.length when n > available", () => {
+      const out = rsiPlugin.computeScalarHistory?.(candles(8), undefined, 50);
+      expect((out?.rsi.length ?? 0)).toBe(8);
+    });
+
+    test("n=0 returns empty arrays", () => {
+      const out = rsiPlugin.computeScalarHistory?.(candles(50), undefined, 0);
+      expect(out?.rsi).toEqual([]);
+    });
+  });
 });

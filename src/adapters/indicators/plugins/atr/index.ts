@@ -14,6 +14,7 @@ export const atrPlugin: IndicatorPlugin = {
   ...atrMetadata,
   computeScalars: (candles, params) => computeScalars(candles, params),
   computeScalarHistory: (candles, params, n) => {
+    if (n <= 0) return { atr: [], atrMa20: [] };
     const s = computeSeries(candles, params);
     return { atr: s.atr.slice(-n), atrMa20: s.atrMa20.slice(-n) };
   },

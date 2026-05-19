@@ -11,7 +11,12 @@ export const volumePlugin: IndicatorPlugin = {
   ...volumeMetadata,
   computeScalars,
   computeScalarHistory: (candles, _params, n) => {
+    if (n <= 0) return { volume: [], volumeMa20: [] };
     const s = computeSeries(candles);
+    // `volume` is the raw candle field — never null by construction (Zod's
+    // CandleSchema declares `.nonnegative()` and the fetchers fill 0 for
+    // missing). `volumeMa20` is null for the first 19 bars (rolling-MA
+    // warmup) — `formatScalarHistory` renders those as "—".
     return {
       volume: candles.slice(-n).map((c) => c.volume),
       volumeMa20: s.volumeMa20.slice(-n),

@@ -222,3 +222,75 @@ test("each role has a distinct system prompt", async () => {
   expect(detector.systemPrompt).not.toBe(reviewer.systemPrompt);
   expect(reviewer.systemPrompt).not.toBe(finalizer.systemPrompt);
 });
+
+test("finalizer hasRecentOhlcv renders the OHLCV block + omits it when false", async () => {
+  const finalizer = await loadPrompt("finalizer");
+  const baseArgs = {
+    setup: {
+      id: "abc",
+      asset: "BTCUSDT",
+      timeframe: "1h",
+      patternHint: "double_bottom",
+      patternCategory: "accumulation",
+      expectedMaturationTicks: 3,
+      direction: "LONG",
+      currentScore: 85,
+      invalidationLevel: 76000,
+    },
+    historyCount: 0,
+    history: [],
+    activeLessons: [],
+  };
+
+  const withBlock = finalizer.render({
+    ...baseArgs,
+    hasRecentOhlcv: true,
+    recentOhlcvTable: "| # | time | O | H | L | C | V |\n|---|---|---|---|---|---|---|\n| 0 | 16:30 | 76450 | 76510 | 76400 | 76431 | 136 |",
+  });
+  expect(withBlock).toContain("## Recent OHLCV");
+  expect(withBlock).toContain("76431");
+  expect(withBlock).toContain("invalidation level at `76000`");
+
+  const withoutBlock = finalizer.render({
+    ...baseArgs,
+    hasRecentOhlcv: false,
+    recentOhlcvTable: "",
+  });
+  expect(withoutBlock).not.toContain("## Recent OHLCV");
+});
+
+test("reviewer hasRecentOhlcv renders inside the Fresh data section", async () => {
+  const reviewer = await loadPrompt("reviewer");
+  const baseArgs = {
+    setup: {
+      id: "abc",
+      patternHint: "double_bottom",
+      direction: "LONG",
+      currentScore: 50,
+      invalidationLevel: 100,
+      ageInCandles: 4,
+    },
+    history: [],
+    tick: { tickAt: "2026-04-28T14:00:00Z" },
+    fresh: { lastClose: 101 },
+    hasIndicators: false,
+    reviewerIndicatorFragments: "",
+    activeLessons: [],
+    recentOhlcvCount: 50,
+  };
+
+  const withBlock = reviewer.render({
+    ...baseArgs,
+    hasRecentOhlcv: true,
+    recentOhlcvTable: "| # | time | O | H | L | C |\n|---|---|---|---|---|---|\n| 0 | now | 100 | 102 | 99 | 101 |",
+  });
+  expect(withBlock).toContain("### Recent OHLCV (last 50 candles");
+  expect(withBlock).toContain("101");
+
+  const withoutBlock = reviewer.render({
+    ...baseArgs,
+    hasRecentOhlcv: false,
+    recentOhlcvTable: "",
+  });
+  expect(withoutBlock).not.toContain("### Recent OHLCV");
+});

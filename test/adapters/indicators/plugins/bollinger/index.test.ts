@@ -101,4 +101,30 @@ describe("bollingerPlugin", () => {
       bollingerPlugin.defaultParams!,
     );
   });
+
+  describe("computeScalarHistory", () => {
+    test("returns upper/middle/lower tails of length n", () => {
+      const out = bollingerPlugin.computeScalarHistory?.(sampleCandles, undefined, 10);
+      expect(out?.upper.length).toBe(10);
+      expect(out?.middle.length).toBe(10);
+      expect(out?.lower.length).toBe(10);
+    });
+
+    test("upper > middle > lower at tail (envelope invariant)", () => {
+      const out = bollingerPlugin.computeScalarHistory?.(sampleCandles, undefined, 5);
+      const u = out?.upper[4];
+      const m = out?.middle[4];
+      const l = out?.lower[4];
+      expect(u).not.toBeNull();
+      expect(m).not.toBeNull();
+      expect(l).not.toBeNull();
+      expect(u as number).toBeGreaterThan(m as number);
+      expect(m as number).toBeGreaterThan(l as number);
+    });
+
+    test("n=0 returns empty arrays", () => {
+      const out = bollingerPlugin.computeScalarHistory?.(sampleCandles, undefined, 0);
+      expect(out).toEqual({ upper: [], middle: [], lower: [] });
+    });
+  });
 });

@@ -19,6 +19,7 @@ export const macdPlugin: IndicatorPlugin = {
   ...macdMetadata,
   computeScalars: (candles, params) => computeScalars(candles, params),
   computeScalarHistory: (candles, params, n) => {
+    if (n <= 0) return { macd: [], signal: [], hist: [] };
     const s = computeSeries(candles, params);
     return {
       macd: s.macd.slice(-n),

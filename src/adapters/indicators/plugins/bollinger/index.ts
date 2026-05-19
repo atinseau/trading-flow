@@ -15,6 +15,7 @@ export const bollingerPlugin: IndicatorPlugin = {
   ...bollingerMetadata,
   computeScalars: (candles, params) => computeScalars(candles, params),
   computeScalarHistory: (candles, params, n) => {
+    if (n <= 0) return { upper: [], middle: [], lower: [] };
     const s = computeSeries(candles, params);
     return {
       upper: s.upper.slice(-n),

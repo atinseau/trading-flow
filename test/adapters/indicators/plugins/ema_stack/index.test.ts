@@ -104,4 +104,26 @@ describe("emaStackPlugin", () => {
       emaStackPlugin.defaultParams!,
     );
   });
+
+  describe("computeScalarHistory", () => {
+    test("returns three keys with last n values each", () => {
+      const out = emaStackPlugin.computeScalarHistory?.(sampleCandles, undefined, 10);
+      expect(out?.emaShort.length).toBe(10);
+      expect(out?.emaMid.length).toBe(10);
+      expect(out?.emaLong.length).toBe(10);
+    });
+
+    test("tail values match computeScalars", () => {
+      const spot = emaStackPlugin.computeScalars(sampleCandles);
+      const hist = emaStackPlugin.computeScalarHistory?.(sampleCandles, undefined, 5);
+      expect(hist?.emaShort[4]).toBeCloseTo(spot.emaShort as number, 4);
+      expect(hist?.emaMid[4]).toBeCloseTo(spot.emaMid as number, 4);
+      expect(hist?.emaLong[4]).toBeCloseTo(spot.emaLong as number, 4);
+    });
+
+    test("n=0 returns empty arrays for all keys", () => {
+      const out = emaStackPlugin.computeScalarHistory?.(sampleCandles, undefined, 0);
+      expect(out).toEqual({ emaShort: [], emaMid: [], emaLong: [] });
+    });
+  });
 });

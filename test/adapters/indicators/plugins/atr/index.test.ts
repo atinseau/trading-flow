@@ -92,4 +92,17 @@ describe("atrPlugin", () => {
       atrPlugin.defaultParams!,
     );
   });
+
+  describe("computeScalarHistory", () => {
+    test("returns atr/atrMa20 tails of length n", () => {
+      const out = atrPlugin.computeScalarHistory?.(sampleCandles, undefined, 10);
+      expect(out?.atr.length).toBe(10);
+      expect(out?.atrMa20.length).toBe(10);
+    });
+
+    test("n=0 returns empty arrays", () => {
+      const out = atrPlugin.computeScalarHistory?.(sampleCandles, undefined, 0);
+      expect(out).toEqual({ atr: [], atrMa20: [] });
+    });
+  });
 });

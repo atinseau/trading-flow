@@ -8,6 +8,7 @@ export const vwapPlugin: IndicatorPlugin = {
   ...vwapMetadata,
   computeScalars,
   computeScalarHistory: (candles, _params, n) => {
+    if (n <= 0) return { vwap: [] };
     if (!candles.some((c) => c.volume > 0)) return { vwap: [] };
     const series = computeSeries(candles);
     return { vwap: series.vwap.slice(-n) };

@@ -167,4 +167,18 @@ describe("macdPlugin — deeper coverage [ported]", () => {
     expect(posCount).toBeGreaterThan(20);
     expect(negCount).toBeGreaterThan(20);
   });
+
+  describe("computeScalarHistory", () => {
+    test("returns macd/signal/hist tails of length n", () => {
+      const out = macdPlugin.computeScalarHistory?.(sampleCandles, undefined, 10);
+      expect(out?.macd.length).toBe(10);
+      expect(out?.signal.length).toBe(10);
+      expect(out?.hist.length).toBe(10);
+    });
+
+    test("n=0 returns empty arrays", () => {
+      const out = macdPlugin.computeScalarHistory?.(sampleCandles, undefined, 0);
+      expect(out).toEqual({ macd: [], signal: [], hist: [] });
+    });
+  });
 });

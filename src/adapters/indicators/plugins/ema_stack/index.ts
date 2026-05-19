@@ -19,6 +19,7 @@ export const emaStackPlugin: IndicatorPlugin = {
   ...emaStackMetadata,
   computeScalars: (candles, params) => computeScalars(candles, params),
   computeScalarHistory: (candles, params, n) => {
+    if (n <= 0) return { emaShort: [], emaMid: [], emaLong: [] };
     const full = computeSeries(candles, params);
     return {
       emaShort: full.emaShort.slice(-n),
