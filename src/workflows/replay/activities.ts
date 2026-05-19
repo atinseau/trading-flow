@@ -773,17 +773,25 @@ export function buildReplayActivities(deps: ReplayActivityDeps) {
         regime,
         session: tradingSession,
         activeLessons: activeLessons.map((l) => ({ title: l.title, body: l.body })),
-        recentOhlcvTable:
-          watch.prompt_data.include_recent_in_finalizer && finalizeCandles.length > 0
+        recentOhlcvTable: (() => {
+          // Same defensive fallback as live finalizer for legacy configs.
+          const pd = watch.prompt_data ?? {
+            include_recent_in_finalizer: true,
+            decimals: null as number | null,
+            timestamp_format: "time" as const,
+            include_volume: true,
+          };
+          return pd.include_recent_in_finalizer && finalizeCandles.length > 0
             ? formatRecentOhlcv(finalizeCandles, {
                 count: 5,
-                decimals: watch.prompt_data.decimals,
-                timestampFormat: watch.prompt_data.timestamp_format,
-                includeVolume: watch.prompt_data.include_volume,
+                decimals: pd.decimals,
+                timestampFormat: pd.timestamp_format,
+                includeVolume: pd.include_volume,
               })
-            : "",
+            : "";
+        })(),
         hasRecentOhlcv:
-          watch.prompt_data.include_recent_in_finalizer && finalizeCandles.length > 0,
+          (watch.prompt_data?.include_recent_in_finalizer ?? true) && finalizeCandles.length > 0,
       });
 
       const wrappedProviders = wrapLlmProvidersWithCache(

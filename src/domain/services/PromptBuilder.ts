@@ -8,6 +8,18 @@ import type { FewShotEngine } from "@domain/services/FewShotEngine";
 import { formatRecentOhlcv } from "@domain/services/formatRecentOhlcv";
 import type { IndicatorPlugin } from "@domain/services/IndicatorPlugin";
 
+/** Defensive fallback when a caller (older tests, transient migrations)
+ *  passes a watch without `prompt_data`. Matches the Zod `.prefault({})`
+ *  output exactly — keeps behavior identical to a fresh watch. */
+const DEFAULT_PROMPT_DATA: WatchConfig["prompt_data"] = {
+  recent_ohlcv_count: 50,
+  indicator_history_count: 10,
+  include_recent_in_finalizer: true,
+  decimals: null,
+  timestamp_format: "time",
+  include_volume: true,
+};
+
 export class PromptBuilder {
   private detector: LoadedPrompt | null = null;
   private reviewer: LoadedPrompt | null = null;
@@ -48,12 +60,13 @@ export class PromptBuilder {
     htf?: { dailyTrend: string };
     indicatorsMatrix: WatchConfig["indicators"];
     candles: ReadonlyArray<Candle>;
-    promptData: WatchConfig["prompt_data"];
+    promptData?: WatchConfig["prompt_data"];
   }): Promise<string> {
     if (!this.detector) await this.warmUp();
     const plugins = this.registry.resolveActive(args.indicatorsMatrix);
     const isVolumeActive = plugins.some((p) => p.id === "volume");
-    const histN = args.promptData.indicator_history_count;
+    const promptData = args.promptData ?? DEFAULT_PROMPT_DATA;
+    const histN = promptData.indicator_history_count;
     const indicatorFragments = plugins
       .map((p) => {
         const params = args.indicatorsMatrix[p.id]?.params as
@@ -71,10 +84,10 @@ export class PromptBuilder {
     const fewShotExamples = this.fewShot.compose(plugins);
     const outputFormatTable = composeOutputFormatTable(plugins, !!args.htf);
     const recentOhlcvTable = formatRecentOhlcv(args.candles, {
-      count: args.promptData.recent_ohlcv_count,
-      decimals: args.promptData.decimals,
-      timestampFormat: args.promptData.timestamp_format,
-      includeVolume: args.promptData.include_volume,
+      count: promptData.recent_ohlcv_count,
+      decimals: promptData.decimals,
+      timestampFormat: promptData.timestamp_format,
+      includeVolume: promptData.include_volume,
     });
     return this.detector!.render({
       asset: args.asset,
@@ -91,7 +104,7 @@ export class PromptBuilder {
       outputFormatTable,
       recentOhlcvTable,
       hasRecentOhlcv: recentOhlcvTable.length > 0,
-      recentOhlcvCount: args.promptData.recent_ohlcv_count,
+      recentOhlcvCount: promptData.recent_ohlcv_count,
     });
   }
 
@@ -104,11 +117,12 @@ export class PromptBuilder {
     funding?: unknown;
     indicatorsMatrix: WatchConfig["indicators"];
     candles: ReadonlyArray<Candle>;
-    promptData: WatchConfig["prompt_data"];
+    promptData?: WatchConfig["prompt_data"];
   }): Promise<string> {
     if (!this.reviewer) await this.warmUp();
     const plugins = this.registry.resolveActive(args.indicatorsMatrix);
-    const histN = args.promptData.indicator_history_count;
+    const promptData = args.promptData ?? DEFAULT_PROMPT_DATA;
+    const histN = promptData.indicator_history_count;
     const reviewerIndicatorFragments = plugins
       .map((p) => {
         const params = args.indicatorsMatrix[p.id]?.params as
@@ -124,10 +138,10 @@ export class PromptBuilder {
       .map((s) => `- ${s}`)
       .join("\n");
     const recentOhlcvTable = formatRecentOhlcv(args.candles, {
-      count: args.promptData.recent_ohlcv_count,
-      decimals: args.promptData.decimals,
-      timestampFormat: args.promptData.timestamp_format,
-      includeVolume: args.promptData.include_volume,
+      count: promptData.recent_ohlcv_count,
+      decimals: promptData.decimals,
+      timestampFormat: promptData.timestamp_format,
+      includeVolume: promptData.include_volume,
     });
     return this.reviewer!.render({
       setup: args.setup,
@@ -141,7 +155,7 @@ export class PromptBuilder {
       reviewerIndicatorFragments,
       recentOhlcvTable,
       hasRecentOhlcv: recentOhlcvTable.length > 0,
-      recentOhlcvCount: args.promptData.recent_ohlcv_count,
+      recentOhlcvCount: promptData.recent_ohlcv_count,
     });
   }
 }

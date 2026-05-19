@@ -87,6 +87,17 @@ const SENSIBLE_DEFAULTS = {
   ],
   include_chart_image: true,
   include_reasoning: true,
+  // Numerical context injected alongside the chart image — defaults match
+  // domain/schemas/WatchesConfig.ts prompt_data.prefault({}). Surfaced as
+  // editable knobs in section-advanced "Données numériques injectées".
+  prompt_data: {
+    recent_ohlcv_count: 50,
+    indicator_history_count: 10,
+    include_recent_in_finalizer: true,
+    decimals: null as number | null,
+    timestamp_format: "time" as const,
+    include_volume: true,
+  },
   feedback: {},
   pre_filter: {
     enabled: true,

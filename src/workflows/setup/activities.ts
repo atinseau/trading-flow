@@ -489,14 +489,24 @@ export function buildSetupActivities(deps: ActivityDeps) {
 
       // Mini OHLCV block — verifies nothing invalidated the setup between
       // the last reviewer tick and finalize. Capped at 5 bars (small block,
-      // recent context only). Skipped per watch.prompt_data flag.
+      // recent context only). Skipped per watch.prompt_data flag. `pd` is
+      // defensive against legacy fixtures without prompt_data — same defaults
+      // as the Zod prefault({}) on WatchConfig.
+      const pd = watch.prompt_data ?? {
+        recent_ohlcv_count: 50,
+        indicator_history_count: 10,
+        include_recent_in_finalizer: true,
+        decimals: null as number | null,
+        timestamp_format: "time" as const,
+        include_volume: true,
+      };
       const recentOhlcvTable =
-        watch.prompt_data.include_recent_in_finalizer && finalizeCandles.length > 0
+        pd.include_recent_in_finalizer && finalizeCandles.length > 0
           ? formatRecentOhlcv(finalizeCandles, {
               count: 5,
-              decimals: watch.prompt_data.decimals,
-              timestampFormat: watch.prompt_data.timestamp_format,
-              includeVolume: watch.prompt_data.include_volume,
+              decimals: pd.decimals,
+              timestampFormat: pd.timestamp_format,
+              includeVolume: pd.include_volume,
             })
           : "";
 

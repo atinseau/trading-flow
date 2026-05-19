@@ -459,6 +459,169 @@ export function SectionAdvanced() {
         </AccordionContent>
       </AccordionItem>
 
+      <AccordionItem value="prompt_data">
+        <AccordionTrigger>
+          <div className="flex w-full flex-col">
+            <div className="flex items-center gap-2">
+              <span aria-hidden>📊</span>
+              <span>Données numériques injectées dans les prompts</span>
+            </div>
+            <p className="mt-1 text-left text-xs text-muted-foreground">
+              Complète l'image du chart avec une table OHLCV brute et l'historique des indicateurs.
+              Permet au LLM de raisonner sur des niveaux précis (retest exact, crossings) sans
+              dépendre de la lecture pixel du chart. Coût ≈ +500-1200 tokens/tick.
+            </p>
+          </div>
+        </AccordionTrigger>
+        <AccordionContent className="space-y-4 pt-2">
+          <FormField
+            control={f.control}
+            name="prompt_data.recent_ohlcv_count"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Bougies OHLCV injectées en table (0-200)</FormLabel>
+                <FormDescription>
+                  Nombre de bougies récentes (O/H/L/C/V) injectées en table Markdown dans les
+                  prompts Detector + Reviewer. Mettre 0 pour désactiver (mode chart-only). Défaut 50
+                  = ~12h sur du 15m.
+                </FormDescription>
+                <FormControl>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={200}
+                    step={1}
+                    {...field}
+                    onChange={(e) => field.onChange(Number(e.target.value))}
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={f.control}
+            name="prompt_data.indicator_history_count"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Historique des indicateurs (0-50)</FormLabel>
+                <FormDescription>
+                  Pour chaque indicateur actif, nombre de valeurs scalaires historiques injectées
+                  dans son fragment de prompt (ex : RSI sur les N derniers ticks). Permet de
+                  détecter divergences et crossings numériquement. 0 = valeur courante uniquement
+                  (comportement pre-v8). Défaut 10.
+                </FormDescription>
+                <FormControl>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={50}
+                    step={1}
+                    {...field}
+                    onChange={(e) => field.onChange(Number(e.target.value))}
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={f.control}
+            name="prompt_data.include_recent_in_finalizer"
+            render={({ field }) => (
+              <FormItem className="flex items-center justify-between rounded-lg border p-3">
+                <div>
+                  <FormLabel>Mini-OHLCV dans le Finalizer</FormLabel>
+                  <FormDescription>
+                    Injecte les 5 dernières bougies dans le prompt Finalizer pour vérifier qu'aucune
+                    invalidation n'a eu lieu entre le dernier tick Reviewer et la décision finale.
+                  </FormDescription>
+                </div>
+                <FormControl>
+                  <Switch checked={field.value} onCheckedChange={field.onChange} />
+                </FormControl>
+              </FormItem>
+            )}
+          />
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <FormField
+              control={f.control}
+              name="prompt_data.timestamp_format"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Format horaire de la table OHLCV</FormLabel>
+                  <FormDescription>
+                    `time` = "16:30" (compact), `iso` = ISO-8601, `relative` = "tick -5".
+                  </FormDescription>
+                  <FormControl>
+                    <Select value={field.value} onValueChange={field.onChange}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="time">time (HH:mm UTC)</SelectItem>
+                        <SelectItem value="iso">iso (full timestamp)</SelectItem>
+                        <SelectItem value="relative">relative (tick -N)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={f.control}
+              name="prompt_data.decimals"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Décimales (vide = auto)</FormLabel>
+                  <FormDescription>
+                    Vide = auto-détecté depuis le dernier close (BTC ~76k → 2, EURUSD ~1.08 → 4).
+                    Force une valeur 0-8 pour override.
+                  </FormDescription>
+                  <FormControl>
+                    <Input
+                      type="number"
+                      min={0}
+                      max={8}
+                      step={1}
+                      placeholder="auto"
+                      value={field.value ?? ""}
+                      onChange={(e) =>
+                        field.onChange(e.target.value === "" ? null : Number(e.target.value))
+                      }
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </div>
+
+          <FormField
+            control={f.control}
+            name="prompt_data.include_volume"
+            render={({ field }) => (
+              <FormItem className="flex items-center justify-between rounded-lg border p-3">
+                <div>
+                  <FormLabel>Inclure la colonne Volume dans la table OHLCV</FormLabel>
+                  <FormDescription>
+                    Désactive pour les actifs sans volume fiable (forex spot Yahoo, etc.).
+                  </FormDescription>
+                </div>
+                <FormControl>
+                  <Switch checked={field.value} onCheckedChange={field.onChange} />
+                </FormControl>
+              </FormItem>
+            )}
+          />
+        </AccordionContent>
+      </AccordionItem>
+
       {/* ────────────────────────────── 4. COÛTS DE TRADING ────────────────────── */}
       <AccordionItem value="costs">
         <AccordionTrigger>

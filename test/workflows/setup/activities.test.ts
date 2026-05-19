@@ -40,6 +40,14 @@ const nasdaqWatch: WatchConfig = {
     min_risk_reward_ratio: 2,
   },
   history_compaction: { max_raw_events_in_context: 40, summarize_after_age_hours: 48 },
+  prompt_data: {
+    recent_ohlcv_count: 50,
+    indicator_history_count: 10,
+    include_recent_in_finalizer: true,
+    decimals: null,
+    timestamp_format: "time",
+    include_volume: true,
+  },
   deduplication: { similar_setup_window_candles: 5, similar_price_tolerance_pct: 0.5 },
   pre_filter: {
     enabled: true,
@@ -94,6 +102,14 @@ const binanceWatch: WatchConfig = {
     min_risk_reward_ratio: 2,
   },
   history_compaction: { max_raw_events_in_context: 40, summarize_after_age_hours: 48 },
+  prompt_data: {
+    recent_ohlcv_count: 50,
+    indicator_history_count: 10,
+    include_recent_in_finalizer: true,
+    decimals: null,
+    timestamp_format: "time",
+    include_volume: true,
+  },
   deduplication: { similar_setup_window_candles: 5, similar_price_tolerance_pct: 0.5 },
   pre_filter: {
     enabled: true,
@@ -237,6 +253,14 @@ describe("runReviewer — market-hours guard", () => {
         min_risk_reward_ratio: 2,
       },
       history_compaction: { max_raw_events_in_context: 40, summarize_after_age_hours: 48 },
+  prompt_data: {
+    recent_ohlcv_count: 50,
+    indicator_history_count: 10,
+    include_recent_in_finalizer: true,
+    decimals: null,
+    timestamp_format: "time",
+    include_volume: true,
+  },
       deduplication: { similar_setup_window_candles: 5, similar_price_tolerance_pct: 0.5 },
       pre_filter: {
         enabled: true,

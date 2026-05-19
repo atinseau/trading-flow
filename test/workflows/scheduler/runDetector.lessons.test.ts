@@ -52,6 +52,14 @@ function makeWatch(injectionDetector: boolean): WatchConfig {
       feedback: { provider: "fake", model: "fake" },
     },
     optimization: { reviewer_skip_when_detector_corroborated: true },
+    prompt_data: {
+      recent_ohlcv_count: 0, // disabled in tests for compactness
+      indicator_history_count: 0,
+      include_recent_in_finalizer: false,
+      decimals: null,
+      timestamp_format: "time",
+      include_volume: true,
+    },
     notify_on: [],
     include_chart_image: false,
     include_reasoning: true,
@@ -85,12 +93,22 @@ async function buildHarness(injectionDetector: boolean): Promise<Harness> {
     content: Buffer.from("png"),
     mimeType: "image/png",
   });
+  // Stage a minimal OHLCV artifact — `runDetector` now reloads candles
+  // from `snap.ohlcvUri` to render the Recent OHLCV table in the prompt
+  // (since `prompt_data.recent_ohlcv_count` default = 50, the fetch is on
+  // by default). Empty array is fine here ; the format helper returns ""
+  // when no candles, and `{{#if hasRecentOhlcv}}` skips the section.
+  const ohlcvArtifact = await artifactStore.put({
+    kind: "ohlcv_snapshot",
+    content: Buffer.from("[]"),
+    mimeType: "application/json",
+  });
   const tickSnap = await tickSnapshotStore.create({
     watchId,
     tickAt: new Date("2026-04-29T00:00:00Z"),
     asset: "BTCUSDT",
     timeframe: "1h",
-    ohlcvUri: "mem://ohlcv",
+    ohlcvUri: ohlcvArtifact.uri,
     chartUri: chart.uri,
     indicators: {
       rsi: 50,
