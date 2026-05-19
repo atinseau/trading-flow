@@ -34,29 +34,6 @@ function renderConfigFor(id: string): RenderConfig {
   return REGISTRY.find((p) => p.id === id)?.renderConfig ?? FALLBACK_RENDER_CONFIG;
 }
 
-/**
- * Stable color palettes per indicator id. We pick deterministically so EMA
- * stacks always read short=blue / mid=amber / long=red and RSI sits on a
- * teal line — regardless of the order plugins appear in the response.
- * Indicators not listed fall back to a generic ramp.
- *
- * Exported because the chart legend reads the same source — keeping a
- * single map avoids the swatches drifting from what's actually drawn.
- */
-export const INDICATOR_PALETTES: Record<string, string[]> = {
-  ema_stack: ["#3b82f6", "#f59e0b", "#ef4444"],
-  rsi: ["#14b8a6"],
-  volume: ["#94a3b8"],
-  macd: ["#3b82f6", "#f59e0b"],
-  bollinger: ["#a78bfa", "#a78bfa", "#a78bfa"],
-  vwap: ["#10b981"],
-  atr: ["#f97316"],
-  swings_bos: ["#94a3b8"],
-  structure_levels: ["#9ca3af"],
-  liquidity_pools: ["#a78bfa"],
-};
-export const FALLBACK_PALETTE = ["#94a3b8", "#3b82f6", "#f59e0b", "#10b981", "#a78bfa"];
-
 export type ReplayCandle = {
   timestamp: string;
   open: number;
@@ -442,7 +419,6 @@ export function ReplayChart(props: {
       <div ref={containerRef} className="w-full" />
       <ChartLegend
         visibleIndicatorIds={visibleIndicatorIds}
-        indicatorPalettes={INDICATOR_PALETTES}
         eventTypesInWindow={eventTypesInWindow}
       />
       <button

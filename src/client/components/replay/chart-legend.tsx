@@ -1,7 +1,8 @@
+import { REGISTRY } from "@adapters/indicators/IndicatorRegistry";
 import { cn } from "@client/lib/utils";
 import { ChevronDown, ChevronUp, Info } from "lucide-react";
 import type { ReactElement } from "react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { EVENT_LABELS, visualForEvent } from "./replay-marker-config";
 
 /**
@@ -59,14 +60,22 @@ const INDICATOR_LABELS: Record<string, string> = {
 export type ChartLegendProps = {
   /** Indicator ids visible on the chart (after user toggles). */
   visibleIndicatorIds: string[];
-  /** Per-indicator colors as actually used on the chart (passed by parent). */
-  indicatorPalettes: Record<string, string[]>;
   /** Event types currently displayed on the chart (within the playhead). */
   eventTypesInWindow: string[];
 };
 
+const FALLBACK_PALETTE: ReadonlyArray<string> = ["#94a3b8"];
+
 export function ChartLegend(props: ChartLegendProps) {
   const [expanded, setExpanded] = useState(false);
+  // Derive each indicator's palette from REGISTRY → renderConfig.palette.
+  // Single source of truth — no risk of legend swatches drifting from
+  // what's actually drawn on the chart.
+  const palettesById = useMemo(() => {
+    const map: Record<string, ReadonlyArray<string>> = {};
+    for (const p of REGISTRY) map[p.id] = p.renderConfig.palette;
+    return map;
+  }, []);
   if (props.visibleIndicatorIds.length === 0 && props.eventTypesInWindow.length === 0) {
     return null;
   }
@@ -95,7 +104,7 @@ export function ChartLegend(props: ChartLegendProps) {
                 {props.visibleIndicatorIds.map((id) => (
                   <li key={id} className="flex items-center gap-1.5">
                     <span className="inline-flex gap-0.5">
-                      {(props.indicatorPalettes[id] ?? ["#94a3b8"]).map((c, i) => (
+                      {(palettesById[id] ?? FALLBACK_PALETTE).map((c, i) => (
                         // Palette swatches are intentionally tiny + the array
                         // is stable across renders for a given indicator id —
                         // a positional key is the natural identifier here.
