@@ -32,11 +32,17 @@ describe("volumePlugin", () => {
     expect(s.volumePercentile200 as number).toBeLessThanOrEqual(100);
   });
 
-  test("computeSeries returns volumeMa20 lines of length n", () => {
+  test("computeSeries returns compound (histogram bars + MA20 lines) of length n", () => {
     const series = volumePlugin.computeSeries(sampleCandles);
-    if (series.kind !== "lines") throw new Error("expected lines kind");
-    expect(series.series.volumeMa20).toBeDefined();
-    expect(series.series.volumeMa20.length).toBe(250);
+    if (series.kind !== "compound") throw new Error("expected compound kind");
+    const hist = series.parts.find((p) => p.kind === "histogram");
+    const lines = series.parts.find((p) => p.kind === "lines");
+    if (hist?.kind !== "histogram" || lines?.kind !== "lines") {
+      throw new Error("expected histogram + lines parts");
+    }
+    expect(hist.values.length).toBe(250);
+    expect(lines.series.volumeMa20).toBeDefined();
+    expect(lines.series.volumeMa20.length).toBe(250);
   });
 
   test("detectorPromptFragment includes volume labels", () => {

@@ -12,7 +12,21 @@ export const volumePlugin: IndicatorPlugin = {
   computeScalars,
   computeSeries: (c) => {
     const s = computeSeries(c);
-    return { kind: "lines", series: { volumeMa20: s.volumeMa20 } };
+    // Histogram bars (raw volume) + MA20 line — compound so both render.
+    return {
+      kind: "compound",
+      parts: [
+        {
+          kind: "histogram",
+          values: c.map((candle) => ({
+            value: candle.volume,
+            color:
+              candle.close >= candle.open ? "rgba(38,166,154,0.6)" : "rgba(239,83,80,0.6)",
+          })),
+        },
+        { kind: "lines", series: { volumeMa20: s.volumeMa20 } },
+      ],
+    };
   },
   scalarSchemaFragment: () => ({
     volumeMa20: z.number().nonnegative(),

@@ -17,8 +17,9 @@ export type AssetCandle = {
  * Bigger / more detailed than the per-setup TVChart — used on the asset
  * detail page for browsing.
  *
- * Volume is rendered via the unified plugin pipeline (D1): raw bars as a
- * histogram + volumeMa20 line via a compound contribution.
+ * Volume is rendered via the unified plugin pipeline (D1) — the plugin
+ * emits a compound contribution (histogram bars + MA20 line) natively, so
+ * no inline shaping is needed here.
  */
 export function AssetChart({ candles }: { candles: AssetCandle[] }) {
   const adapted = useMemo(
@@ -34,7 +35,6 @@ export function AssetChart({ candles }: { candles: AssetCandle[] }) {
   );
 
   const indicators = useMemo(() => {
-    // Map AssetCandle → Candle domain shape for volumePlugin.computeSeries.
     const candlesForCompute = candles.map((c) => ({
       timestamp: new Date(c.time * 1000),
       open: c.open,
@@ -43,24 +43,11 @@ export function AssetChart({ candles }: { candles: AssetCandle[] }) {
       close: c.close,
       volume: c.volume,
     }));
-
-    // Raw volume histogram bars with green/red coloring per candle direction.
-    const volumeBars = {
-      kind: "histogram" as const,
-      values: candles.map((c) => ({
-        value: c.volume,
-        color: c.close >= c.open ? "rgba(16, 185, 129, 0.5)" : "rgba(239, 68, 68, 0.5)",
-      })),
-    };
-
-    // volumeMa20 line from the plugin.
-    const maContribution = volumePlugin.computeSeries(candlesForCompute as never);
-
     return [
       {
         id: "volume",
         plugin: volumePlugin as never,
-        contribution: { kind: "compound" as const, parts: [volumeBars, maContribution] },
+        contribution: volumePlugin.computeSeries(candlesForCompute as never),
       },
     ];
   }, [candles]);
