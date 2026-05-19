@@ -28,7 +28,7 @@ export const emaStackPlugin: IndicatorPlugin = {
   renderConfig: {
     pane: "price_overlay",
     palette: ["#3b82f6", "#f59e0b", "#ef4444"],
-    seriesLabels: { ema_short: "EMA short", ema_mid: "EMA mid", ema_long: "EMA long" },
+    seriesLabels: { emaShort: "EMA short", emaMid: "EMA mid", emaLong: "EMA long" },
   },
   detectorPromptFragment: detectorFragment,
   paramsSchema: EMA_STACK_PARAMS_SCHEMA,
