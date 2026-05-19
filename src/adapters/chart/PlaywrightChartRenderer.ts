@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { IndicatorRegistry } from "@adapters/indicators/IndicatorRegistry";
 import type { IndicatorSeriesContribution } from "@adapters/indicators/plugins/base/types";
+import type { RenderConfig } from "@domain/charts/types";
 import type { ChartRenderer, ChartRenderResult } from "@domain/ports/ChartRenderer";
 import type { Candle } from "@domain/schemas/Candle";
 import { type Browser, chromium, type Page } from "playwright";
@@ -46,11 +47,12 @@ export class PlaywrightChartRenderer implements ChartRenderer {
     );
     const libSource = await Bun.file(libPath).text();
 
-    // Inline both the lightweight-charts bundle AND the indicator plugin scripts.
-    const pluginScripts = this.registry.allChartScripts();
+    // Build the transpiled framework bundle (5 TS source files → one IIFE).
+    const frameworkBundle = await this.buildFrameworkBundle();
+
     this.templateHtml = rawTemplate
       .replace("<!-- {{LIGHTWEIGHT_CHARTS_INLINE}} -->", `<script>${libSource}</script>`)
-      .replace("<!-- {{INDICATOR_PLUGIN_SCRIPTS}} -->", `<script>${pluginScripts}</script>`);
+      .replace("<!-- {{FRAMEWORK_BUNDLE}} -->", `<script>${frameworkBundle}</script>`);
 
     for (let i = 0; i < size; i++) {
       const page = await this.browser.newPage({
@@ -76,6 +78,26 @@ export class PlaywrightChartRenderer implements ChartRenderer {
     try {
       await page.setViewportSize({ width: args.width, height: args.height });
       await page.setContent(this.templateHtml as string);
+
+      // Build the self-contained indicators array for the new payload shape.
+      const indicators = args.enabledIndicatorIds
+        .map((id) => {
+          const plugin = this.registry.byId(id as never);
+          if (!plugin) return null;
+          const contribution = args.series[id];
+          if (!contribution) return null;
+          return { id, contribution, renderConfig: plugin.renderConfig };
+        })
+        .filter(
+          (
+            i,
+          ): i is {
+            id: string;
+            contribution: IndicatorSeriesContribution;
+            renderConfig: RenderConfig;
+          } => i !== null,
+        );
+
       const payload = {
         candles: args.candles.map((c) => ({
           time: Math.floor(c.timestamp.getTime() / 1000),
@@ -85,12 +107,15 @@ export class PlaywrightChartRenderer implements ChartRenderer {
           close: c.close,
           volume: c.volume,
         })),
-        indicators: args.series,
-        enabledIndicatorIds: args.enabledIndicatorIds,
+        indicators,
       };
+
       await page.evaluate((data) => {
-        (window as unknown as { __renderCandles: (c: unknown) => void }).__renderCandles(data);
+        (
+          window as unknown as { __tradingFlowChart: { render: (p: unknown) => void } }
+        ).__tradingFlowChart.render(data);
       }, payload);
+
       await page.waitForFunction(
         () => (window as unknown as { __chartReady?: boolean }).__chartReady === true,
         { timeout: 5000 },
@@ -131,6 +156,101 @@ export class PlaywrightChartRenderer implements ChartRenderer {
     this.pagesInUse = 0;
     await this.browser?.close().catch(() => {});
     this.browser = null;
+  }
+
+  /**
+   * Transpiles the 5 framework TS source files via Bun.Transpiler and wraps
+   * them in a single IIFE that exposes `window.__tradingFlowChart.render(payload)`.
+   *
+   * The page has no module loader, so we flatten all imports:
+   * - ES `import` statements are stripped (they're either type-only or resolved
+   *   via the IIFE scope from globalThis.LightweightCharts).
+   * - `export` keywords are stripped (all symbols live in the IIFE scope).
+   */
+  private async buildFrameworkBundle(): Promise<string> {
+    const modulesDir = dirname(fileURLToPath(import.meta.url));
+    const transpiler = new Bun.Transpiler({ loader: "ts", target: "browser" });
+    const filenames = [
+      "computeRightOffset.ts",
+      "bandsPrimitive.ts",
+      "paneAllocator.ts",
+      "chartBootstrap.ts",
+      "contributionRenderer.ts",
+    ];
+    const sources = await Promise.all(filenames.map((f) => Bun.file(join(modulesDir, f)).text()));
+    const transpiled = sources
+      .map((s) => transpiler.transformSync(s))
+      // Strip ES imports — lightweight-charts types are erased, sibling
+      // imports are replaced by the flattened IIFE scope.
+      .map((s) => s.replace(/^import\s.*;$/gm, ""))
+      // Strip `export ` keyword — all symbols share the IIFE scope.
+      .map((s) => s.replace(/^export /gm, ""))
+      .join("\n");
+
+    return `
+(() => {
+  // Resolve lightweight-charts globals; readLC() in chartBootstrap/contributionRenderer
+  // picks them up from globalThis.LightweightCharts at call time.
+  const LC = globalThis.LightweightCharts;
+  const { CandlestickSeries, LineSeries, HistogramSeries, createSeriesMarkers } = LC;
+
+  ${transpiled}
+
+  window.__tradingFlowChart = {
+    render(payload) {
+      const container = document.getElementById("chart");
+      const { chart, candleSeries } = createTradingViewChart(container, {
+        width: window.innerWidth,
+        height: window.innerHeight,
+        naked: payload.indicators.length === 0,
+      });
+      candleSeries.setData(payload.candles);
+
+      const ind = payload.indicators.map((i) => ({
+        id: i.id,
+        pane: i.renderConfig.pane,
+        secondaryPaneStretch: i.renderConfig.secondaryPaneStretch,
+      }));
+      const visibility = Object.fromEntries(ind.map((i) => [i.id, true]));
+      const alloc = allocatePanes(ind, visibility);
+
+      const markerBucket = [];
+      const candleTimes = payload.candles.map((c) => c.time);
+
+      for (const i of payload.indicators) {
+        const paneIndex = alloc.assignments[i.id];
+        if (paneIndex === undefined) continue;
+        applyContribution(chart, i.contribution, {
+          id: i.id,
+          renderConfig: i.renderConfig,
+          paneIndex,
+          candleTimes,
+          mainSeries: candleSeries,
+          markerBucket,
+        });
+      }
+
+      for (const [idx, stretch] of alloc.stretches) {
+        chart.panes()[idx]?.setStretchFactor(stretch);
+      }
+
+      const priceOverlayLineCount = payload.indicators
+        .filter((i) => i.renderConfig.pane === "price_overlay")
+        .length;
+      applyRightOffset(chart, { priceOverlayLineCount, priceLineCount: 0 });
+
+      if (markerBucket.length > 0 && createSeriesMarkers) {
+        createSeriesMarkers(candleSeries).setMarkers(markerBucket);
+      }
+
+      chart.timeScale().fitContent();
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        window.__chartReady = true;
+      }));
+    },
+  };
+})();
+`;
   }
 
   private async acquirePage(): Promise<Page> {
