@@ -1,14 +1,15 @@
-import { z } from "zod";
 import type { IndicatorPlugin } from "@domain/services/IndicatorPlugin";
-import { bollingerMetadata } from "./metadata";
+import { z } from "zod";
 import { computeScalars, computeSeries } from "./compute";
-import { detectorFragment, reviewerFragment, featuredFewShotExample } from "./promptFragments";
-import { CHART_SCRIPT } from "./chartScript";
+import { bollingerMetadata } from "./metadata";
+import { detectorFragment, featuredFewShotExample, reviewerFragment } from "./promptFragments";
 
-const BOLLINGER_PARAMS_SCHEMA = z.object({
-  period: z.number().int().min(5).max(100),
-  std_mul: z.number().min(0.5).max(4),
-}).strict();
+const BOLLINGER_PARAMS_SCHEMA = z
+  .object({
+    period: z.number().int().min(5).max(100),
+    std_mul: z.number().min(0.5).max(4),
+  })
+  .strict();
 
 export const bollingerPlugin: IndicatorPlugin = {
   ...bollingerMetadata,
@@ -18,11 +19,27 @@ export const bollingerPlugin: IndicatorPlugin = {
     return { kind: "lines", series: { upper: s.upper, lower: s.lower, middle: s.middle } };
   },
   scalarSchemaFragment: () => ({
-    bbUpper: z.number(), bbMiddle: z.number(), bbLower: z.number(),
+    bbUpper: z.number(),
+    bbMiddle: z.number(),
+    bbLower: z.number(),
     bbBandwidthPct: z.number(),
     bbBandwidthPercentile200: z.number().min(0).max(100),
   }),
-  chartScript: CHART_SCRIPT, chartPane: "price_overlay",
+  chartPane: "price_overlay",
+  renderConfig: {
+    pane: "price_overlay",
+    // Same hue for the 3 lines (BB is a single indicator visually) but the
+    // middle SMA20 is dashed + thinner so the eye reads the upper+lower
+    // pair as the envelope and middle as the centerline. Closer to the
+    // TradingView default look.
+    palette: ["#a78bfa", "#a78bfa", "#a78bfa"],
+    seriesLabels: { upper: "BB up", middle: "BB mid", lower: "BB lo" },
+    linesStyles: {
+      upper: { lineWidth: 1 },
+      middle: { lineWidth: 1, lineStyle: 2 },
+      lower: { lineWidth: 1 },
+    },
+  },
   detectorPromptFragment: detectorFragment,
   reviewerPromptFragment: reviewerFragment,
   featuredFewShotExample,

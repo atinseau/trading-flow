@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import type { FieldErrors } from "react-hook-form";
 import { firstError } from "@client/components/watch-form";
+import type { FieldErrors } from "react-hook-form";
 
 describe("firstError", () => {
   test("returns null on empty errors", () => {
@@ -41,7 +41,9 @@ describe("firstError", () => {
   test("top-level 'root' (form-level setError) → '(form)' fallback", () => {
     // RHF types `root` as `Record<string, FieldError> & FieldError` — cast to
     // bypass the intersection-with-record requirement in this isolated test.
-    const errs = { root: { type: "manual", message: "submission rejected" } } as unknown as FieldErrors;
+    const errs = {
+      root: { type: "manual", message: "submission rejected" },
+    } as unknown as FieldErrors;
     expect(firstError(errs)).toEqual({ path: "(form)", message: "submission rejected" });
   });
 

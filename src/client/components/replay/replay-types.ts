@@ -98,7 +98,7 @@ export type OhlcvResponse = {
    * Per-plugin indicator series computed by the backend on the same candle
    * range. Empty when the watch has no indicators enabled. The plotter
    * dispatches on `kind` (lines / priceLines / markers / histogram /
-   * compound) — see `applyIndicatorToChart`.
+   * compound) — see `applyContribution` in `@adapters/chart/contributionRenderer`.
    */
   indicators?: Record<string, IndicatorSeriesContribution>;
   /**

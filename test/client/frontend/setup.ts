@@ -19,7 +19,7 @@ export function ensureHappyDom(): void {
 
 const cliArgs = process.argv.slice(1);
 const wantsFrontend =
-  process.env.TF_HAPPY_DOM === "1" || cliArgs.some((a) => a.includes("test/client/frontend"));
+  process.env.TF_HAPPY_DOM === "1" || cliArgs.some((a) => a.includes("test/client/"));
 
 if (wantsFrontend) {
   ensureHappyDom();

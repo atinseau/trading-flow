@@ -8,8 +8,12 @@ const baseWatch = {
   schedule: { timezone: "UTC" },
   candles: { detector_lookback: 200, reviewer_lookback: 500, reviewer_chart_window: 150 },
   setup_lifecycle: {
-    ttl_candles: 50, score_initial: 25, score_threshold_finalizer: 80,
-    score_threshold_dead: 10, invalidation_policy: "strict", min_risk_reward_ratio: 2,
+    ttl_candles: 50,
+    score_initial: 25,
+    score_threshold_finalizer: 80,
+    score_threshold_dead: 10,
+    invalidation_policy: "strict",
+    min_risk_reward_ratio: 2,
   },
   analyzers: {
     detector: { provider: "claude_max", model: "claude-sonnet-4-6", max_tokens: 2000 },
@@ -20,8 +24,8 @@ const baseWatch = {
 };
 
 describe("WatchSchema.indicators", () => {
-  test("KNOWN_INDICATOR_IDS exposes 10 plugins", () => {
-    expect(KNOWN_INDICATOR_IDS.length).toBe(10);
+  test("KNOWN_INDICATOR_IDS exposes 11 plugins", () => {
+    expect(KNOWN_INDICATOR_IDS.length).toBe(11);
     expect(KNOWN_INDICATOR_IDS).toContain("rsi");
     expect(KNOWN_INDICATOR_IDS).toContain("ema_stack");
     expect(KNOWN_INDICATOR_IDS).toContain("volume");

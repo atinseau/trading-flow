@@ -1,4 +1,6 @@
 import { Badge } from "@client/components/ui/badge";
+import { renderObservation } from "@client/lib/renderObservation";
+import type { Observation } from "@domain/schemas/Verdict";
 import { useState } from "react";
 
 export type SetupEvent = {
@@ -14,7 +16,7 @@ export type SetupEvent = {
     type: string;
     data: {
       reasoning?: string;
-      observations?: string[];
+      observations?: Array<Observation | string>;
       freshDataSummary?: { lastClose: number; candlesSinceCreation: number };
     };
   };
@@ -78,11 +80,14 @@ export function EventsTimeline({ events }: { events: SetupEvent[] }) {
                       Observations
                     </p>
                     <ul className="space-y-1">
-                      {e.payload.data.observations.map((o) => (
-                        <li key={o} className="border-l-2 border-primary pl-2 text-[11px]">
-                          {o}
-                        </li>
-                      ))}
+                      {e.payload.data.observations.map((o) => {
+                        const text = renderObservation(o);
+                        return (
+                          <li key={text} className="border-l-2 border-primary pl-2 text-[11px]">
+                            {text}
+                          </li>
+                        );
+                      })}
                     </ul>
                   </div>
                 )}

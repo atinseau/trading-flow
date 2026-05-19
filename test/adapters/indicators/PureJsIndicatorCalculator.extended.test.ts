@@ -47,7 +47,7 @@ function syntheticCandles(
 describe("PureJsIndicatorCalculator — extended indicators", () => {
   test("VWAP sits between candle low and high (sanity)", async () => {
     const candles = syntheticCandles(250);
-    const ind = await calc.compute(candles, allPlugins) as Record<string, unknown>;
+    const ind = (await calc.compute(candles, allPlugins)) as Record<string, unknown>;
     const last = candles[candles.length - 1];
     expect(last).toBeDefined();
     if (!last) return;
@@ -61,7 +61,7 @@ describe("PureJsIndicatorCalculator — extended indicators", () => {
 
   test("Bollinger middle equals SMA20 by construction", async () => {
     const candles = syntheticCandles(250);
-    const ind = await calc.compute(candles, allPlugins) as Record<string, unknown>;
+    const ind = (await calc.compute(candles, allPlugins)) as Record<string, unknown>;
     const closes = candles.slice(-20).map((c) => c.close);
     const sma20 = closes.reduce((a, b) => a + b, 0) / 20;
     expect(ind.bbMiddle).toBeCloseTo(sma20, 5);
@@ -79,7 +79,7 @@ describe("PureJsIndicatorCalculator — extended indicators", () => {
       close: 100,
       volume: 100,
     }));
-    const ind = await calc.compute(candles, allPlugins) as Record<string, unknown>;
+    const ind = (await calc.compute(candles, allPlugins)) as Record<string, unknown>;
     expect(ind.macd).toBeCloseTo(0, 5);
     expect(ind.macdSignal).toBeCloseTo(0, 5);
     expect(ind.macdHist).toBeCloseTo(0, 5);
@@ -94,7 +94,7 @@ describe("PureJsIndicatorCalculator — extended indicators", () => {
       close: 101 + i,
       volume: 100,
     }));
-    const ind = await calc.compute(candles, allPlugins) as Record<string, unknown>;
+    const ind = (await calc.compute(candles, allPlugins)) as Record<string, unknown>;
     expect(ind.macd).toBeGreaterThan(0);
     expect(ind.macdSignal).toBeGreaterThan(0);
   });
@@ -108,7 +108,7 @@ describe("PureJsIndicatorCalculator — extended indicators", () => {
       close: 100,
       volume: 100,
     }));
-    const ind = await calc.compute(candles, allPlugins) as Record<string, unknown>;
+    const ind = (await calc.compute(candles, allPlugins)) as Record<string, unknown>;
     expect(ind.atrZScore200).toBeCloseTo(0, 5);
   });
 
@@ -165,7 +165,7 @@ describe("PureJsIndicatorCalculator — extended indicators", () => {
         volume: 100,
       });
     }
-    const ind = await calc.compute(candles, allPlugins) as Record<string, unknown>;
+    const ind = (await calc.compute(candles, allPlugins)) as Record<string, unknown>;
     expect(ind.bosState).toBe("bullish");
   });
 
@@ -194,13 +194,13 @@ describe("PureJsIndicatorCalculator — extended indicators", () => {
         volume: 100,
       };
     }
-    const ind = await calc.compute(candles, allPlugins) as Record<string, unknown>;
+    const ind = (await calc.compute(candles, allPlugins)) as Record<string, unknown>;
     expect(ind.equalHighsCount).toBeGreaterThanOrEqual(2);
   });
 
   test("POC is within candle range", async () => {
     const candles = syntheticCandles(250);
-    const ind = await calc.compute(candles, allPlugins) as Record<string, unknown>;
+    const ind = (await calc.compute(candles, allPlugins)) as Record<string, unknown>;
     const minLow = Math.min(...candles.slice(-50).map((c) => c.low));
     const maxHigh = Math.max(...candles.slice(-50).map((c) => c.high));
     expect(ind.pocPrice).toBeGreaterThanOrEqual(minLow);
@@ -234,18 +234,24 @@ describe("PureJsIndicatorCalculator — extended indicators", () => {
       expect(bbContrib.series["upper"]?.length).toBe(250);
     }
 
-    // macd plugin: lines kind with macd/signal/hist series
+    // macd plugin: compound (lines: macd+signal, histogram: hist)
     const macdContrib = seriesMap["macd"];
-    expect(macdContrib?.kind).toBe("lines");
-    if (macdContrib?.kind === "lines") {
-      expect(macdContrib.series["macd"]?.length).toBe(250);
+    expect(macdContrib?.kind).toBe("compound");
+    if (macdContrib?.kind === "compound") {
+      const macdLines = macdContrib.parts.find((p) => p.kind === "lines");
+      if (macdLines?.kind === "lines") {
+        expect(macdLines.series["macd"]?.length).toBe(250);
+      }
     }
 
-    // rsi plugin: lines kind with rsi series
+    // rsi plugin: compound (lines: rsi, priceLines: 70/30 reference)
     const rsiContrib = seriesMap["rsi"];
-    expect(rsiContrib?.kind).toBe("lines");
-    if (rsiContrib?.kind === "lines") {
-      expect(rsiContrib.series["rsi"]?.length).toBe(250);
+    expect(rsiContrib?.kind).toBe("compound");
+    if (rsiContrib?.kind === "compound") {
+      const rsiLines = rsiContrib.parts.find((p) => p.kind === "lines");
+      if (rsiLines?.kind === "lines") {
+        expect(rsiLines.series["rsi"]?.length).toBe(250);
+      }
     }
   });
 });

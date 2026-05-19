@@ -1,21 +1,30 @@
-import type { IndicatorPlugin } from "@domain/services/IndicatorPlugin";
+import type { RenderConfig } from "@domain/charts/types";
 import type { IndicatorId, WatchConfig } from "@domain/schemas/WatchesConfig";
-import { emaStackPlugin } from "./plugins/ema_stack";
-import { vwapPlugin } from "./plugins/vwap";
-import { bollingerPlugin } from "./plugins/bollinger";
-import { rsiPlugin } from "./plugins/rsi";
-import { macdPlugin } from "./plugins/macd";
+import type { IndicatorPlugin } from "@domain/services/IndicatorPlugin";
 import { atrPlugin } from "./plugins/atr";
-import { volumePlugin } from "./plugins/volume";
-import { swingsBosPlugin } from "./plugins/swings_bos";
-import { structureLevelsPlugin } from "./plugins/structure_levels";
+import { bollingerPlugin } from "./plugins/bollinger";
+import { emaStackPlugin } from "./plugins/ema_stack";
+import { fibonacciPlugin } from "./plugins/fibonacci";
 import { liquidityPoolsPlugin } from "./plugins/liquidity_pools";
+import { macdPlugin } from "./plugins/macd";
+import { rsiPlugin } from "./plugins/rsi";
+import { structureLevelsPlugin } from "./plugins/structure_levels";
+import { swingsBosPlugin } from "./plugins/swings_bos";
+import { volumePlugin } from "./plugins/volume";
+import { vwapPlugin } from "./plugins/vwap";
 
 export const REGISTRY: ReadonlyArray<IndicatorPlugin> = [
-  emaStackPlugin, vwapPlugin, bollingerPlugin,
-  rsiPlugin, macdPlugin, atrPlugin,
+  emaStackPlugin,
+  vwapPlugin,
+  bollingerPlugin,
+  rsiPlugin,
+  macdPlugin,
+  atrPlugin,
   volumePlugin,
-  swingsBosPlugin, structureLevelsPlugin, liquidityPoolsPlugin,
+  swingsBosPlugin,
+  structureLevelsPlugin,
+  liquidityPoolsPlugin,
+  fibonacciPlugin,
 ] as const;
 
 export class IndicatorRegistry {
@@ -29,8 +38,14 @@ export class IndicatorRegistry {
     return this.plugins.find((p) => p.id === id);
   }
 
-  allChartScripts(): string {
-    return this.plugins.map((p) => p.chartScript).join("\n");
+  /**
+   * Returns each plugin's renderConfig keyed by plugin id. Used by
+   * PlaywrightChartRenderer to ship per-indicator render preferences into
+   * the page payload (since the page-side dispatcher can't import the
+   * plugin objects).
+   */
+  allRenderConfigs(): Record<string, RenderConfig> {
+    return Object.fromEntries(this.plugins.map((p) => [p.id, p.renderConfig]));
   }
 
   all(): ReadonlyArray<IndicatorPlugin> {

@@ -1,5 +1,5 @@
-import { z } from "zod";
 import type { IndicatorPlugin } from "@domain/services/IndicatorPlugin";
+import { z } from "zod";
 
 /**
  * Builds a per-watch indicators schema from the active plugin set.

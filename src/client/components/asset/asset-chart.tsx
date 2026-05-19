@@ -1,12 +1,7 @@
-import {
-  CandlestickSeries,
-  createChart,
-  HistogramSeries,
-  type IChartApi,
-  type ISeriesApi,
-  type Time,
-} from "lightweight-charts";
-import { useEffect, useRef } from "react";
+import { REGISTRY } from "@adapters/indicators/IndicatorRegistry";
+import { type IndicatorEntry, TradingViewChart } from "@client/components/charts/TradingViewChart";
+import type { UTCTimestamp } from "lightweight-charts";
+import { useMemo } from "react";
 
 export type AssetCandle = {
   time: number; // unix seconds
@@ -18,88 +13,67 @@ export type AssetCandle = {
 };
 
 /**
- * Full-width interactive candlestick + volume chart.
- * Bigger / more detailed than the per-setup TVChart — used on the asset
- * detail page for browsing.
+ * Full-width interactive candlestick chart with optional indicator overlays.
+ *
+ * Every bundled indicator is pre-computed client-side from the candle
+ * history (default params per plugin) and exposed via the framework's
+ * built-in chip controls — user picks which ones to reveal. Plugins that
+ * self-disable on unsupported data (volume + vwap on zero-volume forex
+ * pairs) return an empty compound and TradingViewChart drops them from
+ * the chip list automatically.
+ *
+ * No backend coupling here : the asset page doesn't know about watches,
+ * so the indicator set is the full REGISTRY rather than a watch-config
+ * subset.
  */
 export function AssetChart({ candles }: { candles: AssetCandle[] }) {
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const chartRef = useRef<IChartApi | null>(null);
-  const candleSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
-  const volumeSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null);
+  const adapted = useMemo(
+    () =>
+      candles.map((c) => ({
+        time: c.time as UTCTimestamp,
+        open: c.open,
+        high: c.high,
+        low: c.low,
+        close: c.close,
+      })),
+    [candles],
+  );
 
-  useEffect(() => {
-    if (!containerRef.current) return;
-    const chart = createChart(containerRef.current, {
-      layout: { background: { color: "transparent" }, textColor: "rgb(229, 231, 235)" },
-      grid: {
-        vertLines: { color: "rgba(60, 64, 72, 0.4)" },
-        horzLines: { color: "rgba(60, 64, 72, 0.4)" },
-      },
-      timeScale: { timeVisible: true, secondsVisible: false, borderVisible: false },
-      rightPriceScale: { borderVisible: false },
-      width: containerRef.current.clientWidth,
-      height: 480,
-    });
-
-    const candleSeries = chart.addSeries(CandlestickSeries, {
-      upColor: "#10b981",
-      downColor: "#ef4444",
-      borderUpColor: "#10b981",
-      borderDownColor: "#ef4444",
-      wickUpColor: "#10b981",
-      wickDownColor: "#ef4444",
-    });
-    candleSeries.priceScale().applyOptions({ scaleMargins: { top: 0.05, bottom: 0.25 } });
-
-    const volumeSeries = chart.addSeries(HistogramSeries, {
-      priceFormat: { type: "volume" },
-      priceScaleId: "volume",
-    });
-    volumeSeries.priceScale().applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } });
-
-    chartRef.current = chart;
-    candleSeriesRef.current = candleSeries;
-    volumeSeriesRef.current = volumeSeries;
-
-    const onResize = (): void => {
-      if (containerRef.current) chart.applyOptions({ width: containerRef.current.clientWidth });
-    };
-    window.addEventListener("resize", onResize);
-
-    return () => {
-      window.removeEventListener("resize", onResize);
-      chart.remove();
-      chartRef.current = null;
-      candleSeriesRef.current = null;
-      volumeSeriesRef.current = null;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    if (!candleSeriesRef.current || !volumeSeriesRef.current) return;
-    const candleData = candles.map((c) => ({
-      time: c.time as Time,
+  const indicators: IndicatorEntry[] = useMemo(() => {
+    const candlesForCompute = candles.map((c) => ({
+      timestamp: new Date(c.time * 1000),
       open: c.open,
       high: c.high,
       low: c.low,
       close: c.close,
+      volume: c.volume,
     }));
-    const volumeData = candles.map((c) => ({
-      time: c.time as Time,
-      value: c.volume,
-      color: c.close >= c.open ? "rgba(16, 185, 129, 0.5)" : "rgba(239, 68, 68, 0.5)",
+    return REGISTRY.map((plugin) => ({
+      id: plugin.id,
+      plugin: plugin as IndicatorEntry["plugin"],
+      // biome-ignore lint/suspicious/noExplicitAny: bypass strict Candle typing for fixture-shaped data
+      contribution: plugin.computeSeries(candlesForCompute as any),
     }));
-    candleSeriesRef.current.setData(candleData);
-    volumeSeriesRef.current.setData(volumeData);
-    chartRef.current?.timeScale().fitContent();
   }, [candles]);
 
+  // Volume defaults visible (universal context when the plugin emits it),
+  // the rest hidden so the chart stays uncluttered. Volume plugins that
+  // self-disable on zero-volume data are filtered out by TradingViewChart
+  // before they reach the chips — `initialVisibility` for volume becomes
+  // a no-op in that case.
+  const initialVisibility = useMemo(
+    () => Object.fromEntries(REGISTRY.map((p) => [p.id, p.id === "volume"])),
+    [],
+  );
+
   return (
-    <div
-      ref={containerRef}
-      className="w-full bg-card border border-border rounded-md overflow-hidden"
+    <TradingViewChart
+      candles={adapted}
+      indicators={indicators}
+      enableControls
+      enableFullscreen
+      initialVisibility={initialVisibility}
+      height={480}
     />
   );
 }

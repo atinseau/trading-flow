@@ -103,7 +103,7 @@ describe("PureJsIndicatorCalculator — detectBosState (max-index across all swi
     for (let k = 0; k < 145; k++) {
       candles[100 + k] = breachCandle(100 + k, 105 + k);
     }
-    const ind = await calc.compute(candles, swingsBosPlugin) as BosInd;
+    const ind = (await calc.compute(candles, swingsBosPlugin)) as BosInd;
     expect(ind.bosState).toBe("bullish");
   });
 
@@ -114,7 +114,7 @@ describe("PureJsIndicatorCalculator — detectBosState (max-index across all swi
     for (let k = 0; k < 145; k++) {
       candles[100 + k] = breachCandle(100 + k, 95 - k * 0.3);
     }
-    const ind = await calc.compute(candles, swingsBosPlugin) as BosInd;
+    const ind = (await calc.compute(candles, swingsBosPlugin)) as BosInd;
     expect(ind.bosState).toBe("bearish");
   });
 
@@ -127,7 +127,7 @@ describe("PureJsIndicatorCalculator — detectBosState (max-index across all swi
     // (trough 99). No subsequent close ever exceeds 101 or drops below 99.
     candles[60] = peakCandle(60, 101);
     candles[120] = troughCandle(120, 99);
-    const ind = await calc.compute(candles, swingsBosPlugin) as BosInd;
+    const ind = (await calc.compute(candles, swingsBosPlugin)) as BosInd;
     expect(ind.bosState).toBe("none");
   });
 
@@ -169,7 +169,7 @@ describe("PureJsIndicatorCalculator — detectBosState (max-index across all swi
     candles[200] = breachCandle(200, 89);
     candles[201] = breachCandle(201, 89);
     candles[202] = breachCandle(202, 89);
-    const ind = await calc.compute(candles, swingsBosPlugin) as BosInd;
+    const ind = (await calc.compute(candles, swingsBosPlugin)) as BosInd;
     expect(ind.bosState).toBe("bearish");
   });
 

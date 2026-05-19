@@ -24,5 +24,10 @@ export function computeScalars(candles: Candle[], params?: Record<string, unknow
 }
 export function computeSeries(candles: Candle[], params?: Record<string, unknown>) {
   const { fast, slow, signal } = readParams(params);
-  return macdSeriesAligned(candles.map((c) => c.close), fast, slow, signal);
+  return macdSeriesAligned(
+    candles.map((c) => c.close),
+    fast,
+    slow,
+    signal,
+  );
 }

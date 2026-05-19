@@ -31,7 +31,7 @@ export const KNOWN_ASSET_SOURCES = ["binance", "yahoo"] as const;
 // - plugins: IndicatorRegistry in src/adapters/indicators/IndicatorRegistry.ts
 // Adding a new indicator requires touching this schema, registering a plugin
 // in src/adapters/indicators/IndicatorRegistry.ts (with metadata, compute,
-// chartScript, promptFragments), and the tf-web wizard pickers — by design.
+// renderConfig, promptFragments), and the tf-web wizard pickers — by design.
 export const KNOWN_INDICATOR_IDS = [
   "ema_stack",
   "vwap",
@@ -43,6 +43,7 @@ export const KNOWN_INDICATOR_IDS = [
   "swings_bos",
   "structure_levels",
   "liquidity_pools",
+  "fibonacci",
 ] as const;
 export type IndicatorId = (typeof KNOWN_INDICATOR_IDS)[number];
 

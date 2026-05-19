@@ -23,8 +23,6 @@ import { TickSnapshotsContextProvider } from "@adapters/feedback-context/TickSna
 import { IndicatorRegistry } from "@adapters/indicators/IndicatorRegistry";
 import { PureJsIndicatorCalculator } from "@adapters/indicators/PureJsIndicatorCalculator";
 import { buildProviderRegistry } from "@adapters/llm/buildProviderRegistry";
-import { FewShotEngine } from "@domain/services/FewShotEngine";
-import { PromptBuilder } from "@domain/services/PromptBuilder";
 import { BinanceFetcher } from "@adapters/market-data/BinanceFetcher";
 import { YahooFinanceFetcher } from "@adapters/market-data/YahooFinanceFetcher";
 import { ConsoleNotifier } from "@adapters/notify/ConsoleNotifier";
@@ -43,6 +41,8 @@ import type { MarketDataFetcher } from "@domain/ports/MarketDataFetcher";
 import type { Notifier } from "@domain/ports/Notifier";
 import type { PriceFeed } from "@domain/ports/PriceFeed";
 import type { WatchConfig } from "@domain/schemas/WatchesConfig";
+import { FewShotEngine } from "@domain/services/FewShotEngine";
+import { PromptBuilder } from "@domain/services/PromptBuilder";
 import { getLogger } from "@observability/logger";
 import type { Client } from "@temporalio/client";
 import type { ActivityDeps } from "@workflows/activityDependencies";

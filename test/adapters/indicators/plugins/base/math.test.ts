@@ -1,8 +1,17 @@
 import { describe, expect, test } from "bun:test";
 import {
-  ema, emaSeriesAligned, atrSeries, rsi, rsiSeriesAligned,
-  bollingerLast, bollingerSeriesAligned, macdSeriesAligned,
-  rollingMaAligned, percentileOf, zScoreOfLast, movingAverage,
+  atrSeries,
+  bollingerLast,
+  bollingerSeriesAligned,
+  ema,
+  emaSeriesAligned,
+  macdSeriesAligned,
+  movingAverage,
+  percentileOf,
+  rollingMaAligned,
+  rsi,
+  rsiSeriesAligned,
+  zScoreOfLast,
 } from "@adapters/indicators/plugins/base/math";
 
 describe("base/math", () => {
@@ -12,7 +21,7 @@ describe("base/math", () => {
   });
 
   test("rsi on strictly increasing closes is 100", () => {
-    expect(rsi([1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16], 14)).toBe(100);
+    expect(rsi([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16], 14)).toBe(100);
   });
 
   test("percentileOf returns 50 on empty sample", () => {
@@ -20,7 +29,7 @@ describe("base/math", () => {
   });
 
   test("zScoreOfLast returns 0 on flat series", () => {
-    expect(zScoreOfLast([1,1,1,1,1,1], 6)).toBe(0);
+    expect(zScoreOfLast([1, 1, 1, 1, 1, 1], 6)).toBe(0);
   });
 
   test("emaSeriesAligned has length n with leading nulls before warm-up", () => {

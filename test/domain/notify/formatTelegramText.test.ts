@@ -5,8 +5,8 @@ import {
   formatInvalidatedAfterConfirmedPreview,
   formatRejectedPreview,
   formatReviewerVerdictPreview,
-  formatSLHitPreview,
   formatSetupCreatedPreview,
+  formatSLHitPreview,
   formatTPHitPreview,
 } from "@domain/notify/formatTelegramText";
 

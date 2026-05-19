@@ -27,10 +27,20 @@ describe("TelegramNotifier (offline)", () => {
   // the network. `new InputFile(path)` is lazy — it only opens the file when
   // grammy's transport layer reads it, which doesn't happen when we stub.
   function stubBotApi(notifier: TelegramNotifier) {
-    const calls: Array<{ method: string; chatId: string; textLen: number; hasCaption: boolean; hasButtons: boolean }> = [];
+    const calls: Array<{
+      method: string;
+      chatId: string;
+      textLen: number;
+      hasCaption: boolean;
+      hasButtons: boolean;
+    }> = [];
     // biome-ignore lint/suspicious/noExplicitAny: deliberate test-only override of private field
     (notifier as any).bot.api = {
-      sendPhoto: async (chatId: string, _file: unknown, opts?: { caption?: string; reply_markup?: unknown }) => {
+      sendPhoto: async (
+        chatId: string,
+        _file: unknown,
+        opts?: { caption?: string; reply_markup?: unknown },
+      ) => {
         calls.push({
           method: "sendPhoto",
           chatId,

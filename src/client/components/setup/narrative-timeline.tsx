@@ -1,3 +1,5 @@
+import { renderObservation } from "@client/lib/renderObservation";
+import type { Observation } from "@domain/schemas/Verdict";
 import { useMemo, useState } from "react";
 import { fmtCost } from "../../lib/format";
 import { cn } from "../../lib/utils";
@@ -117,7 +119,9 @@ function PhaseHeader({
 }
 
 function ReasoningBlock({ event }: { event: SetupEvent }) {
-  const data = event.payload?.data as { reasoning?: string; observations?: string[] } | undefined;
+  const data = event.payload?.data as
+    | { reasoning?: string; observations?: Array<Observation | string> }
+    | undefined;
   if (!data?.reasoning && (!data?.observations || data.observations.length === 0)) {
     return null;
   }
@@ -130,12 +134,15 @@ function ReasoningBlock({ event }: { event: SetupEvent }) {
       )}
       {data.observations && data.observations.length > 0 && (
         <ul className="space-y-1 ml-3">
-          {data.observations.map((o) => (
-            <li key={o} className="text-[11px] text-muted-foreground">
-              <span className="text-primary mr-1">·</span>
-              {o}
-            </li>
-          ))}
+          {data.observations.map((o) => {
+            const text = renderObservation(o);
+            return (
+              <li key={text} className="text-[11px] text-muted-foreground">
+                <span className="text-primary mr-1">·</span>
+                {text}
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>

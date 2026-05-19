@@ -1,13 +1,14 @@
-import { z } from "zod";
 import type { IndicatorPlugin } from "@domain/services/IndicatorPlugin";
-import { atrMetadata } from "./metadata";
+import { z } from "zod";
 import { computeScalars, computeSeries } from "./compute";
+import { atrMetadata } from "./metadata";
 import { detectorFragment, reviewerFragment } from "./promptFragments";
-import { CHART_SCRIPT } from "./chartScript";
 
-const ATR_PARAMS_SCHEMA = z.object({
-  period: z.number().int().min(2).max(50),
-}).strict();
+const ATR_PARAMS_SCHEMA = z
+  .object({
+    period: z.number().int().min(2).max(50),
+  })
+  .strict();
 
 export const atrPlugin: IndicatorPlugin = {
   ...atrMetadata,
@@ -21,7 +22,17 @@ export const atrPlugin: IndicatorPlugin = {
     atrMa20: z.number().nonnegative(),
     atrZScore200: z.number(),
   }),
-  chartScript: CHART_SCRIPT, chartPane: "secondary", secondaryPaneStretch: 11,
+  chartPane: "secondary",
+  secondaryPaneStretch: 11,
+  renderConfig: {
+    pane: "secondary",
+    // Distinct hues : orange for ATR (the raw indicator), light gray for
+    // its MA20 smoother + dashed (clearly subordinate).
+    palette: ["#f97316", "#94a3b8"],
+    secondaryPaneStretch: 11,
+    seriesLabels: { atr: "ATR", atrMa20: "ATR MA20" },
+    linesStyles: { atrMa20: { lineWidth: 1, lineStyle: 2 } },
+  },
   detectorPromptFragment: detectorFragment,
   reviewerPromptFragment: reviewerFragment,
   preFilterCriterion: "atr_ratio_min",

@@ -1,15 +1,31 @@
-import { z } from "zod";
 import type { IndicatorPlugin } from "@domain/services/IndicatorPlugin";
-import { vwapMetadata } from "./metadata";
+import { z } from "zod";
 import { computeScalars, computeSeries } from "./compute";
+import { vwapMetadata } from "./metadata";
 import { detectorFragment } from "./promptFragments";
-import { CHART_SCRIPT } from "./chartScript";
 
 export const vwapPlugin: IndicatorPlugin = {
   ...vwapMetadata,
   computeScalars,
-  computeSeries: (c) => ({ kind: "lines", series: computeSeries(c) }),
+  // VWAP needs volume to be meaningful — on a zero-volume feed (Yahoo
+  // forex) the weighted average degenerates to the unweighted average,
+  // visually a flat dotted line indistinguishable from the last-price
+  // line. Drop the rendering when no candle carries volume.
+  computeSeries: (c) => {
+    if (!c.some((candle) => candle.volume > 0)) {
+      return { kind: "compound", parts: [] };
+    }
+    return { kind: "lines", series: computeSeries(c) };
+  },
   scalarSchemaFragment: () => ({ vwapSession: z.number(), priceVsVwapPct: z.number() }),
-  chartScript: CHART_SCRIPT, chartPane: "price_overlay",
+  chartPane: "price_overlay",
+  renderConfig: {
+    pane: "price_overlay",
+    palette: ["#10b981"],
+    // computeSeries returns `{ vwapSession: ... }` — the seriesLabels key
+    // must match. Was previously named "vwap" which fell back to
+    // `vwap:vwapSession` literal in the legend.
+    seriesLabels: { vwap: "VWAP" },
+  },
   detectorPromptFragment: detectorFragment,
 };

@@ -7,7 +7,7 @@ afterEach(() => {
 
 test("loadPrompt('detector') returns rendered template + version", async () => {
   const result = await loadPrompt("detector");
-  expect(result.version).toBe("detector_v6");
+  expect(result.version).toBe("detector_v7");
   expect(typeof result.render).toBe("function");
 
   // Render with sample context — uses new template variables from PromptBuilder

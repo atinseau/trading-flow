@@ -51,8 +51,7 @@ export function classifyRegime(indicators: IndicatorScalars, htf: HtfContext | n
   }
   if (squeeze)
     rationale += `; squeeze (BB ${bbBandwidthPct.toFixed(2)}%, ATR z=${atrZScore200.toFixed(2)})`;
-  if (volatilityExpansion)
-    rationale += `; vol expansion (ATR z=${atrZScore200.toFixed(2)})`;
+  if (volatilityExpansion) rationale += `; vol expansion (ATR z=${atrZScore200.toFixed(2)})`;
 
   return { label, squeeze, volatilityExpansion, rationale };
 }

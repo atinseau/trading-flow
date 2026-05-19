@@ -3,9 +3,13 @@ import { buildConfidenceBreakdownSchema } from "@domain/schemas/ConfidenceBreakd
 import type { IndicatorPlugin } from "@domain/services/IndicatorPlugin";
 
 const plugin = (id: string, axes: IndicatorPlugin["breakdownAxes"]): IndicatorPlugin => ({
-  id: id as never, displayName: id, tag: "trend",
-  shortDescription: "", longDescription: "",
-  chartScript: "", chartPane: "price_overlay",
+  id: id as never,
+  displayName: id,
+  tag: "trend",
+  shortDescription: "",
+  longDescription: "",
+  chartPane: "price_overlay",
+  renderConfig: { pane: "price_overlay", palette: [] },
   computeScalars: () => ({}),
   computeSeries: () => ({ kind: "lines", series: {} }),
   scalarSchemaFragment: () => ({}),

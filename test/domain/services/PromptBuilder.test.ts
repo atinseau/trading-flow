@@ -1,12 +1,17 @@
 // test/domain/services/PromptBuilder.test.ts
-import { describe, expect, test, beforeAll } from "bun:test";
-import { PromptBuilder } from "@domain/services/PromptBuilder";
-import { FewShotEngine } from "@domain/services/FewShotEngine";
+import { beforeAll, describe, expect, test } from "bun:test";
 import { IndicatorRegistry } from "@adapters/indicators/IndicatorRegistry";
+import { FewShotEngine } from "@domain/services/FewShotEngine";
+import { PromptBuilder } from "@domain/services/PromptBuilder";
 
 const baseArgs = {
-  asset: "BTCUSDT", timeframe: "1h", tickAt: new Date("2026-04-30T10:00:00Z"),
-  scalars: {}, activeLessons: [], aliveSetups: [], htf: undefined,
+  asset: "BTCUSDT",
+  timeframe: "1h",
+  tickAt: new Date("2026-04-30T10:00:00Z"),
+  scalars: {},
+  activeLessons: [],
+  aliveSetups: [],
+  htf: undefined,
 };
 
 describe("PromptBuilder.buildDetectorPrompt", () => {
@@ -18,7 +23,8 @@ describe("PromptBuilder.buildDetectorPrompt", () => {
 
   test("naked: contains 'Naked-mode' and no Indicators block", async () => {
     const out = await builder.buildDetectorPrompt({
-      ...baseArgs, indicatorsMatrix: {},
+      ...baseArgs,
+      indicatorsMatrix: {},
     });
     expect(out).toContain("Naked-mode analysis");
     expect(out).not.toContain("## Indicators (fresh data");

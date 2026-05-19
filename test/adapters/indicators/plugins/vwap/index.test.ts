@@ -3,7 +3,11 @@ import { vwapPlugin } from "@adapters/indicators/plugins/vwap";
 
 const sampleCandles = Array.from({ length: 250 }, (_, i) => ({
   timestamp: new Date(Date.UTC(2026, 0, 1, i)),
-  open: 100, high: 101, low: 99, close: 100 + Math.sin(i / 10), volume: 1000,
+  open: 100,
+  high: 101,
+  low: 99,
+  close: 100 + Math.sin(i / 10),
+  volume: 1000,
 }));
 
 describe("vwapPlugin", () => {
@@ -34,10 +38,6 @@ describe("vwapPlugin", () => {
     expect(txt).not.toBeNull();
     expect(txt).toContain("VWAP session");
     expect(txt).toContain("price vs VWAP");
-  });
-
-  test("chartScript contains registerPlugin vwap", () => {
-    expect(vwapPlugin.chartScript).toContain('__registerPlugin("vwap"');
   });
 });
 
@@ -88,8 +88,8 @@ describe("vwapPlugin — session edge cases [ported]", () => {
   test("hand-computed single-day VWAP matches", () => {
     const stepMs = 60_000;
     const fiveCandles = [
-      { ts: 0 * stepMs, h: 102, l: 98, c: 100, v: 100 },  // typical = 100
-      { ts: 1 * stepMs, h: 103, l: 99, c: 101, v: 200 },  // typical = 101
+      { ts: 0 * stepMs, h: 102, l: 98, c: 100, v: 100 }, // typical = 100
+      { ts: 1 * stepMs, h: 103, l: 99, c: 101, v: 200 }, // typical = 101
       { ts: 2 * stepMs, h: 105, l: 101, c: 103, v: 300 }, // typical = 103
       { ts: 3 * stepMs, h: 104, l: 100, c: 102, v: 100 }, // typical = 102
       { ts: 4 * stepMs, h: 106, l: 102, c: 104, v: 400 }, // typical = 104

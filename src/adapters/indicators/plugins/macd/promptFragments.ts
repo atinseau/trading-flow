@@ -2,7 +2,9 @@ export function detectorFragment(
   s: Record<string, unknown>,
   params?: Record<string, unknown>,
 ): string | null {
-  const m = s.macd, sig = s.macdSignal, h = s.macdHist;
+  const m = s.macd,
+    sig = s.macdSignal,
+    h = s.macdHist;
   if (typeof m !== "number" || typeof sig !== "number" || typeof h !== "number") return null;
   const fast = typeof params?.fast === "number" ? params.fast : 12;
   const slow = typeof params?.slow === "number" ? params.slow : 26;

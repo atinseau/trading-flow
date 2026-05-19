@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test";
+import type { StoredReplayEvent } from "@domain/ports/ReplayEventStore";
 import {
   buildReplayFeedbackContext,
   deriveSetupTimeline,
   formatSetupEventsMarkdown,
 } from "@domain/replay/feedbackContext";
-import type { StoredReplayEvent } from "@domain/ports/ReplayEventStore";
 import { FakeChartRenderer } from "@test-fakes/FakeChartRenderer";
 import { FakeMarketDataFetcher } from "@test-fakes/FakeMarketDataFetcher";
 import { InMemoryArtifactStore } from "@test-fakes/InMemoryArtifactStore";

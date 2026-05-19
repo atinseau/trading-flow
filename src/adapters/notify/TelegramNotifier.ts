@@ -1,8 +1,4 @@
-import type {
-  NotificationButton,
-  NotificationImage,
-  Notifier,
-} from "@domain/ports/Notifier";
+import type { NotificationButton, NotificationImage, Notifier } from "@domain/ports/Notifier";
 import { Bot, InputFile } from "grammy";
 import {
   encodeCallbackData,
@@ -68,7 +64,13 @@ export class TelegramNotifier implements Notifier {
 
     if (args.images?.length === 1) {
       const uri = args.images[0]?.uri;
-      if (uri) return this.sendPhotoOrSplit({ chatId: args.chatId, text: args.text, parseMode, imageUri: uri });
+      if (uri)
+        return this.sendPhotoOrSplit({
+          chatId: args.chatId,
+          text: args.text,
+          parseMode,
+          imageUri: uri,
+        });
     }
 
     if (args.images && args.images.length > 1) {

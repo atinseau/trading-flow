@@ -3,7 +3,11 @@ import { macdPlugin } from "@adapters/indicators/plugins/macd";
 
 const sampleCandles = Array.from({ length: 250 }, (_, i) => ({
   timestamp: new Date(Date.UTC(2026, 0, 1, i)),
-  open: 100, high: 101, low: 99, close: 100 + Math.sin(i / 10), volume: 1000,
+  open: 100,
+  high: 101,
+  low: 99,
+  close: 100 + Math.sin(i / 10),
+  volume: 1000,
 }));
 
 describe("macdPlugin", () => {
@@ -24,13 +28,18 @@ describe("macdPlugin", () => {
     expect(typeof s.macdHist).toBe("number");
   });
 
-  test("computeSeries returns lines kind with macd/signal/hist", () => {
+  test("computeSeries returns compound (lines: macd+signal, histogram: hist)", () => {
     const series = macdPlugin.computeSeries(sampleCandles);
-    if (series.kind !== "lines") throw new Error("expected lines kind");
-    expect(series.series.macd).toBeDefined();
-    expect(series.series.signal).toBeDefined();
-    expect(series.series.hist).toBeDefined();
-    expect(series.series.macd.length).toBe(250);
+    if (series.kind !== "compound") throw new Error("expected compound kind");
+    const lines = series.parts.find((p) => p.kind === "lines");
+    const hist = series.parts.find((p) => p.kind === "histogram");
+    if (lines?.kind !== "lines" || hist?.kind !== "histogram") {
+      throw new Error("expected lines + histogram parts");
+    }
+    expect(lines.series.macd).toBeDefined();
+    expect(lines.series.signal).toBeDefined();
+    expect(lines.series.macd.length).toBe(250);
+    expect(hist.values.length).toBe(250);
   });
 
   test("detectorPromptFragment includes macd/signal/hist labels", () => {
@@ -47,10 +56,6 @@ describe("macdPlugin", () => {
     const txt = macdPlugin.reviewerPromptFragment?.(s);
     expect(txt).toBeTruthy();
     expect(txt!.length).toBeLessThan(60);
-  });
-
-  test("chartScript contains registerPlugin macd", () => {
-    expect(macdPlugin.chartScript).toContain('__registerPlugin("macd"');
   });
 
   test("computeScalars uses default params when no params", () => {
@@ -72,11 +77,17 @@ describe("macdPlugin", () => {
     expect(() => macdPlugin.paramsSchema!.parse({ fast: 1, slow: 26, signal: 9 })).toThrow(); // fast below min
     expect(() => macdPlugin.paramsSchema!.parse({ fast: 12, slow: 51, signal: 9 })).toThrow(); // slow above max
     expect(() => macdPlugin.paramsSchema!.parse({ fast: 26, slow: 12, signal: 9 })).toThrow(); // fast >= slow
-    expect(macdPlugin.paramsSchema!.parse({ fast: 12, slow: 26, signal: 9 })).toEqual({ fast: 12, slow: 26, signal: 9 });
+    expect(macdPlugin.paramsSchema!.parse({ fast: 12, slow: 26, signal: 9 })).toEqual({
+      fast: 12,
+      slow: 26,
+      signal: 9,
+    });
   });
 
   test("defaultParams matches schema", () => {
-    expect(macdPlugin.paramsSchema!.parse(macdPlugin.defaultParams!)).toEqual(macdPlugin.defaultParams!);
+    expect(macdPlugin.paramsSchema!.parse(macdPlugin.defaultParams!)).toEqual(
+      macdPlugin.defaultParams!,
+    );
   });
 });
 
@@ -93,15 +104,29 @@ function fromCloses(closes: number[], stepMs = 900_000, startMs = 0) {
   }));
 }
 
+/** Extract macd/signal lines and the hist histogram values from a MACD
+ *  compound contribution. Folds out the `{value, color}` envelope on hist
+ *  back to a plain `(number | null)[]` for the math assertions below. */
+function unwrapMacd(c: ReturnType<typeof macdPlugin.computeSeries>) {
+  if (c.kind !== "compound") throw new Error("expected compound");
+  const lines = c.parts.find((p) => p.kind === "lines");
+  const hist = c.parts.find((p) => p.kind === "histogram");
+  if (lines?.kind !== "lines" || hist?.kind !== "histogram") {
+    throw new Error("expected lines + histogram parts");
+  }
+  const histPlain = hist.values.map((v) =>
+    v == null ? null : typeof v === "number" ? v : v.value,
+  );
+  return { macd: lines.series.macd, signal: lines.series.signal, hist: histPlain };
+}
+
 describe("macdPlugin — deeper coverage [ported]", () => {
   test("histogram === macd - signal across many indices", () => {
     const closes = Array.from({ length: 250 }, (_, i) => 100 + Math.sin(i / 7) * 10 + i * 0.05);
     const candles = fromCloses(closes);
-    const raw = macdPlugin.computeSeries(candles);
-    if (raw.kind !== "lines") throw new Error("expected lines kind");
-    const macdArr = raw.series.macd;
-    const signalArr = raw.series.signal;
-    const histArr = raw.series.hist;
+    const { macd: macdArr, signal: signalArr, hist: histArr } = unwrapMacd(
+      macdPlugin.computeSeries(candles),
+    );
     let checked = 0;
     for (let i = 0; i < macdArr.length; i++) {
       const m = macdArr[i];
@@ -119,9 +144,7 @@ describe("macdPlugin — deeper coverage [ported]", () => {
     for (let i = 0; i < 150; i++) closes.push(200 - i * 0.5);
     for (let i = 0; i < 100; i++) closes.push(125 + i * 0.8);
     const candles = fromCloses(closes);
-    const raw = macdPlugin.computeSeries(candles);
-    if (raw.kind !== "lines") throw new Error("expected lines kind");
-    const histArr = raw.series.hist;
+    const { hist: histArr } = unwrapMacd(macdPlugin.computeSeries(candles));
     const downHist = histArr[130];
     expect(downHist).not.toBeNull();
     expect(downHist as number).toBeLessThan(0);
@@ -133,9 +156,7 @@ describe("macdPlugin — deeper coverage [ported]", () => {
   test("cycling sine series → macd takes both positive and negative values", () => {
     const closes = Array.from({ length: 400 }, (_, i) => 100 + Math.sin(i / 10) * 5);
     const candles = fromCloses(closes);
-    const raw = macdPlugin.computeSeries(candles);
-    if (raw.kind !== "lines") throw new Error("expected lines kind");
-    const macdArr = raw.series.macd;
+    const { macd: macdArr } = unwrapMacd(macdPlugin.computeSeries(candles));
     let posCount = 0;
     let negCount = 0;
     for (const v of macdArr) {

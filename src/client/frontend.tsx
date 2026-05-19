@@ -1,3 +1,5 @@
+import "@client/lib/setupLightweightChartsGlobal";
+
 import { Toaster } from "@client/components/ui/sonner";
 import { queryClient } from "@client/lib/queryClient";
 import { ErrorPage } from "@client/routes/error";

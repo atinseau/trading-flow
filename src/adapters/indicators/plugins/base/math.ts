@@ -92,7 +92,12 @@ export function emaSeriesAligned(values: number[], period: number, n: number): (
 
 // ─── ATR + Z-score ────────────────────────────────────────────────────────
 
-export function atrSeries(highs: number[], lows: number[], closes: number[], period: number): number[] {
+export function atrSeries(
+  highs: number[],
+  lows: number[],
+  closes: number[],
+  period: number,
+): number[] {
   const trs: number[] = [];
   for (let i = 1; i < highs.length; i++) {
     const h = highs[i];

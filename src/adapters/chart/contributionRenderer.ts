@@ -1,0 +1,232 @@
+import type { IndicatorSeriesContribution, RenderConfig } from "@domain/charts/types";
+import type {
+  IChartApi,
+  IPriceLine,
+  ISeriesApi,
+  ISeriesPrimitive,
+  SeriesMarker,
+  Time,
+  UTCTimestamp,
+} from "lightweight-charts";
+import { BandsPrimitive } from "./bandsPrimitive";
+
+// RenderConfig lives in @domain/charts/types — re-exported here for
+// adapter-side convenience.
+export type { RenderConfig } from "@domain/charts/types";
+
+export type ApplyContributionOpts = {
+  id: string;
+  renderConfig: RenderConfig;
+  /** Pane index resolved by `paneAllocator`. 0 = main pane. */
+  paneIndex: number;
+  candleTimes: UTCTimestamp[];
+  mainSeries: ISeriesApi<"Candlestick">;
+  /** Mutable bucket — markers from this indicator are pushed in. The
+   *  parent commits all markers in one createSeriesMarkers() call. */
+  markerBucket: SeriesMarker<Time>[];
+};
+
+export type ApplyContributionResult = {
+  cleanup(): void;
+};
+
+function readLC(): {
+  LineSeries: unknown;
+  HistogramSeries: unknown;
+} {
+  const lc = (globalThis as { LightweightCharts?: unknown }).LightweightCharts as
+    | { LineSeries: unknown; HistogramSeries: unknown }
+    | undefined;
+  if (!lc) {
+    throw new Error(
+      "[contributionRenderer] globalThis.LightweightCharts is undefined. " +
+        "Import `@client/lib/setupLightweightChartsGlobal` at boot, " +
+        "or ensure the standalone bundle is injected before invoking the Playwright renderer.",
+    );
+  }
+  return lc;
+}
+
+export function applyContribution(
+  chart: IChartApi,
+  contribution: IndicatorSeriesContribution,
+  opts: ApplyContributionOpts,
+): ApplyContributionResult {
+  const LC = readLC();
+  const createdSeries: ISeriesApi<"Line" | "Histogram">[] = [];
+  const createdPriceLines: Array<{ series: ISeriesApi<"Candlestick">; line: IPriceLine }> = [];
+  const createdPrimitives: Array<{
+    series: ISeriesApi<"Candlestick">;
+    primitive: ISeriesPrimitive<Time>;
+  }> = [];
+
+  function pickColor(index: number): string {
+    const palette = opts.renderConfig.palette;
+    if (palette.length === 0) return "#94a3b8";
+    return palette[index % palette.length] as string;
+  }
+
+  function labelFor(name: string): string {
+    return opts.renderConfig.seriesLabels?.[name] ?? `${opts.id}:${name}`;
+  }
+
+  function applyOne(c: IndicatorSeriesContribution): void {
+    switch (c.kind) {
+      case "lines": {
+        const entries = Object.entries(c.series);
+        entries.forEach(([name, values], idx) => {
+          const style = opts.renderConfig.linesStyles?.[name];
+          const series = chart.addSeries(
+            LC.LineSeries as never,
+            {
+              color: pickColor(idx),
+              lineWidth: style?.lineWidth ?? 2,
+              lineStyle: style?.lineStyle ?? 0,
+              priceLineVisible: false,
+              lastValueVisible: false,
+              title: labelFor(name),
+            },
+            opts.paneIndex,
+          ) as ISeriesApi<"Line">;
+          const data = alignToTimes(opts.candleTimes, values);
+          series.setData(data);
+          createdSeries.push(series);
+        });
+        return;
+      }
+      case "priceLines": {
+        // Attach to the LAST series created in this contribution (handles
+        // the compound `{lines + priceLines}` pattern used by RSI for its
+        // 70/30 overbought/oversold reference lines — they need to sit in
+        // the indicator's own secondary pane, not on the main candle pane).
+        // Falls back to mainSeries when this contribution didn't create any
+        // line/histogram of its own — that's the structure_levels /
+        // liquidity_pools / fibonacci case (anchor + Fib levels go on the
+        // main candle pane).
+        const target = (createdSeries[createdSeries.length - 1] ??
+          opts.mainSeries) as ISeriesApi<"Candlestick" | "Line" | "Histogram">;
+        for (const line of c.lines) {
+          const created = target.createPriceLine({
+            price: line.price,
+            color: line.color,
+            lineWidth: 1,
+            lineStyle: line.style,
+            axisLabelVisible: line.title !== "",
+            title: line.title,
+          });
+          createdPriceLines.push({ series: target as ISeriesApi<"Candlestick">, line: created });
+        }
+        return;
+      }
+      case "markers": {
+        for (const m of c.markers) {
+          const t = opts.candleTimes[m.index];
+          if (t === undefined) continue;
+          opts.markerBucket.push({
+            time: t,
+            position: m.position === "above" ? "aboveBar" : "belowBar",
+            shape: m.shape,
+            color: m.color,
+            text: m.text,
+          });
+        }
+        return;
+      }
+      case "histogram": {
+        const series = chart.addSeries(
+          LC.HistogramSeries as never,
+          {
+            priceLineVisible: false,
+            lastValueVisible: false,
+            // Histograms have no per-series name key in the contribution
+            // shape, so resolve the label via a conventional
+            // `seriesLabels.histogram` lookup. Lets plugins like MACD
+            // distinguish their histogram ("Hist") from the lines
+            // ("MACD" / "Signal") instead of falling back to the
+            // plugin id.
+            title: opts.renderConfig.seriesLabels?.histogram ?? opts.id,
+          },
+          opts.paneIndex,
+        ) as ISeriesApi<"Histogram">;
+        const data = c.values
+          .map((v, i) => {
+            const time = opts.candleTimes[i];
+            if (time === undefined || v === null) return null;
+            if (typeof v === "number") return { time, value: v };
+            return { time, value: v.value, color: v.color };
+          })
+          .filter((d): d is { time: UTCTimestamp; value: number; color?: string } => d !== null);
+        series.setData(data);
+        createdSeries.push(series);
+        return;
+      }
+      case "bands": {
+        const primitive = new BandsPrimitive(opts.mainSeries, c.bands);
+        opts.mainSeries.attachPrimitive(primitive);
+        createdPrimitives.push({ series: opts.mainSeries, primitive });
+        return;
+      }
+      case "compound": {
+        for (const part of c.parts) applyOne(part);
+        return;
+      }
+    }
+  }
+
+  applyOne(contribution);
+
+  // After all parts are applied, optionally clamp the secondary pane's
+  // price scale. Must happen AFTER any invisible anchor priceLines the
+  // plugin emits (e.g. RSI's invisible 0 / 100) so the scale auto-fits to
+  // include them before we turn autoScale off — that's how the [0, 100]
+  // bounding works.
+  const psOpts = opts.renderConfig.priceScaleOptions;
+  if (psOpts && createdSeries[0]) {
+    try {
+      createdSeries[0].priceScale().applyOptions(psOpts);
+    } catch {
+      // ignore — series may have been torn down between create and apply
+    }
+  }
+
+  return {
+    cleanup() {
+      for (const s of createdSeries) {
+        try {
+          chart.removeSeries(s);
+        } catch {
+          // chart already torn down — ignore.
+        }
+      }
+      for (const { series, line } of createdPriceLines) {
+        try {
+          series.removePriceLine(line);
+        } catch {
+          // ignore.
+        }
+      }
+      for (const { series, primitive } of createdPrimitives) {
+        try {
+          series.detachPrimitive(primitive);
+        } catch {
+          // ignore.
+        }
+      }
+    },
+  };
+}
+
+export function alignToTimes(
+  times: UTCTimestamp[],
+  values: (number | null)[],
+): { time: UTCTimestamp; value: number }[] {
+  const out: { time: UTCTimestamp; value: number }[] = [];
+  const n = Math.min(times.length, values.length);
+  for (let i = 0; i < n; i++) {
+    const v = values[i];
+    const t = times[i];
+    if (v === null || v === undefined || t === undefined) continue;
+    out.push({ time: t, value: v });
+  }
+  return out;
+}

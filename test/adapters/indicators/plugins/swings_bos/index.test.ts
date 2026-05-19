@@ -56,10 +56,6 @@ describe("swingsBosPlugin", () => {
     expect(txt).toContain("BOS state");
   });
 
-  test("chartScript contains registerPlugin swings_bos", () => {
-    expect(swingsBosPlugin.chartScript).toContain('__registerPlugin("swings_bos"');
-  });
-
   test("featuredFewShotExample contains BOS reaction pattern", () => {
     const ex = swingsBosPlugin.featuredFewShotExample?.();
     expect(ex).toBeTruthy();
@@ -80,7 +76,8 @@ describe("swingsBosPlugin", () => {
     expect(["bullish", "bearish", "none"]).toContain(sCustom.bosState as string);
     // Different lookback => different number of swings detected => potentially different ages
     // (even if bosState is same, the swing ages will differ)
-    const defaultHasResult = sDefault.lastSwingHighAge !== null || sCustom.lastSwingHighAge !== null;
+    const defaultHasResult =
+      sDefault.lastSwingHighAge !== null || sCustom.lastSwingHighAge !== null;
     expect(defaultHasResult).toBe(true);
   });
 
@@ -92,7 +89,9 @@ describe("swingsBosPlugin", () => {
   });
 
   test("defaultParams matches schema", () => {
-    expect(swingsBosPlugin.paramsSchema!.parse(swingsBosPlugin.defaultParams!)).toEqual(swingsBosPlugin.defaultParams!);
+    expect(swingsBosPlugin.paramsSchema!.parse(swingsBosPlugin.defaultParams!)).toEqual(
+      swingsBosPlugin.defaultParams!,
+    );
   });
 });
 

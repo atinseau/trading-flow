@@ -1,4 +1,4 @@
-import { expect, test, describe } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { computeInputHash } from "@domain/services/inputHash";
 
 const BASE = {

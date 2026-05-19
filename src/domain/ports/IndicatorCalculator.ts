@@ -1,6 +1,6 @@
+import type { IndicatorSeriesContribution } from "@adapters/indicators/plugins/base/types";
 import type { Candle } from "@domain/schemas/Candle";
 import type { IndicatorPlugin } from "@domain/services/IndicatorPlugin";
-import type { IndicatorSeriesContribution } from "@adapters/indicators/plugins/base/types";
 
 export type IndicatorSeries = Record<string, IndicatorSeriesContribution>;
 

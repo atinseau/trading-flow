@@ -1,12 +1,16 @@
 import { describe, expect, test } from "bun:test";
+import { IndicatorRegistry } from "@adapters/indicators/IndicatorRegistry";
 import { FewShotEngine } from "@domain/services/FewShotEngine";
 import type { IndicatorPlugin } from "@domain/services/IndicatorPlugin";
-import { IndicatorRegistry } from "@adapters/indicators/IndicatorRegistry";
 
 const fakePlugin = (id: string, example: string | null): IndicatorPlugin => ({
-  id: id as never, displayName: id, tag: "trend",
-  shortDescription: "", longDescription: "",
-  chartScript: "", chartPane: "price_overlay",
+  id: id as never,
+  displayName: id,
+  tag: "trend",
+  shortDescription: "",
+  longDescription: "",
+  chartPane: "price_overlay",
+  renderConfig: { pane: "price_overlay", palette: [] },
   computeScalars: () => ({}),
   computeSeries: () => ({ kind: "lines", series: {} }),
   scalarSchemaFragment: () => ({}),

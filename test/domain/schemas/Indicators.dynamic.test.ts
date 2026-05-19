@@ -4,9 +4,13 @@ import type { IndicatorPlugin } from "@domain/services/IndicatorPlugin";
 import { z } from "zod";
 
 const fakePlugin = (id: string, shape: z.ZodRawShape): IndicatorPlugin => ({
-  id: id as never, displayName: id, tag: "trend",
-  shortDescription: "", longDescription: "",
-  chartScript: "", chartPane: "price_overlay",
+  id: id as never,
+  displayName: id,
+  tag: "trend",
+  shortDescription: "",
+  longDescription: "",
+  chartPane: "price_overlay",
+  renderConfig: { pane: "price_overlay", palette: [] },
   computeScalars: () => ({}),
   computeSeries: () => ({ kind: "lines", series: {} }),
   scalarSchemaFragment: () => shape,
@@ -24,7 +28,9 @@ describe("buildIndicatorsSchema", () => {
     const b = fakePlugin("volume", { lastVolume: z.number(), volumeMa20: z.number() });
     const schema = buildIndicatorsSchema([a, b]);
     expect(schema.parse({ rsi: 50, lastVolume: 100, volumeMa20: 80 })).toEqual({
-      rsi: 50, lastVolume: 100, volumeMa20: 80,
+      rsi: 50,
+      lastVolume: 100,
+      volumeMa20: 80,
     });
     expect(() => schema.parse({ rsi: 50 })).toThrow();
   });

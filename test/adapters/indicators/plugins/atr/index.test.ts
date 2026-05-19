@@ -3,7 +3,11 @@ import { atrPlugin } from "@adapters/indicators/plugins/atr";
 
 const sampleCandles = Array.from({ length: 250 }, (_, i) => ({
   timestamp: new Date(Date.UTC(2026, 0, 1, i)),
-  open: 100, high: 101, low: 99, close: 100 + Math.sin(i / 10), volume: 1000,
+  open: 100,
+  high: 101,
+  low: 99,
+  close: 100 + Math.sin(i / 10),
+  volume: 1000,
 }));
 
 describe("atrPlugin", () => {
@@ -49,10 +53,6 @@ describe("atrPlugin", () => {
     expect(txt!.length).toBeLessThan(60);
   });
 
-  test("chartScript contains registerPlugin atr", () => {
-    expect(atrPlugin.chartScript).toContain('__registerPlugin("atr"');
-  });
-
   test("computeScalars uses default period when no params", () => {
     const s = atrPlugin.computeScalars(sampleCandles);
     expect(s.atr).toBeDefined();
@@ -66,7 +66,11 @@ describe("atrPlugin", () => {
       const vol = i < 125 ? 1 : 3;
       return {
         timestamp: new Date(Date.UTC(2026, 0, 1, i)),
-        open: 100, high: 100 + vol, low: 100 - vol, close: 100, volume: 1000,
+        open: 100,
+        high: 100 + vol,
+        low: 100 - vol,
+        close: 100,
+        volume: 1000,
       };
     });
     const sDefault = atrPlugin.computeScalars(volatileCandles);
@@ -84,6 +88,8 @@ describe("atrPlugin", () => {
   });
 
   test("defaultParams matches schema", () => {
-    expect(atrPlugin.paramsSchema!.parse(atrPlugin.defaultParams!)).toEqual(atrPlugin.defaultParams!);
+    expect(atrPlugin.paramsSchema!.parse(atrPlugin.defaultParams!)).toEqual(
+      atrPlugin.defaultParams!,
+    );
   });
 });

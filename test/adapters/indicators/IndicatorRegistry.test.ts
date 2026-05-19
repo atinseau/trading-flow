@@ -31,13 +31,9 @@ describe("IndicatorRegistry (foundation)", () => {
 
   test("byId returns undefined for unknown id", () => {
     const reg = new IndicatorRegistry([]);
-    expect(reg.byId("volume" as Parameters<InstanceType<typeof IndicatorRegistry>["byId"]>[0])).toBeUndefined();
-  });
-
-  test("allChartScripts returns rsi chart script", () => {
-    const reg = new IndicatorRegistry();
-    expect(reg.allChartScripts()).toContain("rsi");
-    expect(reg.allChartScripts()).toContain("RSI(14)");
+    expect(
+      reg.byId("volume" as Parameters<InstanceType<typeof IndicatorRegistry>["byId"]>[0]),
+    ).toBeUndefined();
   });
 
   test("all() returns array containing rsiPlugin", () => {
