@@ -26,8 +26,8 @@ function InfoCard() {
         indicateur l'ajoute à la fois sur le chart et dans le prompt.
       </p>
       <p className="text-muted-foreground">
-        Plus d'indicateurs = plus de tokens dans chaque appel LLM (~ +5% de coût par indicateur).
-        Le score de confiance final s'adapte aux indicateurs activés.
+        Plus d'indicateurs = plus de tokens dans chaque appel LLM (~ +5% de coût par indicateur). Le
+        score de confiance final s'adapte aux indicateurs activés.
       </p>
     </Card>
   );

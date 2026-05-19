@@ -30,8 +30,7 @@ import { useFormContext } from "react-hook-form";
 function PluginInactiveHint({ label }: { label: string }) {
   return (
     <p className="text-xs text-amber-600 dark:text-amber-400">
-      Activé uniquement si l'indicateur <strong>{label}</strong> est coché dans la step
-      Indicateurs.
+      Activé uniquement si l'indicateur <strong>{label}</strong> est coché dans la step Indicateurs.
     </p>
   );
 }
@@ -229,9 +228,7 @@ export function SectionAdvanced() {
                         min={0}
                         max={2}
                         disabled={!isStructureLevelsActive}
-                        className={
-                          !isStructureLevelsActive ? "opacity-50 cursor-not-allowed" : ""
-                        }
+                        className={!isStructureLevelsActive ? "opacity-50 cursor-not-allowed" : ""}
                         {...field}
                         onChange={(e) => field.onChange(Number(e.target.value))}
                       />
@@ -448,8 +445,8 @@ export function SectionAdvanced() {
                   <FormLabel>Fast-path événementiel</FormLabel>
                   <FormDescription>
                     Permet aux setups événementiels de très haute conviction (score ≥ seuil et
-                    maturation = 1 tick) de passer du Detector directement au Finalizer dans le
-                    même tick. Économise 15-60min sur les sweeps/breakouts clean. Désactive si tu
+                    maturation = 1 tick) de passer du Detector directement au Finalizer dans le même
+                    tick. Économise 15-60min sur les sweeps/breakouts clean. Désactive si tu
                     préfères toujours au moins une passe Reviewer.
                   </FormDescription>
                 </div>
@@ -471,15 +468,15 @@ export function SectionAdvanced() {
               <span>Coûts de trading</span>
             </div>
             <p className="mt-1 text-left text-xs text-muted-foreground">
-              Calibre les frais et le slippage pour que le R:R du Finalizer soit calculé après
-              coûts implicites.
+              Calibre les frais et le slippage pour que le R:R du Finalizer soit calculé après coûts
+              implicites.
             </p>
           </div>
         </AccordionTrigger>
         <AccordionContent className="space-y-4 pt-2">
           <p className="text-xs text-muted-foreground">
-            Presets : Binance perp ≈ 0.04% / 0.05% • Binance spot ≈ 0.2% / 0.05% • Yahoo equities
-            ≈ 0.1% / 0.5% • Forex broker ≈ 0% / 0.02%.
+            Presets : Binance perp ≈ 0.04% / 0.05% • Binance spot ≈ 0.2% / 0.05% • Yahoo equities ≈
+            0.1% / 0.5% • Forex broker ≈ 0% / 0.02%.
           </p>
           <FormField
             control={f.control}
@@ -723,8 +720,8 @@ export function SectionAdvanced() {
             <div>
               <div className="text-sm font-medium">Compaction de l'historique</div>
               <p className="mt-1 text-xs text-muted-foreground">
-                Contrôle combien d'événements bruts sont injectés dans le contexte LLM avant que
-                les plus anciens soient résumés.
+                Contrôle combien d'événements bruts sont injectés dans le contexte LLM avant que les
+                plus anciens soient résumés.
               </p>
             </div>
 

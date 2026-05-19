@@ -1,12 +1,15 @@
 import { describe, expect, test } from "bun:test";
-import { z } from "zod";
 import { rsiPlugin } from "@adapters/indicators/plugins/rsi";
+import { z } from "zod";
 
 const candles = (count: number, baseClose = 100) =>
   Array.from({ length: count }, (_, i) => ({
     timestamp: new Date(Date.UTC(2026, 0, 1, i)),
-    open: baseClose, high: baseClose + 1, low: baseClose - 1,
-    close: baseClose + (i % 3 - 1), volume: 1000,
+    open: baseClose,
+    high: baseClose + 1,
+    low: baseClose - 1,
+    close: baseClose + ((i % 3) - 1),
+    volume: 1000,
   }));
 
 describe("rsiPlugin", () => {
@@ -74,6 +77,8 @@ describe("rsiPlugin", () => {
   });
 
   test("defaultParams matches schema", () => {
-    expect(rsiPlugin.paramsSchema!.parse(rsiPlugin.defaultParams!)).toEqual(rsiPlugin.defaultParams!);
+    expect(rsiPlugin.paramsSchema!.parse(rsiPlugin.defaultParams!)).toEqual(
+      rsiPlugin.defaultParams!,
+    );
   });
 });

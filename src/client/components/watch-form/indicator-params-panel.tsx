@@ -1,7 +1,7 @@
-import { useFormContext } from "react-hook-form";
 import { Input } from "@client/components/ui/input";
 import { Label } from "@client/components/ui/label";
 import type { IndicatorClientMetadata } from "@domain/services/IndicatorPlugin";
+import { useFormContext } from "react-hook-form";
 
 export function IndicatorParamsPanel({ meta }: { meta: IndicatorClientMetadata }) {
   const form = useFormContext();

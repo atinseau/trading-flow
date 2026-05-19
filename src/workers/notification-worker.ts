@@ -123,10 +123,7 @@ const workflowClient = new Client({
         // WorkflowNotFoundError in the current Temporal SDK
         // (see @temporalio/common errors.d.ts: "Workflow is closed").
         if (err instanceof WorkflowNotFoundError) {
-          log.info(
-            { setupId: setupCb.setupId },
-            "kill ignored: workflow already terminated",
-          );
+          log.info({ setupId: setupCb.setupId }, "kill ignored: workflow already terminated");
           try {
             await ctx.editMessageReplyMarkup({ reply_markup: undefined });
           } catch (editErr) {

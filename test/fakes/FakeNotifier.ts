@@ -1,8 +1,4 @@
-import type {
-  NotificationButton,
-  NotificationImage,
-  Notifier,
-} from "@domain/ports/Notifier";
+import type { NotificationButton, NotificationImage, Notifier } from "@domain/ports/Notifier";
 
 export class FakeNotifier implements Notifier {
   sentMessages: {

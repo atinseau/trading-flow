@@ -2,8 +2,8 @@ import { createHash } from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import type { IndicatorRegistry } from "@adapters/indicators/IndicatorRegistry";
 import type { IndicatorSeriesContribution } from "@adapters/indicators/plugins/base/types";
-import { IndicatorRegistry } from "@adapters/indicators/IndicatorRegistry";
 import type { ChartRenderer, ChartRenderResult } from "@domain/ports/ChartRenderer";
 import type { Candle } from "@domain/schemas/Candle";
 import { type Browser, chromium, type Page } from "playwright";
@@ -49,20 +49,14 @@ export class PlaywrightChartRenderer implements ChartRenderer {
     // Inline both the lightweight-charts bundle AND the indicator plugin scripts.
     const pluginScripts = this.registry.allChartScripts();
     this.templateHtml = rawTemplate
-      .replace(
-        "<!-- {{LIGHTWEIGHT_CHARTS_INLINE}} -->",
-        `<script>${libSource}</script>`,
-      )
-      .replace(
-        "<!-- {{INDICATOR_PLUGIN_SCRIPTS}} -->",
-        `<script>${pluginScripts}</script>`,
-      );
+      .replace("<!-- {{LIGHTWEIGHT_CHARTS_INLINE}} -->", `<script>${libSource}</script>`)
+      .replace("<!-- {{INDICATOR_PLUGIN_SCRIPTS}} -->", `<script>${pluginScripts}</script>`);
 
     for (let i = 0; i < size; i++) {
       const page = await this.browser.newPage({
         viewport: { width: 1280, height: 720 },
         locale: "en-US",
-        deviceScaleFactor: 2,  // higher pixel density → sharper screenshots after resize cap
+        deviceScaleFactor: 2, // higher pixel density → sharper screenshots after resize cap
       });
       await page.setContent(this.templateHtml);
       this.pagePool.push(page);
@@ -156,7 +150,7 @@ export class PlaywrightChartRenderer implements ChartRenderer {
     return this.browser.newPage({
       viewport: { width: 1280, height: 720 },
       locale: "en-US",
-      deviceScaleFactor: 2,  // higher pixel density → sharper screenshots after resize cap
+      deviceScaleFactor: 2, // higher pixel density → sharper screenshots after resize cap
     });
   }
 

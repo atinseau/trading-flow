@@ -9,10 +9,25 @@ function readPeriod(params?: Record<string, unknown>): number {
   return typeof p === "number" ? p : RSI_DEFAULT_PARAMS.period;
 }
 
-export function computeRsiScalar(candles: Candle[], params?: Record<string, unknown>): { rsi: number } {
-  return { rsi: rsiCalc(candles.map((c) => c.close), readPeriod(params)) };
+export function computeRsiScalar(
+  candles: Candle[],
+  params?: Record<string, unknown>,
+): { rsi: number } {
+  return {
+    rsi: rsiCalc(
+      candles.map((c) => c.close),
+      readPeriod(params),
+    ),
+  };
 }
 
-export function computeRsiSeries(candles: Candle[], params?: Record<string, unknown>): (number | null)[] {
-  return rsiSeriesAligned(candles.map((c) => c.close), readPeriod(params), candles.length);
+export function computeRsiSeries(
+  candles: Candle[],
+  params?: Record<string, unknown>,
+): (number | null)[] {
+  return rsiSeriesAligned(
+    candles.map((c) => c.close),
+    readPeriod(params),
+    candles.length,
+  );
 }

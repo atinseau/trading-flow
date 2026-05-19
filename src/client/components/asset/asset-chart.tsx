@@ -1,5 +1,4 @@
 import { volumePlugin } from "@adapters/indicators/plugins/volume";
-import { resolveRenderConfig } from "@adapters/indicators/renderConfigByPluginId";
 import { TradingViewChart } from "@client/components/charts/TradingViewChart";
 import type { UTCTimestamp } from "lightweight-charts";
 import { useMemo } from "react";
@@ -60,10 +59,7 @@ export function AssetChart({ candles }: { candles: AssetCandle[] }) {
     return [
       {
         id: "volume",
-        plugin: {
-          ...volumePlugin,
-          renderConfig: resolveRenderConfig("volume"),
-        } as never,
+        plugin: volumePlugin as never,
         contribution: { kind: "compound" as const, parts: [volumeBars, maContribution] },
       },
     ];

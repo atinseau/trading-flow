@@ -118,17 +118,13 @@ export function initialTrackingState(args: {
  * - **Close** when `nextTpIndex` reaches `sortedTPs.length` OR when SL
  *   hits. Subsequent simulate calls are no-ops.
  */
-export function simulateCandleTracking(
-  state: TrackingState,
-  candle: Candle,
-): TrackerEvent[] {
+export function simulateCandleTracking(state: TrackingState, candle: Candle): TrackerEvent[] {
   if (state.closed) return [];
   const events: TrackerEvent[] = [];
 
   // 1. Entry fill check (only if not yet filled).
   if (!state.entryFilled) {
-    const entryTouched =
-      candle.low <= state.entry && candle.high >= state.entry;
+    const entryTouched = candle.low <= state.entry && candle.high >= state.entry;
     if (entryTouched) {
       state.entryFilled = true;
       events.push({ kind: "EntryFilled", fillPrice: state.entry, observedAt: candle.timestamp });
@@ -165,9 +161,7 @@ export function simulateCandleTracking(
   //    must reach down to or below SL). For SHORT, SL is above entry
   //    (candle.high must reach up to or above SL).
   const slHit =
-    state.direction === "LONG"
-      ? candle.low <= state.currentSL
-      : candle.high >= state.currentSL;
+    state.direction === "LONG" ? candle.low <= state.currentSL : candle.high >= state.currentSL;
   if (slHit) {
     events.push({ kind: "SLHit", level: state.currentSL, observedAt: candle.timestamp });
     state.closed = true;
@@ -180,8 +174,7 @@ export function simulateCandleTracking(
   while (state.nextTpIndex < state.sortedTPs.length) {
     const tp = state.sortedTPs[state.nextTpIndex];
     if (tp === undefined) break;
-    const tpHit =
-      state.direction === "LONG" ? candle.high >= tp : candle.low <= tp;
+    const tpHit = state.direction === "LONG" ? candle.high >= tp : candle.low <= tp;
     if (!tpHit) break;
     const isFinal = state.nextTpIndex === state.sortedTPs.length - 1;
     events.push({

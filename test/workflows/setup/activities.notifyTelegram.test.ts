@@ -41,7 +41,12 @@ function makeWatch(overrides: Partial<WatchConfig> = {}): WatchConfig {
     pre_filter: {
       enabled: true,
       mode: "lenient",
-      thresholds: { atr_ratio_min: 1.3, volume_spike_min: 1.5, rsi_extreme_distance: 25, near_pivot_distance_pct: 0.3 },
+      thresholds: {
+        atr_ratio_min: 1.3,
+        volume_spike_min: 1.5,
+        rsi_extreme_distance: 25,
+        near_pivot_distance_pct: 0.3,
+      },
     },
     analyzers: {
       // biome-ignore lint/suspicious/noExplicitAny: test fake provider
@@ -405,9 +410,7 @@ describe("killSetup — idempotency", () => {
     // Second call must be a no-op — repo status is now KILLED (terminal).
     await activities.killSetup({ setupId: "kill-1", reason: "user_killed_via_telegram" });
 
-    const killedEvents = events.events.filter(
-      (e) => e.setupId === "kill-1" && e.type === "Killed",
-    );
+    const killedEvents = events.events.filter((e) => e.setupId === "kill-1" && e.type === "Killed");
     expect(killedEvents).toHaveLength(1);
     expect(killedEvents[0]?.statusAfter).toBe("KILLED");
   });

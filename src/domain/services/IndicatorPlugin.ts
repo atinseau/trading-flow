@@ -55,11 +55,10 @@ export interface IndicatorPlugin extends IndicatorPluginMetadata {
   readonly secondaryPaneStretch?: number;
   /**
    * Declarative render preferences consumed by the unified
-   * `contributionRenderer`. Optional during the Phase 4 migration —
-   * once every plugin owns it, tightened to required and the
-   * `renderConfigByPluginId` bridge map is deleted.
+   * `contributionRenderer`. Drives palette, pane, labels, stretch — the
+   * plugin never invokes lightweight-charts directly.
    */
-  readonly renderConfig?: RenderConfig;
+  readonly renderConfig: RenderConfig;
 
   // Prompt fragments
   detectorPromptFragment(

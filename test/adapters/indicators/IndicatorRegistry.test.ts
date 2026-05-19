@@ -31,7 +31,9 @@ describe("IndicatorRegistry (foundation)", () => {
 
   test("byId returns undefined for unknown id", () => {
     const reg = new IndicatorRegistry([]);
-    expect(reg.byId("volume" as Parameters<InstanceType<typeof IndicatorRegistry>["byId"]>[0])).toBeUndefined();
+    expect(
+      reg.byId("volume" as Parameters<InstanceType<typeof IndicatorRegistry>["byId"]>[0]),
+    ).toBeUndefined();
   });
 
   test("allChartScripts returns rsi chart script", () => {

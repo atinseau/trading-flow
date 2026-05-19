@@ -2,8 +2,10 @@ export function detectorFragment(
   s: Record<string, unknown>,
   params?: Record<string, unknown>,
 ): string | null {
-  const lh = s.lastSwingHigh, lha = s.lastSwingHighAge;
-  const ll = s.lastSwingLow, lla = s.lastSwingLowAge;
+  const lh = s.lastSwingHigh,
+    lha = s.lastSwingHighAge;
+  const ll = s.lastSwingLow,
+    lla = s.lastSwingLowAge;
   const bos = s.bosState;
   if (typeof bos !== "string") return null;
   const lookback = typeof params?.lookback === "number" ? params.lookback : 2;

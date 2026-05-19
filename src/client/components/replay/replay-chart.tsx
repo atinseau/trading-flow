@@ -1,7 +1,7 @@
 import { applyRightOffset } from "@adapters/chart/chartBootstrap";
-import { applyContribution } from "@adapters/chart/contributionRenderer";
+import { applyContribution, type RenderConfig } from "@adapters/chart/contributionRenderer";
 import { allocatePanes } from "@adapters/chart/paneAllocator";
-import { resolveRenderConfig } from "@adapters/indicators/renderConfigByPluginId";
+import { REGISTRY } from "@adapters/indicators/IndicatorRegistry";
 import type {
   IndicatorSeriesContribution,
   ReplayEventRow,
@@ -24,6 +24,15 @@ import { Maximize2, Minimize2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ChartLegend } from "./chart-legend";
 import { colorForSetup, visualForEvent } from "./replay-marker-config";
+
+/** Fallback when an unknown plugin id slips through — preserves visual
+ *  rendering even if a backend ships a contribution the frontend doesn't
+ *  know about yet (new plugin not in the bundled registry). */
+const FALLBACK_RENDER_CONFIG: RenderConfig = { pane: "price_overlay", palette: ["#94a3b8"] };
+
+function renderConfigFor(id: string): RenderConfig {
+  return REGISTRY.find((p) => p.id === id)?.renderConfig ?? FALLBACK_RENDER_CONFIG;
+}
 
 /**
  * Stable color palettes per indicator id. We pick deterministically so EMA
@@ -261,7 +270,7 @@ export function ReplayChart(props: {
     // Pane allocation pass — same logic as in TradingViewChart.
     const alloc = allocatePanes(
       visibleEntries.map(([id]) => {
-        const cfg = resolveRenderConfig(id);
+        const cfg = renderConfigFor(id);
         const pane = meta[id]?.pane ?? cfg.pane;
         return { id, pane, secondaryPaneStretch: cfg.secondaryPaneStretch };
       }),
@@ -271,7 +280,7 @@ export function ReplayChart(props: {
     for (const [id, contribution] of visibleEntries) {
       const paneIndex = alloc.assignments[id];
       if (paneIndex === undefined) continue;
-      const renderConfig = resolveRenderConfig(id);
+      const renderConfig = renderConfigFor(id);
       const result = applyContribution(chart, contribution, {
         id,
         renderConfig,
@@ -289,7 +298,7 @@ export function ReplayChart(props: {
 
     // Right-offset based on visible price_overlay line count.
     const priceOverlayCount = visibleEntries.filter(([id]) => {
-      const pane = meta[id]?.pane ?? resolveRenderConfig(id).pane;
+      const pane = meta[id]?.pane ?? renderConfigFor(id).pane;
       return pane === "price_overlay";
     }).length;
     applyRightOffset(chart, {

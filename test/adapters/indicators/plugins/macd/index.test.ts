@@ -3,7 +3,11 @@ import { macdPlugin } from "@adapters/indicators/plugins/macd";
 
 const sampleCandles = Array.from({ length: 250 }, (_, i) => ({
   timestamp: new Date(Date.UTC(2026, 0, 1, i)),
-  open: 100, high: 101, low: 99, close: 100 + Math.sin(i / 10), volume: 1000,
+  open: 100,
+  high: 101,
+  low: 99,
+  close: 100 + Math.sin(i / 10),
+  volume: 1000,
 }));
 
 describe("macdPlugin", () => {
@@ -72,11 +76,17 @@ describe("macdPlugin", () => {
     expect(() => macdPlugin.paramsSchema!.parse({ fast: 1, slow: 26, signal: 9 })).toThrow(); // fast below min
     expect(() => macdPlugin.paramsSchema!.parse({ fast: 12, slow: 51, signal: 9 })).toThrow(); // slow above max
     expect(() => macdPlugin.paramsSchema!.parse({ fast: 26, slow: 12, signal: 9 })).toThrow(); // fast >= slow
-    expect(macdPlugin.paramsSchema!.parse({ fast: 12, slow: 26, signal: 9 })).toEqual({ fast: 12, slow: 26, signal: 9 });
+    expect(macdPlugin.paramsSchema!.parse({ fast: 12, slow: 26, signal: 9 })).toEqual({
+      fast: 12,
+      slow: 26,
+      signal: 9,
+    });
   });
 
   test("defaultParams matches schema", () => {
-    expect(macdPlugin.paramsSchema!.parse(macdPlugin.defaultParams!)).toEqual(macdPlugin.defaultParams!);
+    expect(macdPlugin.paramsSchema!.parse(macdPlugin.defaultParams!)).toEqual(
+      macdPlugin.defaultParams!,
+    );
   });
 });
 

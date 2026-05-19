@@ -51,7 +51,7 @@ describe("Bollinger Bands — deeper coverage", () => {
     const std = Math.sqrt(2);
     const closes = padTo(last20, 220);
     const candles = fromCloses(closes);
-    const ind = await calc.compute(candles, allPlugins) as Record<string, unknown>;
+    const ind = (await calc.compute(candles, allPlugins)) as Record<string, unknown>;
     expect(ind.bbMiddle).toBeCloseTo(100, 5);
     expect((ind.bbUpper as number) - (ind.bbMiddle as number)).toBeCloseTo(2 * std, 4);
     expect((ind.bbMiddle as number) - (ind.bbLower as number)).toBeCloseTo(2 * std, 4);
@@ -62,14 +62,15 @@ describe("Bollinger Bands — deeper coverage", () => {
       98, 99, 100, 101, 102, 98, 99, 100, 101, 102, 98, 99, 100, 101, 102, 98, 99, 100, 101, 102,
     ];
     const candles = fromCloses(padTo(last20, 220));
-    const ind = await calc.compute(candles, allPlugins) as Record<string, unknown>;
-    const expected = (((ind.bbUpper as number) - (ind.bbLower as number)) / (ind.bbMiddle as number)) * 100;
+    const ind = (await calc.compute(candles, allPlugins)) as Record<string, unknown>;
+    const expected =
+      (((ind.bbUpper as number) - (ind.bbLower as number)) / (ind.bbMiddle as number)) * 100;
     expect(ind.bbBandwidthPct).toBeCloseTo(expected, 4);
   });
 
   test("constant series → upper === middle === lower, bandwidth = 0", async () => {
     const candles = fromCloses(Array(220).fill(100));
-    const ind = await calc.compute(candles, allPlugins) as Record<string, unknown>;
+    const ind = (await calc.compute(candles, allPlugins)) as Record<string, unknown>;
     expect(ind.bbUpper).toBeCloseTo(ind.bbMiddle as number, 8);
     expect(ind.bbLower).toBeCloseTo(ind.bbMiddle as number, 8);
     expect(ind.bbBandwidthPct).toBeCloseTo(0, 8);
@@ -90,12 +91,18 @@ describe("Bollinger Bands — deeper coverage", () => {
     // of the series to sit in the relevant regime.
     const randLow = makeRand(7);
     const lowClosesAll = Array.from({ length: 250 }, () => 100 + (randLow() - 0.5) * 0.2);
-    const indLow = await calc.compute(fromCloses(lowClosesAll), allPlugins) as Record<string, unknown>;
+    const indLow = (await calc.compute(fromCloses(lowClosesAll), allPlugins)) as Record<
+      string,
+      unknown
+    >;
 
     // High-vol regime: ±5 around 100, same length.
     const randHigh = makeRand(7);
     const highClosesAll = Array.from({ length: 250 }, () => 100 + (randHigh() - 0.5) * 10);
-    const indHigh = await calc.compute(fromCloses(highClosesAll), allPlugins) as Record<string, unknown>;
+    const indHigh = (await calc.compute(fromCloses(highClosesAll), allPlugins)) as Record<
+      string,
+      unknown
+    >;
 
     // Sanity: both bandwidths are well-defined and non-negative.
     expect(indLow.bbBandwidthPct).toBeGreaterThanOrEqual(0);
@@ -122,7 +129,7 @@ describe("MACD — deeper coverage", () => {
     // a quadratic acceleration to get the strict inequality.
     const closes = Array.from({ length: 250 }, (_, i) => 200 - 0.005 * i * i);
     const candles = fromCloses(closes);
-    const ind = await calc.compute(candles, allPlugins) as Record<string, unknown>;
+    const ind = (await calc.compute(candles, allPlugins)) as Record<string, unknown>;
     expect(ind.macd).toBeLessThan(0);
     expect(ind.macdSignal).toBeLessThan(0);
     expect(ind.macd).toBeLessThan(ind.macdSignal as number); // macd more negative than its smoothing
@@ -148,7 +155,7 @@ describe("ATR Z-score (200) — deeper coverage", () => {
         volume: 100,
       });
     }
-    const ind = await calc.compute(candles, allPlugins) as Record<string, unknown>;
+    const ind = (await calc.compute(candles, allPlugins)) as Record<string, unknown>;
     expect(ind.atrZScore200).toBeLessThan(-1);
   });
 
@@ -166,7 +173,7 @@ describe("ATR Z-score (200) — deeper coverage", () => {
         volume: 100,
       });
     }
-    const ind = await calc.compute(candles, allPlugins) as Record<string, unknown>;
+    const ind = (await calc.compute(candles, allPlugins)) as Record<string, unknown>;
     expect(ind.atrZScore200).toBeGreaterThan(1);
   });
 
@@ -199,7 +206,7 @@ describe("ATR Z-score (200) — deeper coverage", () => {
         volume: 100,
       });
     }
-    const ind = await calc.compute(candles, allPlugins) as Record<string, unknown>;
+    const ind = (await calc.compute(candles, allPlugins)) as Record<string, unknown>;
     // Reproduce the calculator's ATR series by hand (Wilder smoothing on TRs).
     // TR[i] = high - low for all i (close stays at 100, so no gap). For our
     // construction TR is 2 for i<218 and 6 for i>=218.
@@ -207,7 +214,11 @@ describe("ATR Z-score (200) — deeper coverage", () => {
     for (let i = 1; i < candles.length; i++) {
       const c = candles[i]!;
       const cPrev = candles[i - 1]!;
-      const tr = Math.max(c.high - c.low, Math.abs(c.high - cPrev.close), Math.abs(c.low - cPrev.close));
+      const tr = Math.max(
+        c.high - c.low,
+        Math.abs(c.high - cPrev.close),
+        Math.abs(c.low - cPrev.close),
+      );
       trs.push(tr);
     }
     const atrSeries: number[] = [];
@@ -261,7 +272,7 @@ describe("VWAP (session) — deeper coverage", () => {
     // Verify all inside day 0.
     expect(Math.floor(candles[candles.length - 1]!.timestamp.getTime() / ms)).toBe(0);
 
-    const ind = await calc.compute(candles, allPlugins) as Record<string, unknown>;
+    const ind = (await calc.compute(candles, allPlugins)) as Record<string, unknown>;
     // Hand math: 249 normal bars (typical=100, vol=100) + 1 heavy bar
     // (typical=50, vol=10_000).
     //   PV = 249 * 100 * 100 + 50 * 10_000 = 2_490_000 + 500_000 = 2_990_000
@@ -269,7 +280,6 @@ describe("VWAP (session) — deeper coverage", () => {
     //   VWAP = 2_990_000 / 34_900 ≈ 85.6733
     expect(ind.vwapSession).toBeCloseTo(2_990_000 / 34_900, 1);
   });
-
 });
 
 // ─── POC (Point of Control) ─────────────────────────────────────────────────
@@ -314,7 +324,7 @@ describe("POC — deeper coverage", () => {
         volume: 250,
       });
     }
-    const ind = await calc.compute(candles, allPlugins) as Record<string, unknown>;
+    const ind = (await calc.compute(candles, allPlugins)) as Record<string, unknown>;
     expect(ind.pocPrice).toBeGreaterThanOrEqual(99);
     expect(ind.pocPrice).toBeLessThanOrEqual(101);
   });
@@ -355,7 +365,7 @@ describe("POC — deeper coverage", () => {
         volume: 1000,
       });
     }
-    const ind = await calc.compute(candles, allPlugins) as Record<string, unknown>;
+    const ind = (await calc.compute(candles, allPlugins)) as Record<string, unknown>;
     // Expect POC clearly in the upper node.
     expect(ind.pocPrice).toBeGreaterThan(108);
     expect(ind.pocPrice).toBeLessThanOrEqual(111);
@@ -372,7 +382,7 @@ describe("POC — deeper coverage", () => {
       close: 100,
       volume: 100,
     }));
-    const ind = await calc.compute(candles, allPlugins) as Record<string, unknown>;
+    const ind = (await calc.compute(candles, allPlugins)) as Record<string, unknown>;
     expect(ind.pocPrice).toBeGreaterThanOrEqual(99.5);
     expect(ind.pocPrice).toBeLessThanOrEqual(100.5);
   });

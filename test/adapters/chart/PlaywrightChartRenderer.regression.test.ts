@@ -59,8 +59,8 @@ describe("PlaywrightChartRenderer visual regression", () => {
     expect(buffer[1]).toBe(0x49); // I
     expect(buffer[2]).toBe(0x46); // F
     expect(buffer[3]).toBe(0x46); // F
-    expect(buffer[8]).toBe(0x57);  // W
-    expect(buffer[9]).toBe(0x45);  // E
+    expect(buffer[8]).toBe(0x57); // W
+    expect(buffer[9]).toBe(0x45); // E
     expect(buffer[10]).toBe(0x42); // B
     expect(buffer[11]).toBe(0x50); // P
   }, 30_000);

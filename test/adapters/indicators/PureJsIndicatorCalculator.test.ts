@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { PureJsIndicatorCalculator } from "@adapters/indicators/PureJsIndicatorCalculator";
 import { IndicatorRegistry } from "@adapters/indicators/IndicatorRegistry";
+import { PureJsIndicatorCalculator } from "@adapters/indicators/PureJsIndicatorCalculator";
 import { FakeMarketDataFetcher } from "@test-fakes/FakeMarketDataFetcher";
 
 describe("PureJsIndicatorCalculator", () => {

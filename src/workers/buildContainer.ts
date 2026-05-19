@@ -7,8 +7,6 @@ import { TickSnapshotsContextProvider } from "@adapters/feedback-context/TickSna
 import { BinanceFundingRateProvider } from "@adapters/funding/BinanceFundingRateProvider";
 import { IndicatorRegistry } from "@adapters/indicators/IndicatorRegistry";
 import { PureJsIndicatorCalculator } from "@adapters/indicators/PureJsIndicatorCalculator";
-import { FewShotEngine } from "@domain/services/FewShotEngine";
-import { PromptBuilder } from "@domain/services/PromptBuilder";
 import { buildProviderRegistry } from "@adapters/llm/buildProviderRegistry";
 import { BinanceFetcher } from "@adapters/market-data/BinanceFetcher";
 import { YahooFinanceFetcher } from "@adapters/market-data/YahooFinanceFetcher";
@@ -37,6 +35,8 @@ import type { Notifier } from "@domain/ports/Notifier";
 import type { PriceFeed } from "@domain/ports/PriceFeed";
 import type { ScheduleController } from "@domain/ports/ScheduleController";
 import type { WatchConfig } from "@domain/schemas/WatchesConfig";
+import { FewShotEngine } from "@domain/services/FewShotEngine";
+import { PromptBuilder } from "@domain/services/PromptBuilder";
 import { Client, Connection } from "@temporalio/client";
 import type { ActivityDeps } from "@workflows/activityDependencies";
 import { drizzle } from "drizzle-orm/node-postgres";

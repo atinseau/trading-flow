@@ -3,7 +3,11 @@ import { emaStackPlugin } from "@adapters/indicators/plugins/ema_stack";
 
 const sampleCandles = Array.from({ length: 250 }, (_, i) => ({
   timestamp: new Date(Date.UTC(2026, 0, 1, i)),
-  open: 100, high: 101, low: 99, close: 100 + Math.sin(i / 10), volume: 1000,
+  open: 100,
+  high: 101,
+  low: 99,
+  close: 100 + Math.sin(i / 10),
+  volume: 1000,
 }));
 
 describe("emaStackPlugin", () => {
@@ -59,7 +63,9 @@ describe("emaStackPlugin", () => {
   test("computeScalars accepts custom params", () => {
     const sDefault = emaStackPlugin.computeScalars(sampleCandles);
     const sCustom = emaStackPlugin.computeScalars(sampleCandles, {
-      period_short: 10, period_mid: 30, period_long: 100,
+      period_short: 10,
+      period_mid: 30,
+      period_long: 100,
     });
     expect(typeof sCustom.emaShort).toBe("number");
     // Different periods should produce different EMA values
@@ -67,21 +73,39 @@ describe("emaStackPlugin", () => {
   });
 
   test("paramsSchema validates ranges", () => {
-    expect(() => emaStackPlugin.paramsSchema!.parse({
-      period_short: 1, period_mid: 50, period_long: 200,
-    })).toThrow(); // period_short below min
-    expect(() => emaStackPlugin.paramsSchema!.parse({
-      period_short: 20, period_mid: 10, period_long: 200,
-    })).toThrow(); // short >= mid
-    expect(() => emaStackPlugin.paramsSchema!.parse({
-      period_short: 20, period_mid: 50, period_long: 40,
-    })).toThrow(); // mid >= long
-    expect(emaStackPlugin.paramsSchema!.parse({
-      period_short: 20, period_mid: 50, period_long: 200,
-    })).toEqual({ period_short: 20, period_mid: 50, period_long: 200 });
+    expect(() =>
+      emaStackPlugin.paramsSchema!.parse({
+        period_short: 1,
+        period_mid: 50,
+        period_long: 200,
+      }),
+    ).toThrow(); // period_short below min
+    expect(() =>
+      emaStackPlugin.paramsSchema!.parse({
+        period_short: 20,
+        period_mid: 10,
+        period_long: 200,
+      }),
+    ).toThrow(); // short >= mid
+    expect(() =>
+      emaStackPlugin.paramsSchema!.parse({
+        period_short: 20,
+        period_mid: 50,
+        period_long: 40,
+      }),
+    ).toThrow(); // mid >= long
+    expect(
+      emaStackPlugin.paramsSchema!.parse({
+        period_short: 20,
+        period_mid: 50,
+        period_long: 200,
+      }),
+    ).toEqual({ period_short: 20, period_mid: 50, period_long: 200 });
   });
 
   test("defaultParams matches schema", () => {
-    expect(emaStackPlugin.paramsSchema!.parse(emaStackPlugin.defaultParams!)).toEqual(emaStackPlugin.defaultParams!);
+    expect(emaStackPlugin.paramsSchema!.parse(emaStackPlugin.defaultParams!)).toEqual(
+      emaStackPlugin.defaultParams!,
+    );
   });
 });

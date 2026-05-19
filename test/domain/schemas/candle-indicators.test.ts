@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
-import { buildIndicatorsSchema } from "@domain/schemas/Indicators";
 import { IndicatorRegistry } from "@adapters/indicators/IndicatorRegistry";
 import { CandleSchema } from "@domain/schemas/Candle";
+import { buildIndicatorsSchema } from "@domain/schemas/Indicators";
 
 test("CandleSchema parses valid OHLCV", () => {
   const raw = {

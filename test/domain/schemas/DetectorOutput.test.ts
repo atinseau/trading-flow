@@ -15,6 +15,7 @@ const plugin = (
   longDescription: "",
   chartScript: "",
   chartPane: "price_overlay",
+  renderConfig: { pane: "price_overlay", palette: [] },
   computeScalars: () => ({}),
   computeSeries: () => ({ kind: "lines", series: {} }),
   scalarSchemaFragment: () => shape,

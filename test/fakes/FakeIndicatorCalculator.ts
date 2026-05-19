@@ -1,7 +1,7 @@
-import type { IndicatorCalculator } from "@domain/ports/IndicatorCalculator";
-import type { IndicatorPlugin } from "@domain/services/IndicatorPlugin";
-import type { Candle } from "@domain/schemas/Candle";
 import type { IndicatorSeriesContribution } from "@adapters/indicators/plugins/base/types";
+import type { IndicatorCalculator } from "@domain/ports/IndicatorCalculator";
+import type { Candle } from "@domain/schemas/Candle";
+import type { IndicatorPlugin } from "@domain/services/IndicatorPlugin";
 
 /** Neutral indicator set compatible with IndicatorScalars (Record<string, unknown>). */
 export const NEUTRAL_INDICATORS: Record<string, unknown> = {

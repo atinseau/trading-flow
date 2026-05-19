@@ -3,7 +3,11 @@ import { volumePlugin } from "@adapters/indicators/plugins/volume";
 
 const sampleCandles = Array.from({ length: 250 }, (_, i) => ({
   timestamp: new Date(Date.UTC(2026, 0, 1, i)),
-  open: 100, high: 101, low: 99, close: 100 + Math.sin(i / 10), volume: 1000 + i * 5,
+  open: 100,
+  high: 101,
+  low: 99,
+  close: 100 + Math.sin(i / 10),
+  volume: 1000 + i * 5,
 }));
 
 describe("volumePlugin", () => {

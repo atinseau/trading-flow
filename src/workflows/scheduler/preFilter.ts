@@ -15,9 +15,7 @@ export function evaluatePreFilter(
   }
 
   const criteria = new Set(
-    plugins
-      .map((p) => p.preFilterCriterion)
-      .filter((c): c is NonNullable<typeof c> => c != null),
+    plugins.map((p) => p.preFilterCriterion).filter((c): c is NonNullable<typeof c> => c != null),
   );
   if (criteria.size === 0) {
     return { passed: true, reasons: ["no_active_criteria"] };
@@ -31,13 +29,15 @@ export function evaluatePreFilter(
   };
 
   if (criteria.has("atr_ratio_min")) {
-    const atr = num("atr"), atrMa = num("atrMa20");
+    const atr = num("atr"),
+      atrMa = num("atrMa20");
     if (atr !== undefined && atrMa !== undefined && atrMa > 0 && atr / atrMa > t.atr_ratio_min) {
       reasons.push(`atr_ratio=${(atr / atrMa).toFixed(2)}`);
     }
   }
   if (criteria.has("volume_spike_min")) {
-    const last = num("lastVolume"), ma = num("volumeMa20");
+    const last = num("lastVolume"),
+      ma = num("volumeMa20");
     if (last !== undefined && ma !== undefined && ma > 0 && last / ma > t.volume_spike_min) {
       reasons.push(`volume_spike=${(last / ma).toFixed(2)}`);
     }
@@ -49,7 +49,8 @@ export function evaluatePreFilter(
     }
   }
   if (criteria.has("near_pivot")) {
-    const high = num("recentHigh"), low = num("recentLow");
+    const high = num("recentHigh"),
+      low = num("recentLow");
     const last = candles[candles.length - 1]?.close;
     if (high !== undefined && low !== undefined && last != null) {
       const distHigh = Math.abs(high - last) / last;

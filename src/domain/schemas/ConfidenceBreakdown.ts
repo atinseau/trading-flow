@@ -1,5 +1,5 @@
-import { z } from "zod";
 import type { BreakdownAxis, IndicatorPlugin } from "@domain/services/IndicatorPlugin";
+import { z } from "zod";
 
 export type AdaptiveConfidenceBreakdown =
   | { clarity: number }
@@ -22,8 +22,6 @@ export function buildConfidenceBreakdownSchema(
   return z.object(shape).strict();
 }
 
-export function isNakedBreakdown(
-  bd: Record<string, unknown>,
-): bd is { clarity: number } {
+export function isNakedBreakdown(bd: Record<string, unknown>): bd is { clarity: number } {
   return typeof bd.clarity === "number" && Object.keys(bd).length === 1;
 }

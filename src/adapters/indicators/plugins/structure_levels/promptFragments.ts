@@ -2,7 +2,9 @@ export function detectorFragment(
   s: Record<string, unknown>,
   params?: Record<string, unknown>,
 ): string | null {
-  const h = s.recentHigh, l = s.recentLow, poc = s.pocPrice;
+  const h = s.recentHigh,
+    l = s.recentLow,
+    poc = s.pocPrice;
   if (typeof h !== "number" || typeof l !== "number" || typeof poc !== "number") return null;
   const window = typeof params?.window === "number" ? params.window : 50;
   return [

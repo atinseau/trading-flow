@@ -59,8 +59,7 @@ export function SectionNotifications() {
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     {group.events.map((evt) => {
-                      const checked =
-                        (field.value as string[] | undefined)?.includes(evt) ?? false;
+                      const checked = (field.value as string[] | undefined)?.includes(evt) ?? false;
                       return (
                         <label
                           key={evt}
@@ -85,8 +84,8 @@ export function SectionNotifications() {
             </div>
             <FormDescription>
               Le chat ID Telegram est configuré globalement par variable d'environnement. Les
-              événements détecteur/reviewer incluent un bouton "Kill setup" pour annuler
-              avant le finalizer.
+              événements détecteur/reviewer incluent un bouton "Kill setup" pour annuler avant le
+              finalizer.
             </FormDescription>
             <FormMessage />
           </FormItem>

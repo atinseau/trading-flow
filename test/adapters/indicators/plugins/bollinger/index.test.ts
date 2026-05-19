@@ -3,7 +3,11 @@ import { bollingerPlugin } from "@adapters/indicators/plugins/bollinger";
 
 const sampleCandles = Array.from({ length: 250 }, (_, i) => ({
   timestamp: new Date(Date.UTC(2026, 0, 1, i)),
-  open: 100, high: 101, low: 99, close: 100 + Math.sin(i / 10), volume: 1000,
+  open: 100,
+  high: 101,
+  low: 99,
+  close: 100 + Math.sin(i / 10),
+  volume: 1000,
 }));
 
 describe("bollingerPlugin", () => {
@@ -90,10 +94,15 @@ describe("bollingerPlugin", () => {
     expect(() => bollingerPlugin.paramsSchema!.parse({ period: 101, std_mul: 2 })).toThrow(); // period above max
     expect(() => bollingerPlugin.paramsSchema!.parse({ period: 20, std_mul: 0.4 })).toThrow(); // std_mul below min
     expect(() => bollingerPlugin.paramsSchema!.parse({ period: 20, std_mul: 5 })).toThrow(); // std_mul above max
-    expect(bollingerPlugin.paramsSchema!.parse({ period: 20, std_mul: 2 })).toEqual({ period: 20, std_mul: 2 });
+    expect(bollingerPlugin.paramsSchema!.parse({ period: 20, std_mul: 2 })).toEqual({
+      period: 20,
+      std_mul: 2,
+    });
   });
 
   test("defaultParams matches schema", () => {
-    expect(bollingerPlugin.paramsSchema!.parse(bollingerPlugin.defaultParams!)).toEqual(bollingerPlugin.defaultParams!);
+    expect(bollingerPlugin.paramsSchema!.parse(bollingerPlugin.defaultParams!)).toEqual(
+      bollingerPlugin.defaultParams!,
+    );
   });
 });

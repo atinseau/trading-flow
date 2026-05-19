@@ -80,9 +80,9 @@ describe("TemporalReplaySignalSender", () => {
     await sender.terminate({ sessionId, reason: "user_abort" });
     expect(fake.signalWithStartCalls).toHaveLength(0);
     expect(fake.handleSignalCalls).toHaveLength(3);
-    expect(fake.handleSignalCalls.every((c) => c.workflowId === `replay-session-${sessionId}`)).toBe(
-      true,
-    );
+    expect(
+      fake.handleSignalCalls.every((c) => c.workflowId === `replay-session-${sessionId}`),
+    ).toBe(true);
   });
 
   test("step repeated with same sessionId always targets the same deterministic workflowId", async () => {

@@ -37,7 +37,10 @@ export async function renderHtfChart(deps: {
   const slice = dailies.slice(-60); // last ~2 months for the LLM
   const tempUri = `file:///tmp/temp-htf-${crypto.randomUUID()}.png`;
 
-  let series: Record<string, import("@adapters/indicators/plugins/base/types").IndicatorSeriesContribution> = {};
+  let series: Record<
+    string,
+    import("@adapters/indicators/plugins/base/types").IndicatorSeriesContribution
+  > = {};
   let enabledIds: readonly string[] = [];
 
   if (deps.indicatorRegistry && dailies.length >= 60) {

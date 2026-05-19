@@ -16,7 +16,9 @@ export function computeScalars(candles: Candle[], params?: Record<string, unknow
   const series = atrSeries(highs, lows, closes, readPeriod(params));
   const atr = series[series.length - 1] ?? 0;
   return {
-    atr, atrMa20: movingAverage(series, 20), atrZScore200: zScoreOfLast(series, 200),
+    atr,
+    atrMa20: movingAverage(series, 20),
+    atrZScore200: zScoreOfLast(series, 200),
   };
 }
 export function computeSeries(candles: Candle[], params?: Record<string, unknown>) {
@@ -25,9 +27,7 @@ export function computeSeries(candles: Candle[], params?: Record<string, unknown
   const closes = candles.map((c) => c.close);
   const core = atrSeries(highs, lows, closes, readPeriod(params));
   const padLen = candles.length - core.length;
-  const atr: (number | null)[] = [
-    ...Array.from({ length: padLen }, () => null), ...core,
-  ];
+  const atr: (number | null)[] = [...Array.from({ length: padLen }, () => null), ...core];
   const atrMa20 = rollingMaAligned(atr, 20);
   return { atr, atrMa20 };
 }

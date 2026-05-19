@@ -48,18 +48,23 @@ export function buildSchedulerActivities(deps: ActivityDeps) {
       const paramsByPlugin: Record<string, Record<string, unknown>> = {};
       for (const p of plugins) {
         const cfg = watch.indicators[p.id];
-        paramsByPlugin[p.id] = (cfg?.params as Record<string, unknown>) ?? (p.defaultParams as Record<string, unknown> ?? {});
+        paramsByPlugin[p.id] =
+          (cfg?.params as Record<string, unknown>) ??
+          (p.defaultParams as Record<string, unknown>) ??
+          {};
       }
       const series = await deps.indicatorCalculator.computeSeries(slice, plugins, paramsByPlugin);
       const enabledIds = plugins.map((p) => p.id);
       const naked = enabledIds.length === 0;
       // Count secondary panes to avoid compressing the price pane when 3+ panes are active.
       const secondaryPaneCount = plugins.filter((p) => p.chartPane === "secondary").length;
-      const height =
-        naked ? 900 :
-        secondaryPaneCount >= 3 ? 1080 :
-        secondaryPaneCount >= 1 ? 720 :
-        900; // overlay-only setups (e.g. ema_stack + vwap) get the same airy 900 as naked
+      const height = naked
+        ? 900
+        : secondaryPaneCount >= 3
+          ? 1080
+          : secondaryPaneCount >= 1
+            ? 720
+            : 900; // overlay-only setups (e.g. ema_stack + vwap) get the same airy 900 as naked
       const tempUri = `file:///tmp/temp-chart-${crypto.randomUUID()}.png`;
       const result = await deps.chartRenderer.render({
         candles: slice,
@@ -88,7 +93,10 @@ export function buildSchedulerActivities(deps: ActivityDeps) {
       const paramsByPlugin: Record<string, Record<string, unknown>> = {};
       for (const p of plugins) {
         const cfg = watch.indicators[p.id];
-        paramsByPlugin[p.id] = (cfg?.params as Record<string, unknown>) ?? (p.defaultParams as Record<string, unknown> ?? {});
+        paramsByPlugin[p.id] =
+          (cfg?.params as Record<string, unknown>) ??
+          (p.defaultParams as Record<string, unknown>) ??
+          {};
       }
       const scalars = await deps.indicatorCalculator.compute(candles, plugins, paramsByPlugin);
       const validated = buildIndicatorsSchema(plugins).parse(scalars);

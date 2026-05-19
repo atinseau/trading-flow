@@ -1,9 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { parseCallbackData } from "@adapters/notify/lessonProposalFormat";
-import {
-  encodeSetupCallback,
-  parseSetupCallback,
-} from "@adapters/notify/setupCallbackFormat";
+import { encodeSetupCallback, parseSetupCallback } from "@adapters/notify/setupCallbackFormat";
 
 describe("setup callback_data encoding", () => {
   const setupId = "11111111-1111-1111-1111-111111111111";
