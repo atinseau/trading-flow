@@ -2,7 +2,7 @@ import type { IndicatorPlugin } from "@domain/services/IndicatorPlugin";
 import { z } from "zod";
 import { computeScalars, computeSeries } from "./compute";
 import { emaStackMetadata } from "./metadata";
-import { detectorFragment } from "./promptFragments";
+import { detectorFragment, reviewerFragment } from "./promptFragments";
 
 const EMA_STACK_PARAMS_SCHEMA = z
   .object({
@@ -43,5 +43,6 @@ export const emaStackPlugin: IndicatorPlugin = {
     seriesLabels: { emaShort: "EMA short", emaMid: "EMA mid", emaLong: "EMA long" },
   },
   detectorPromptFragment: detectorFragment,
+  reviewerPromptFragment: reviewerFragment,
   paramsSchema: EMA_STACK_PARAMS_SCHEMA,
 };

@@ -18,6 +18,24 @@ export function detectorFragment(
   if (maSeries.length > 0) lines.push(`  MA20 last: ${maSeries}`);
   return lines.join("\n");
 }
+
+export function reviewerFragment(
+  s: Record<string, unknown>,
+  _params?: Record<string, unknown>,
+  history?: Record<string, ReadonlyArray<number | null>>,
+): string | null {
+  const last = s.lastVolume,
+    ma = s.volumeMa20,
+    pct = s.volumePercentile200;
+  if (typeof last !== "number" || typeof ma !== "number" || typeof pct !== "number") return null;
+  // Reviewer system prompt names "Volume drying up on the directional leg"
+  // as a WEAKEN trigger — explicitly surface the ratio + drift so the
+  // LLM can reference it without re-deriving from history.
+  const ratio = ma > 0 ? last / ma : 0;
+  const base = `Volume: last=\`${last.toFixed(0)}\` MA20=\`${ma.toFixed(0)}\` ratio=\`${ratio.toFixed(2)}\` pct200=\`${pct.toFixed(0)}\``;
+  const tail = formatScalarHistory(history?.volume, { decimals: 0, max: 5 });
+  return tail.length > 0 ? `${base} — last 5: ${tail}` : base;
+}
 export function featuredFewShotExample(): string {
   return `### Example — Volume climax reversal (accumulation)
 

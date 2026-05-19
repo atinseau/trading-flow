@@ -144,3 +144,182 @@ describe("PromptBuilder.buildDetectorPrompt", () => {
     expect(out).not.toContain("Last values:");
   });
 });
+
+describe("PromptBuilder.buildReviewerPrompt", () => {
+  let builder: PromptBuilder;
+  beforeAll(async () => {
+    builder = new PromptBuilder(new IndicatorRegistry(), new FewShotEngine());
+    await builder.warmUp();
+  });
+
+  const reviewerBase = {
+    setup: {
+      id: "abc",
+      patternHint: "double_bottom",
+      direction: "LONG",
+      currentScore: 50,
+      invalidationLevel: 76000,
+      ageInCandles: 4,
+    },
+    history: [],
+    fresh: {
+      lastClose: 76450,
+      tickAt: new Date("2026-05-19T15:30:00Z"),
+      scalars: {},
+    },
+    activeLessons: [],
+    htf: undefined,
+    funding: undefined,
+    candles: Array.from({ length: 30 }, (_, i) => ({
+      timestamp: new Date(2026, 4, 19, 10, i),
+      open: 76400,
+      high: 76500,
+      low: 76300,
+      close: 76450,
+      volume: 120 + i,
+    })),
+    promptData: {
+      recent_ohlcv_count: 0,
+      indicator_history_count: 0,
+      include_recent_in_finalizer: true,
+      decimals: null,
+      timestamp_format: "time" as const,
+      include_volume: true,
+    },
+  };
+
+  // The plugins that lacked a reviewerPromptFragment before v8.
+  // Each test ensures the active plugin's fragment is rendered in the
+  // Fresh data block — closes the silent skip bug.
+  test("ema_stack active → reviewer prompt mentions EMA stack", async () => {
+    const out = await builder.buildReviewerPrompt({
+      ...reviewerBase,
+      fresh: {
+        ...reviewerBase.fresh,
+        scalars: { emaShort: 76450, emaMid: 76600, emaLong: 76900 },
+      },
+      indicatorsMatrix: { ema_stack: { enabled: true } },
+    });
+    expect(out).toContain("EMA stack");
+    expect(out).toContain("76450");
+    expect(out).toContain("bearish stack"); // short < mid < long
+  });
+
+  test("volume active → reviewer prompt mentions Volume ratio", async () => {
+    const out = await builder.buildReviewerPrompt({
+      ...reviewerBase,
+      fresh: {
+        ...reviewerBase.fresh,
+        scalars: { lastVolume: 120, volumeMa20: 200, volumePercentile200: 35 },
+      },
+      indicatorsMatrix: { volume: { enabled: true } },
+    });
+    expect(out).toContain("Volume:");
+    expect(out).toContain("ratio=`0.60`"); // 120/200
+  });
+
+  test("fibonacci active (scalars present) → reviewer prompt mentions Fib", async () => {
+    const out = await builder.buildReviewerPrompt({
+      ...reviewerBase,
+      fresh: {
+        ...reviewerBase.fresh,
+        scalars: {
+          fibDirection: "downtrend",
+          fibAnchorHigh: 77048.72,
+          fibAnchorLow: 76144.71,
+          fib_0_382: 76490.04,
+          fib_0_500: 76596.72,
+          fib_0_618: 76703.39,
+          fib_1_272: 75898.82,
+          fib_1_618: 75586.03,
+        },
+      },
+      indicatorsMatrix: { fibonacci: { enabled: true } },
+    });
+    expect(out).toContain("Fib (downtrend)");
+    expect(out).toContain("anchorH");
+    expect(out).toContain("0.618");
+  });
+
+  test("vwap active → reviewer prompt mentions VWAP and price-vs-VWAP", async () => {
+    const out = await builder.buildReviewerPrompt({
+      ...reviewerBase,
+      fresh: {
+        ...reviewerBase.fresh,
+        scalars: { vwapSession: 76500, priceVsVwapPct: -0.5 },
+      },
+      indicatorsMatrix: { vwap: { enabled: true } },
+    });
+    expect(out).toContain("VWAP:");
+    expect(out).toContain("-0.50%");
+    expect(out).toContain("below");
+  });
+
+  test("liquidity_pools active → reviewer prompt mentions nearest pools", async () => {
+    const out = await builder.buildReviewerPrompt({
+      ...reviewerBase,
+      fresh: {
+        ...reviewerBase.fresh,
+        scalars: {
+          equalHighsCount: 2,
+          equalLowsCount: 1,
+          topEqualHighs: [{ price: 77100, touches: 3 }],
+          topEqualLows: [{ price: 76000, touches: 2 }],
+        },
+      },
+      indicatorsMatrix: { liquidity_pools: { enabled: true } },
+    });
+    expect(out).toContain("Pools:");
+    expect(out).toContain("77100");
+    expect(out).toContain("76000");
+  });
+
+  test("BTC watch config (6 plugins active) → reviewer prompt contains ALL six fragments", async () => {
+    const out = await builder.buildReviewerPrompt({
+      ...reviewerBase,
+      fresh: {
+        ...reviewerBase.fresh,
+        scalars: {
+          rsi: 40.17,
+          emaShort: 76635.73,
+          emaMid: 76770.49,
+          emaLong: 77117.41,
+          lastVolume: 136,
+          volumeMa20: 188,
+          volumePercentile200: 62,
+          lastSwingHigh: 77048.72,
+          lastSwingLow: 76144.71,
+          lastSwingHighAge: 10,
+          lastSwingLowAge: 5,
+          bosState: "bearish",
+          recentHigh: 77317.02,
+          recentLow: 76144.71,
+          pocPrice: 76750.4,
+          fibDirection: "downtrend",
+          fibAnchorHigh: 77048.72,
+          fibAnchorLow: 76144.71,
+          fib_0_382: 76490.04,
+          fib_0_500: 76596.72,
+          fib_0_618: 76703.39,
+          fib_1_272: 75898.82,
+          fib_1_618: 75586.03,
+        },
+      },
+      indicatorsMatrix: {
+        ema_stack: { enabled: true },
+        rsi: { enabled: true },
+        volume: { enabled: true },
+        swings_bos: { enabled: true },
+        structure_levels: { enabled: true },
+        fibonacci: { enabled: true },
+      },
+    });
+    // All 6 fragments must be present — historically only 3/6 made it.
+    expect(out).toContain("RSI(14)");
+    expect(out).toContain("EMA stack");
+    expect(out).toContain("Volume:");
+    expect(out).toContain("Fib (downtrend)");
+    expect(out).toMatch(/BOS|swing/i);
+    expect(out).toMatch(/POC|recent|HH|LL/i);
+  });
+});

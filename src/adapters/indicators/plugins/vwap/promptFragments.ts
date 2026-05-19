@@ -15,3 +15,13 @@ export function detectorFragment(
   if (series.length > 0) lines.push(`  VWAP last: ${series}`);
   return lines.join("\n");
 }
+
+export function reviewerFragment(
+  s: Record<string, unknown>,
+  _params?: Record<string, unknown>,
+): string | null {
+  const vwap = s.vwapSession;
+  const pct = s.priceVsVwapPct;
+  if (typeof vwap !== "number" || typeof pct !== "number") return null;
+  return `VWAP: \`${vwap.toFixed(2)}\` price=\`${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%\` ${pct >= 0 ? "above" : "below"}`;
+}

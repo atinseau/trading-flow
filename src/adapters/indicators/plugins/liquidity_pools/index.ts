@@ -2,7 +2,7 @@ import type { IndicatorPlugin } from "@domain/services/IndicatorPlugin";
 import { z } from "zod";
 import { computePriceLines, computeScalars } from "./compute";
 import { liquidityPoolsMetadata } from "./metadata";
-import { detectorFragment, featuredFewShotExample } from "./promptFragments";
+import { detectorFragment, featuredFewShotExample, reviewerFragment } from "./promptFragments";
 
 export const liquidityPoolsPlugin: IndicatorPlugin = {
   ...liquidityPoolsMetadata,
@@ -20,6 +20,7 @@ export const liquidityPoolsPlugin: IndicatorPlugin = {
     palette: ["#a78bfa"],
   },
   detectorPromptFragment: detectorFragment,
+  reviewerPromptFragment: reviewerFragment,
   featuredFewShotExample,
   breakdownAxes: ["structure"],
 };

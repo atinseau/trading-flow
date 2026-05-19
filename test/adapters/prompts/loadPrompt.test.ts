@@ -30,7 +30,7 @@ test("loadPrompt('detector') returns rendered template + version", async () => {
 
 test("loadPrompt('reviewer') extracts version", async () => {
   const result = await loadPrompt("reviewer");
-  expect(result.version).toBe("reviewer_v7");
+  expect(result.version).toBe("reviewer_v8");
 });
 
 test("loadPrompt('finalizer') extracts version", async () => {

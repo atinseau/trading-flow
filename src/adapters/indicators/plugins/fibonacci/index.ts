@@ -2,7 +2,7 @@ import type { IndicatorPlugin } from "@domain/services/IndicatorPlugin";
 import { z } from "zod";
 import { computeAnchor, computeScalars, fibLevels } from "./compute";
 import { fibonacciMetadata } from "./metadata";
-import { detectorFragment } from "./promptFragments";
+import { detectorFragment, reviewerFragment } from "./promptFragments";
 
 const FIBONACCI_PARAMS_SCHEMA = z.object({ lookback: z.number().int().min(1).max(10) }).strict();
 
@@ -115,6 +115,7 @@ export const fibonacciPlugin: IndicatorPlugin = {
     },
   },
   detectorPromptFragment: detectorFragment,
+  reviewerPromptFragment: reviewerFragment,
   breakdownAxes: ["structure"],
   paramsSchema: FIBONACCI_PARAMS_SCHEMA,
 };

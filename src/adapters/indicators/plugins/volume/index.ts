@@ -5,6 +5,7 @@ import { volumeMetadata } from "./metadata";
 import {
   detectorFragment as detectorPromptFragment,
   featuredFewShotExample,
+  reviewerFragment as reviewerPromptFragment,
 } from "./promptFragments";
 
 export const volumePlugin: IndicatorPlugin = {
@@ -61,6 +62,7 @@ export const volumePlugin: IndicatorPlugin = {
     seriesLabels: { histogram: "Volume", volumeMa20: "Vol MA20" },
   },
   detectorPromptFragment,
+  reviewerPromptFragment,
   featuredFewShotExample,
   breakdownAxes: ["volume"],
   preFilterCriterion: "volume_spike_min",

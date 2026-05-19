@@ -1,13 +1,16 @@
 {{!--
-  version: reviewer_v7
-  description: v7 — adds the Recent OHLCV table for float-precision
-               level checks (retest distance, invalidation breach).
-               v6 baseline : Modular indicators with fresh-data scalars
-               and output spec composed by PromptBuilder from active
-               plugins ; tightened NEUTRAL default (commit discipline
-               after 2 consecutive NEUTRALs) ; aligned with system
-               prompt's expanded WEAKEN trigger taxonomy + same-tick
-               corroboration awareness.
+  version: reviewer_v8
+  description: v8 — coverage fix : 5 plugins (ema_stack, volume,
+               fibonacci, vwap, liquidity_pools) now ship a
+               reviewerPromptFragment. The reviewer system prompt
+               names "EMA short crossing the mid" and "Volume drying
+               up" as explicit WEAKEN triggers — and we were asking
+               the LLM to detect them without giving the numerical
+               data. Each fragment is condensed (1-2 lines) per the
+               existing reviewer-fragment philosophy.
+               v7 baseline : Recent OHLCV table for float-precision
+               level checks. v6 baseline : Modular indicators with
+               fresh-data scalars + commit discipline after 2 NEUTRALs.
 --}}
 
 # Refining an active setup

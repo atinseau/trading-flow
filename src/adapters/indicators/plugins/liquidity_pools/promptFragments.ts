@@ -8,6 +8,18 @@ export function detectorFragment(s: Record<string, unknown>): string | null {
       : arr.map((e) => `\`${e.price.toFixed(2)}\` ×${e.touches}`).join(", ");
   return `**Liquidity pools** (top equal-pivot clusters):\n  - Above: ${fmt(ah as never)}\n  - Below: ${fmt(al as never)}`;
 }
+
+/** Reviewer-facing condensed fragment. Lists the nearest pool above and
+ *  below price so the reviewer can judge whether a setup is at risk of
+ *  being swept (liquidity grab / WEAKEN trigger). */
+export function reviewerFragment(s: Record<string, unknown>): string | null {
+  const ah = s.topEqualHighs,
+    al = s.topEqualLows;
+  if (!Array.isArray(ah) || !Array.isArray(al)) return null;
+  const top = (arr: { price: number; touches: number }[]) =>
+    arr.length === 0 ? "none" : `\`${arr[0]!.price.toFixed(2)}\`×${arr[0]!.touches}`;
+  return `Pools: nearest above ${top(ah as never)}, below ${top(al as never)}`;
+}
 export function featuredFewShotExample(): string {
   return `### Example — Sweep + reclaim on EQH cluster (event)
 

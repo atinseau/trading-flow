@@ -21,3 +21,19 @@ export function detectorFragment(scalars: Record<string, unknown>): string | nul
     `  - 1.618: ${f1618.toFixed(4)} (extension)`,
   ].join("\n");
 }
+
+/** Reviewer-facing condensed fragment. Surfaces the retracement levels
+ *  the reviewer needs to judge "did the retest hold ?" without
+ *  pixel-reading the chart. */
+export function reviewerFragment(scalars: Record<string, unknown>): string | null {
+  const dir = scalars.fibDirection;
+  const high = scalars.fibAnchorHigh;
+  const low = scalars.fibAnchorLow;
+  if (typeof dir !== "string" || typeof high !== "number" || typeof low !== "number") {
+    return null;
+  }
+  const f382 = scalars.fib_0_382 as number;
+  const f500 = scalars.fib_0_500 as number;
+  const f618 = scalars.fib_0_618 as number;
+  return `Fib (${dir}): anchorH=\`${high.toFixed(4)}\` anchorL=\`${low.toFixed(4)}\` | 0.382=\`${f382.toFixed(4)}\` 0.500=\`${f500.toFixed(4)}\` 0.618=\`${f618.toFixed(4)}\``;
+}
