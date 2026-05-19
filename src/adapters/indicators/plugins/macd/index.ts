@@ -43,7 +43,7 @@ export const macdPlugin: IndicatorPlugin = {
     pane: "secondary",
     palette: ["#3b82f6", "#f59e0b"],
     secondaryPaneStretch: 15,
-    seriesLabels: { macd: "MACD", signal: "Signal", hist: "Hist" },
+    seriesLabels: { macd: "MACD", signal: "Signal", histogram: "Hist" },
   },
   detectorPromptFragment: detectorFragment,
   reviewerPromptFragment: reviewerFragment,

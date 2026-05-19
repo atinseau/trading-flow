@@ -136,7 +136,13 @@ export function applyContribution(
           {
             priceLineVisible: false,
             lastValueVisible: false,
-            title: opts.id,
+            // Histograms have no per-series name key in the contribution
+            // shape, so resolve the label via a conventional
+            // `seriesLabels.histogram` lookup. Lets plugins like MACD
+            // distinguish their histogram ("Hist") from the lines
+            // ("MACD" / "Signal") instead of falling back to the
+            // plugin id.
+            title: opts.renderConfig.seriesLabels?.histogram ?? opts.id,
           },
           opts.paneIndex,
         ) as ISeriesApi<"Histogram">;

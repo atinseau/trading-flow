@@ -39,7 +39,7 @@ export const volumePlugin: IndicatorPlugin = {
     pane: "secondary",
     palette: ["#94a3b8", "#ab47bc"],
     secondaryPaneStretch: 13,
-    seriesLabels: { volume: "Volume", volumeMa20: "Vol MA20" },
+    seriesLabels: { histogram: "Volume", volumeMa20: "Vol MA20" },
   },
   detectorPromptFragment,
   featuredFewShotExample,
