@@ -303,9 +303,6 @@ export const WatchSchema = z
         /** Decimals used in numerical tables. `null` = auto-detect from
          *  last close (BTC ~76000 → 2, EURUSD ~1.08 → 5). */
         decimals: z.number().int().min(0).max(8).nullable().default(null),
-        /** Timestamp column format in the OHLCV table.
-         *  `iso` "2026-05-19T16:30:00Z" | `time` "16:30" | `relative` "tick -5". */
-        timestamp_format: z.enum(["iso", "relative", "time"]).default("time"),
         /** Include the volume column (set false on assets with unreliable
          *  volume like FX spot). */
         include_volume: z.boolean().default(true),

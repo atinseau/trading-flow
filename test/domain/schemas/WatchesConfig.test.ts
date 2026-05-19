@@ -53,7 +53,7 @@ describe("WatchSchema.prompt_data", () => {
     expect(r.data.prompt_data.indicator_history_count).toBe(10);
     expect(r.data.prompt_data.include_recent_in_finalizer).toBe(true);
     expect(r.data.prompt_data.decimals).toBeNull();
-    expect(r.data.prompt_data.timestamp_format).toBe("time");
+    // timestamp_format was removed v3 — `time` is hardcoded.
     expect(r.data.prompt_data.include_volume).toBe(true);
   });
 
@@ -83,13 +83,6 @@ describe("WatchSchema.prompt_data", () => {
     const w = structuredClone(minimalValidWatch);
     // biome-ignore lint/suspicious/noExplicitAny: probing schema with extra keys
     (w as any).prompt_data = { indicator_history_count: -1 };
-    expect(WatchSchema.safeParse(w).success).toBe(false);
-  });
-
-  test("rejects invalid timestamp_format", () => {
-    const w = structuredClone(minimalValidWatch);
-    // biome-ignore lint/suspicious/noExplicitAny: probing schema with extra keys
-    (w as any).prompt_data = { timestamp_format: "unix" };
     expect(WatchSchema.safeParse(w).success).toBe(false);
   });
 

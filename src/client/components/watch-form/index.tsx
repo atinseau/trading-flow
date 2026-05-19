@@ -95,7 +95,6 @@ const SENSIBLE_DEFAULTS = {
     indicator_history_count: 10,
     include_recent_in_finalizer: true,
     decimals: null as number | null,
-    timestamp_format: "time" as const,
     include_volume: true,
   },
   feedback: {},

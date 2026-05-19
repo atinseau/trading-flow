@@ -778,14 +778,13 @@ export function buildReplayActivities(deps: ReplayActivityDeps) {
           const pd = watch.prompt_data ?? {
             include_recent_in_finalizer: true,
             decimals: null as number | null,
-            timestamp_format: "time" as const,
             include_volume: true,
           };
           return pd.include_recent_in_finalizer && finalizeCandles.length > 0
             ? formatRecentOhlcv(finalizeCandles, {
                 count: 5,
                 decimals: pd.decimals,
-                timestampFormat: pd.timestamp_format,
+                timestampFormat: "time",
                 includeVolume: pd.include_volume,
               })
             : "";

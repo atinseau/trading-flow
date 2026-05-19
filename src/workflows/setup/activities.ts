@@ -497,7 +497,6 @@ export function buildSetupActivities(deps: ActivityDeps) {
         indicator_history_count: 10,
         include_recent_in_finalizer: true,
         decimals: null as number | null,
-        timestamp_format: "time" as const,
         include_volume: true,
       };
       const recentOhlcvTable =
@@ -505,7 +504,7 @@ export function buildSetupActivities(deps: ActivityDeps) {
           ? formatRecentOhlcv(finalizeCandles, {
               count: 5,
               decimals: pd.decimals,
-              timestampFormat: pd.timestamp_format,
+              timestampFormat: "time",
               includeVolume: pd.include_volume,
             })
           : "";

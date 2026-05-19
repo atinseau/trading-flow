@@ -35,7 +35,6 @@ const baseArgs = {
     indicator_history_count: 0,
     include_recent_in_finalizer: true,
     decimals: null,
-    timestamp_format: "time" as const,
     include_volume: true,
   },
 };

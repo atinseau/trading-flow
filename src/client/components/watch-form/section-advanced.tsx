@@ -546,61 +546,33 @@ export function SectionAdvanced() {
             )}
           />
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <FormField
-              control={f.control}
-              name="prompt_data.timestamp_format"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Format horaire de la table OHLCV</FormLabel>
-                  <FormDescription>
-                    `time` = "16:30" (compact), `iso` = ISO-8601, `relative` = "tick -5".
-                  </FormDescription>
-                  <FormControl>
-                    <Select value={field.value} onValueChange={field.onChange}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="time">time (HH:mm UTC)</SelectItem>
-                        <SelectItem value="iso">iso (full timestamp)</SelectItem>
-                        <SelectItem value="relative">relative (tick -N)</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={f.control}
-              name="prompt_data.decimals"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Décimales (vide = auto)</FormLabel>
-                  <FormDescription>
-                    Vide = auto-détecté depuis le dernier close (BTC ~76k → 2, EURUSD ~1.08 → 4).
-                    Force une valeur 0-8 pour override.
-                  </FormDescription>
-                  <FormControl>
-                    <Input
-                      type="number"
-                      min={0}
-                      max={8}
-                      step={1}
-                      placeholder="auto"
-                      value={field.value ?? ""}
-                      onChange={(e) =>
-                        field.onChange(e.target.value === "" ? null : Number(e.target.value))
-                      }
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-          </div>
+          <FormField
+            control={f.control}
+            name="prompt_data.decimals"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Décimales (vide = auto)</FormLabel>
+                <FormDescription>
+                  Vide = auto-détecté depuis le dernier close (BTC ~76k → 2, EURUSD ~1.08 → 4).
+                  Force une valeur 0-8 pour override.
+                </FormDescription>
+                <FormControl>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={8}
+                    step={1}
+                    placeholder="auto"
+                    value={field.value ?? ""}
+                    onChange={(e) =>
+                      field.onChange(e.target.value === "" ? null : Number(e.target.value))
+                    }
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
 
           <FormField
             control={f.control}

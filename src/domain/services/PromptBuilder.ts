@@ -16,7 +16,6 @@ const DEFAULT_PROMPT_DATA: WatchConfig["prompt_data"] = {
   indicator_history_count: 10,
   include_recent_in_finalizer: true,
   decimals: null,
-  timestamp_format: "time",
   include_volume: true,
 };
 
@@ -86,7 +85,7 @@ export class PromptBuilder {
     const recentOhlcvTable = formatRecentOhlcv(args.candles, {
       count: promptData.recent_ohlcv_count,
       decimals: promptData.decimals,
-      timestampFormat: promptData.timestamp_format,
+      timestampFormat: "time",
       includeVolume: promptData.include_volume,
     });
     return this.detector!.render({
@@ -140,7 +139,7 @@ export class PromptBuilder {
     const recentOhlcvTable = formatRecentOhlcv(args.candles, {
       count: promptData.recent_ohlcv_count,
       decimals: promptData.decimals,
-      timestampFormat: promptData.timestamp_format,
+      timestampFormat: "time",
       includeVolume: promptData.include_volume,
     });
     return this.reviewer!.render({
