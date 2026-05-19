@@ -109,6 +109,6 @@ describe("applyRightOffset", () => {
       }),
     } as unknown as Parameters<typeof applyRightOffset>[0];
     applyRightOffset(fakeChart, { priceOverlayLineCount: 11, priceLineCount: 0 });
-    expect(calls[0]).toEqual({ method: "applyOptions", args: [{ rightOffset: 12 }] });
+    expect(calls[0]).toEqual({ method: "applyOptions", args: [{ rightOffset: 16 }] });
   });
 });

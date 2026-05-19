@@ -107,7 +107,7 @@ function makeFakeProxies(
       indicatorsJson: "{}",
       lastClose: tick.candle.close,
       costUsd: 0,
-      promptVersion: "detector_v6",
+      promptVersion: "detector_v7",
       cacheHit: false,
     }),
     runReviewerReplay: async () => ({

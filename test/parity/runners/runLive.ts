@@ -150,7 +150,7 @@ export async function runLive(
     scoreThresholdFinalizer: scenario.watch.setup_lifecycle.score_threshold_finalizer,
     scoreThresholdDead: scenario.watch.setup_lifecycle.score_threshold_dead,
     scoreMax: scenario.watch.setup_lifecycle.score_max,
-    detectorPromptVersion: "detector_v6",
+    detectorPromptVersion: "detector_v7",
     feedbackEnabled: scenario.watch.feedback.enabled,
     includeReasoning: scenario.watch.include_reasoning,
     includeChartImage: scenario.watch.include_chart_image,
