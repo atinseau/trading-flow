@@ -53,10 +53,6 @@ describe("macdPlugin", () => {
     expect(txt!.length).toBeLessThan(60);
   });
 
-  test("chartScript contains registerPlugin macd", () => {
-    expect(macdPlugin.chartScript).toContain('__registerPlugin("macd"');
-  });
-
   test("computeScalars uses default params when no params", () => {
     const s = macdPlugin.computeScalars(sampleCandles);
     expect(s.macd).toBeDefined();

@@ -13,7 +13,6 @@ const plugin = (
   tag: "trend",
   shortDescription: "",
   longDescription: "",
-  chartScript: "",
   chartPane: "price_overlay",
   renderConfig: { pane: "price_overlay", palette: [] },
   computeScalars: () => ({}),

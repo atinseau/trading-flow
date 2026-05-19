@@ -1,6 +1,5 @@
 import type { IndicatorPlugin } from "@domain/services/IndicatorPlugin";
 import { z } from "zod";
-import { CHART_SCRIPT } from "./chartScript";
 import { computeMarkers, computeScalars } from "./compute";
 import { swingsBosMetadata } from "./metadata";
 import { detectorFragment, featuredFewShotExample, reviewerFragment } from "./promptFragments";
@@ -41,7 +40,6 @@ export const swingsBosPlugin: IndicatorPlugin = {
     lastSwingLowAge: z.number().int().nonnegative().nullable(),
     bosState: z.enum(["bullish", "bearish", "none"]),
   }),
-  chartScript: CHART_SCRIPT,
   chartPane: "price_overlay",
   renderConfig: {
     pane: "price_overlay",

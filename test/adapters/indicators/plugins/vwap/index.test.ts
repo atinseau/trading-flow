@@ -39,10 +39,6 @@ describe("vwapPlugin", () => {
     expect(txt).toContain("VWAP session");
     expect(txt).toContain("price vs VWAP");
   });
-
-  test("chartScript contains registerPlugin vwap", () => {
-    expect(vwapPlugin.chartScript).toContain('__registerPlugin("vwap"');
-  });
 });
 
 // ─── Ported from PureJsIndicatorCalculator.coverage.test.ts ──────────────────

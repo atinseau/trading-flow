@@ -50,7 +50,6 @@ export interface IndicatorPlugin extends IndicatorPluginMetadata {
   scalarSchemaFragment(): z.ZodRawShape;
 
   // Chart rendering
-  readonly chartScript: string;
   readonly chartPane: ChartPaneKind;
   readonly secondaryPaneStretch?: number;
   /**

@@ -36,12 +36,6 @@ describe("IndicatorRegistry (foundation)", () => {
     ).toBeUndefined();
   });
 
-  test("allChartScripts returns rsi chart script", () => {
-    const reg = new IndicatorRegistry();
-    expect(reg.allChartScripts()).toContain("rsi");
-    expect(reg.allChartScripts()).toContain("RSI(14)");
-  });
-
   test("all() returns array containing rsiPlugin", () => {
     const reg = new IndicatorRegistry();
     expect(reg.all().length).toBeGreaterThanOrEqual(1);

@@ -1,6 +1,5 @@
 import type { IndicatorPlugin } from "@domain/services/IndicatorPlugin";
 import { z } from "zod";
-import { CHART_SCRIPT } from "./chartScript";
 import { computeScalars, computeSeries } from "./compute";
 import { emaStackMetadata } from "./metadata";
 import { detectorFragment } from "./promptFragments";
@@ -25,7 +24,6 @@ export const emaStackPlugin: IndicatorPlugin = {
     emaMid: z.number(),
     emaLong: z.number(),
   }),
-  chartScript: CHART_SCRIPT,
   chartPane: "price_overlay",
   renderConfig: {
     pane: "price_overlay",

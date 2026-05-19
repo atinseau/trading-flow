@@ -9,7 +9,6 @@ const fakePlugin = (id: string, example: string | null): IndicatorPlugin => ({
   tag: "trend",
   shortDescription: "",
   longDescription: "",
-  chartScript: "",
   chartPane: "price_overlay",
   renderConfig: { pane: "price_overlay", palette: [] },
   computeScalars: () => ({}),

@@ -1,6 +1,5 @@
 import type { IndicatorPlugin } from "@domain/services/IndicatorPlugin";
 import { z } from "zod";
-import { CHART_SCRIPT } from "./chartScript";
 import { computeRsiScalar, computeRsiSeries } from "./compute";
 import { rsiMetadata } from "./metadata";
 import { detectorFragment, reviewerFragment } from "./promptFragments";
@@ -22,7 +21,6 @@ export const rsiPlugin: IndicatorPlugin = {
 
   scalarSchemaFragment: () => ({ rsi: z.number().min(0).max(100) }),
 
-  chartScript: CHART_SCRIPT,
   chartPane: "secondary",
   secondaryPaneStretch: 13,
   renderConfig: {

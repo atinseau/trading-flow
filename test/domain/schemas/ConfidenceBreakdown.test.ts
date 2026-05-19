@@ -8,7 +8,6 @@ const plugin = (id: string, axes: IndicatorPlugin["breakdownAxes"]): IndicatorPl
   tag: "trend",
   shortDescription: "",
   longDescription: "",
-  chartScript: "",
   chartPane: "price_overlay",
   renderConfig: { pane: "price_overlay", palette: [] },
   computeScalars: () => ({}),

@@ -1,6 +1,5 @@
 import type { IndicatorPlugin } from "@domain/services/IndicatorPlugin";
 import { z } from "zod";
-import { CHART_SCRIPT } from "./chartScript";
 import { computeScalars, computeSeries } from "./compute";
 import { bollingerMetadata } from "./metadata";
 import { detectorFragment, featuredFewShotExample, reviewerFragment } from "./promptFragments";
@@ -26,7 +25,6 @@ export const bollingerPlugin: IndicatorPlugin = {
     bbBandwidthPct: z.number(),
     bbBandwidthPercentile200: z.number().min(0).max(100),
   }),
-  chartScript: CHART_SCRIPT,
   chartPane: "price_overlay",
   renderConfig: {
     pane: "price_overlay",

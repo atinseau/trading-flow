@@ -1,6 +1,5 @@
 import type { IndicatorPlugin } from "@domain/services/IndicatorPlugin";
 import { z } from "zod";
-import { CHART_SCRIPT } from "./chartScript";
 import { computeScalars, computeSeries } from "./compute";
 import { volumeMetadata } from "./metadata";
 import {
@@ -20,7 +19,6 @@ export const volumePlugin: IndicatorPlugin = {
     lastVolume: z.number().nonnegative(),
     volumePercentile200: z.number().min(0).max(100),
   }),
-  chartScript: CHART_SCRIPT,
   chartPane: "secondary",
   secondaryPaneStretch: 13,
   renderConfig: {

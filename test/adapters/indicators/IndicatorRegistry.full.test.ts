@@ -22,12 +22,4 @@ describe("IndicatorRegistry full", () => {
     });
     expect(active.map((p) => p.id).sort()).toEqual(["rsi", "volume"]);
   });
-
-  test("allChartScripts concatenates non-empty strings", () => {
-    const reg = new IndicatorRegistry();
-    const all = reg.allChartScripts();
-    expect(all.length).toBeGreaterThan(0);
-    expect(all).toContain('__registerPlugin("rsi"');
-    expect(all).toContain('__registerPlugin("volume"');
-  });
 });

@@ -1,6 +1,5 @@
 import type { IndicatorPlugin } from "@domain/services/IndicatorPlugin";
 import { z } from "zod";
-import { CHART_SCRIPT } from "./chartScript";
 import { computeScalars, computeSeries } from "./compute";
 import { atrMetadata } from "./metadata";
 import { detectorFragment, reviewerFragment } from "./promptFragments";
@@ -23,7 +22,6 @@ export const atrPlugin: IndicatorPlugin = {
     atrMa20: z.number().nonnegative(),
     atrZScore200: z.number(),
   }),
-  chartScript: CHART_SCRIPT,
   chartPane: "secondary",
   secondaryPaneStretch: 11,
   renderConfig: {

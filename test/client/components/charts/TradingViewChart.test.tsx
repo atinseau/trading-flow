@@ -48,7 +48,6 @@ const fakePlugin = (
     computeScalars: () => ({}),
     computeSeries: () => ({ kind: "lines", series: { a: [1, 2, 3] } }),
     scalarSchemaFragment: () => ({}),
-    chartScript: "",
     chartPane: pane,
     getPromptData: () => null,
     renderConfig: { pane, palette: ["#ff0000"] },

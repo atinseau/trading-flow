@@ -1,6 +1,5 @@
 import type { IndicatorPlugin } from "@domain/services/IndicatorPlugin";
 import { z } from "zod";
-import { CHART_SCRIPT } from "./chartScript";
 import { computeScalars, computeSeries } from "./compute";
 import { macdMetadata } from "./metadata";
 import { detectorFragment, reviewerFragment } from "./promptFragments";
@@ -24,7 +23,6 @@ export const macdPlugin: IndicatorPlugin = {
     return { kind: "lines", series: { macd: s.macd, signal: s.signal, hist: s.hist } };
   },
   scalarSchemaFragment: () => ({ macd: z.number(), macdSignal: z.number(), macdHist: z.number() }),
-  chartScript: CHART_SCRIPT,
   chartPane: "secondary",
   secondaryPaneStretch: 13,
   renderConfig: {

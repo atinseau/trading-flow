@@ -62,10 +62,6 @@ describe("bollingerPlugin", () => {
     expect(txt!.length).toBeLessThan(80);
   });
 
-  test("chartScript contains registerPlugin bollinger", () => {
-    expect(bollingerPlugin.chartScript).toContain('__registerPlugin("bollinger"');
-  });
-
   test("featuredFewShotExample contains BB squeeze breakout pattern", () => {
     const ex = bollingerPlugin.featuredFewShotExample?.();
     expect(ex).toBeTruthy();

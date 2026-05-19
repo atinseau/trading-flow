@@ -50,10 +50,6 @@ describe("liquidityPoolsPlugin", () => {
     expect(txt).toContain("Below");
   });
 
-  test("chartScript contains registerPlugin liquidity_pools", () => {
-    expect(liquidityPoolsPlugin.chartScript).toContain('__registerPlugin("liquidity_pools"');
-  });
-
   test("featuredFewShotExample contains sweep+reclaim pattern", () => {
     const ex = liquidityPoolsPlugin.featuredFewShotExample?.();
     expect(ex).toBeTruthy();

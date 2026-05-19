@@ -53,10 +53,6 @@ describe("atrPlugin", () => {
     expect(txt!.length).toBeLessThan(60);
   });
 
-  test("chartScript contains registerPlugin atr", () => {
-    expect(atrPlugin.chartScript).toContain('__registerPlugin("atr"');
-  });
-
   test("computeScalars uses default period when no params", () => {
     const s = atrPlugin.computeScalars(sampleCandles);
     expect(s.atr).toBeDefined();

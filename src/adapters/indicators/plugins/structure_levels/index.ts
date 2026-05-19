@@ -1,6 +1,5 @@
 import type { IndicatorPlugin } from "@domain/services/IndicatorPlugin";
 import { z } from "zod";
-import { CHART_SCRIPT } from "./chartScript";
 import { computePriceLines, computeScalars } from "./compute";
 import { structureLevelsMetadata } from "./metadata";
 import { detectorFragment, reviewerFragment } from "./promptFragments";
@@ -24,7 +23,6 @@ export const structureLevelsPlugin: IndicatorPlugin = {
     recentLow: z.number(),
     pocPrice: z.number(),
   }),
-  chartScript: CHART_SCRIPT,
   chartPane: "price_overlay",
   renderConfig: {
     pane: "price_overlay",

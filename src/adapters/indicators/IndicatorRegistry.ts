@@ -36,10 +36,6 @@ export class IndicatorRegistry {
     return this.plugins.find((p) => p.id === id);
   }
 
-  allChartScripts(): string {
-    return this.plugins.map((p) => p.chartScript).join("\n");
-  }
-
   /**
    * Returns each plugin's renderConfig keyed by plugin id. Used by
    * PlaywrightChartRenderer to ship per-indicator render preferences into

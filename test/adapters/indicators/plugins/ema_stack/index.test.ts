@@ -49,10 +49,6 @@ describe("emaStackPlugin", () => {
     expect(txt).toContain("alignment = trend regime");
   });
 
-  test("chartScript contains registerPlugin ema_stack", () => {
-    expect(emaStackPlugin.chartScript).toContain('__registerPlugin("ema_stack"');
-  });
-
   test("computeScalars uses default periods when no params", () => {
     const s = emaStackPlugin.computeScalars(sampleCandles);
     expect(s.emaShort).toBeDefined();
