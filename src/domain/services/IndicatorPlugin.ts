@@ -1,7 +1,7 @@
+import type { IndicatorSeriesContribution, RenderConfig } from "@domain/charts/types";
 import type { Candle } from "@domain/schemas/Candle";
 import type { IndicatorId } from "@domain/schemas/WatchesConfig";
 import type { z } from "zod";
-import type { IndicatorSeriesContribution } from "@adapters/indicators/plugins/base/types";
 
 export type IndicatorTag =
   | "trend"
@@ -20,7 +20,15 @@ export type PreFilterCriterion =
   | "near_pivot";
 
 export type ParamDescriptor =
-  | { key: string; kind: "number"; label: string; min: number; max: number; step?: number; help?: string }
+  | {
+      key: string;
+      kind: "number";
+      label: string;
+      min: number;
+      max: number;
+      step?: number;
+      help?: string;
+    }
   | { key: string; kind: "enum"; label: string; options: ReadonlyArray<string>; help?: string };
 
 export interface IndicatorPluginMetadata {
@@ -45,10 +53,23 @@ export interface IndicatorPlugin extends IndicatorPluginMetadata {
   readonly chartScript: string;
   readonly chartPane: ChartPaneKind;
   readonly secondaryPaneStretch?: number;
+  /**
+   * Declarative render preferences consumed by the unified
+   * `contributionRenderer`. Optional during the Phase 4 migration —
+   * once every plugin owns it, tightened to required and the
+   * `renderConfigByPluginId` bridge map is deleted.
+   */
+  readonly renderConfig?: RenderConfig;
 
   // Prompt fragments
-  detectorPromptFragment(scalars: Record<string, unknown>, params?: Record<string, unknown>): string | null;
-  reviewerPromptFragment?(scalars: Record<string, unknown>, params?: Record<string, unknown>): string | null;
+  detectorPromptFragment(
+    scalars: Record<string, unknown>,
+    params?: Record<string, unknown>,
+  ): string | null;
+  reviewerPromptFragment?(
+    scalars: Record<string, unknown>,
+    params?: Record<string, unknown>,
+  ): string | null;
   readonly contributedPatternTypes?: ReadonlyArray<string>;
   featuredFewShotExample?(): string | null;
 
