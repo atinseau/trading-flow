@@ -37,6 +37,11 @@ export function AssetChart({ candles }: { candles: AssetCandle[] }) {
     [candles],
   );
 
+  // Some sources don't provide real volume (Yahoo forex pairs ship 0
+  // everywhere). When that's the case, drop volume + vwap (vwap depends
+  // on volume) so the user doesn't see empty chips for unavailable data.
+  const hasVolume = useMemo(() => candles.some((c) => c.volume > 0), [candles]);
+
   const indicators: IndicatorEntry[] = useMemo(() => {
     const candlesForCompute = candles.map((c) => ({
       timestamp: new Date(c.time * 1000),
@@ -46,19 +51,22 @@ export function AssetChart({ candles }: { candles: AssetCandle[] }) {
       close: c.close,
       volume: c.volume,
     }));
-    return REGISTRY.map((plugin) => ({
+    return REGISTRY.filter((plugin) => {
+      if (!hasVolume && (plugin.id === "volume" || plugin.id === "vwap")) return false;
+      return true;
+    }).map((plugin) => ({
       id: plugin.id,
       plugin: plugin as IndicatorEntry["plugin"],
       // biome-ignore lint/suspicious/noExplicitAny: bypass strict Candle typing for fixture-shaped data
       contribution: plugin.computeSeries(candlesForCompute as any),
     }));
-  }, [candles]);
+  }, [candles, hasVolume]);
 
-  // Start with volume visible (universal context), the rest hidden so the
-  // chart remains uncluttered. User reveals via the framework chips.
+  // Start with volume visible (universal context when present), the rest
+  // hidden so the chart remains uncluttered. User reveals via the chips.
   const initialVisibility = useMemo(
-    () => Object.fromEntries(REGISTRY.map((p) => [p.id, p.id === "volume"])),
-    [],
+    () => Object.fromEntries(REGISTRY.map((p) => [p.id, hasVolume && p.id === "volume"])),
+    [hasVolume],
   );
 
   return (
