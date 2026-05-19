@@ -37,7 +37,8 @@ describe("rsiPlugin", () => {
     if (lines?.kind !== "lines") throw new Error("lines part missing");
     if (refLines?.kind !== "priceLines") throw new Error("priceLines part missing");
     expect(lines.series.rsi.length).toBe(50);
-    expect(refLines.lines.map((l) => l.price).sort()).toEqual([30, 70]);
+    // 4 priceLines : visible 70 + 30 + invisible anchors 0 + 100.
+    expect(refLines.lines.map((l) => l.price).sort((a, b) => a - b)).toEqual([0, 30, 70, 100]);
   });
 
   test("scalarSchemaFragment validates rsi number", () => {

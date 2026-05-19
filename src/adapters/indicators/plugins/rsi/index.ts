@@ -18,14 +18,20 @@ export const rsiPlugin: IndicatorPlugin = {
     kind: "compound",
     parts: [
       { kind: "lines", series: { rsi: computeRsiSeries(candles, params) } },
-      // Overbought / oversold reference lines. Drawn on the RSI series's
-      // own price scale so they sit in the secondary pane, not the main
-      // candle pane. Empty title → no axis-label clutter.
+      // Visible overbought / oversold reference lines + invisible 0/100
+      // anchors. Together with `renderConfig.priceScaleOptions.autoScale:
+      // false`, this clamps the RSI pane to the canonical [0, 100] range
+      // so 70 / 30 are always at the same vertical position regardless of
+      // the actual data spread.
       {
         kind: "priceLines",
         lines: [
           { price: 70, color: "#aaa", style: 1, title: "" },
           { price: 30, color: "#aaa", style: 1, title: "" },
+          // alpha=0 anchors — only there to expand the auto-fit range to
+          // [0, 100] before autoScale gets disabled.
+          { price: 100, color: "rgba(0,0,0,0)", style: 0, title: "" },
+          { price: 0, color: "rgba(0,0,0,0)", style: 0, title: "" },
         ],
       },
     ],
@@ -40,6 +46,9 @@ export const rsiPlugin: IndicatorPlugin = {
     palette: ["#14b8a6"],
     secondaryPaneStretch: 13,
     seriesLabels: { rsi: "RSI" },
+    // Lock the pane to RSI's theoretical [0, 100] range so the 70/30
+    // reference lines stay at consistent vertical positions across charts.
+    priceScaleOptions: { autoScale: false, scaleMargins: { top: 0.05, bottom: 0.05 } },
   },
 
   detectorPromptFragment: detectorFragment,

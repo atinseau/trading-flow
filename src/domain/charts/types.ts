@@ -69,4 +69,12 @@ export type RenderConfig = {
   linesStyles?: Readonly<
     Record<string, { lineWidth?: 1 | 2 | 3 | 4; lineStyle?: 0 | 1 | 2 | 3 | 4 }>
   >;
+  /** Optional price-scale tweaks applied to the indicator's own pane.
+   *  Typical use : `{ autoScale: false }` for RSI/oscillators that should
+   *  keep a fixed [0, 100] range — combined with invisible anchor
+   *  priceLines at 0 and 100 emitted by the plugin's `computeSeries`. */
+  priceScaleOptions?: {
+    autoScale?: boolean;
+    scaleMargins?: { top?: number; bottom?: number };
+  };
 };

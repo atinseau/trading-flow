@@ -175,6 +175,20 @@ export function applyContribution(
 
   applyOne(contribution);
 
+  // After all parts are applied, optionally clamp the secondary pane's
+  // price scale. Must happen AFTER any invisible anchor priceLines the
+  // plugin emits (e.g. RSI's invisible 0 / 100) so the scale auto-fits to
+  // include them before we turn autoScale off — that's how the [0, 100]
+  // bounding works.
+  const psOpts = opts.renderConfig.priceScaleOptions;
+  if (psOpts && createdSeries[0]) {
+    try {
+      createdSeries[0].priceScale().applyOptions(psOpts);
+    } catch {
+      // ignore — series may have been torn down between create and apply
+    }
+  }
+
   return {
     cleanup() {
       for (const s of createdSeries) {
