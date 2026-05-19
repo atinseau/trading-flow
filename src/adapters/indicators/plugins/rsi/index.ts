@@ -15,8 +15,20 @@ export const rsiPlugin: IndicatorPlugin = {
 
   computeScalars: (candles, params) => computeRsiScalar(candles, params),
   computeSeries: (candles, params) => ({
-    kind: "lines",
-    series: { rsi: computeRsiSeries(candles, params) },
+    kind: "compound",
+    parts: [
+      { kind: "lines", series: { rsi: computeRsiSeries(candles, params) } },
+      // Overbought / oversold reference lines. Drawn on the RSI series's
+      // own price scale so they sit in the secondary pane, not the main
+      // candle pane. Empty title → no axis-label clutter.
+      {
+        kind: "priceLines",
+        lines: [
+          { price: 70, color: "#aaa", style: 1, title: "" },
+          { price: 30, color: "#aaa", style: 1, title: "" },
+        ],
+      },
+    ],
   }),
 
   scalarSchemaFragment: () => ({ rsi: z.number().min(0).max(100) }),

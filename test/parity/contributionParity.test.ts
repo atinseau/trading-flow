@@ -31,6 +31,14 @@ function fakeChart(calls: Call[]) {
         return {
           setData: (d: unknown) =>
             calls.push({ method: "setData", args: [(d as unknown[]).length] }),
+          // Secondary-pane series may receive compound priceLines (RSI 70/30
+          // refs) — needs to expose createPriceLine for the dispatcher to
+          // attach them.
+          createPriceLine: (o: unknown) => {
+            calls.push({ method: "secondary.createPriceLine", args: [o] });
+            return { __pl: true };
+          },
+          removePriceLine: () => undefined,
         };
       },
       removeSeries: () => undefined,

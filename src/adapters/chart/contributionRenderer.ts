@@ -93,8 +93,18 @@ export function applyContribution(
         return;
       }
       case "priceLines": {
+        // Attach to the LAST series created in this contribution (handles
+        // the compound `{lines + priceLines}` pattern used by RSI for its
+        // 70/30 overbought/oversold reference lines — they need to sit in
+        // the indicator's own secondary pane, not on the main candle pane).
+        // Falls back to mainSeries when this contribution didn't create any
+        // line/histogram of its own — that's the structure_levels /
+        // liquidity_pools / fibonacci case (anchor + Fib levels go on the
+        // main candle pane).
+        const target = (createdSeries[createdSeries.length - 1] ??
+          opts.mainSeries) as ISeriesApi<"Candlestick" | "Line" | "Histogram">;
         for (const line of c.lines) {
-          const created = opts.mainSeries.createPriceLine({
+          const created = target.createPriceLine({
             price: line.price,
             color: line.color,
             lineWidth: 1,
@@ -102,7 +112,7 @@ export function applyContribution(
             axisLabelVisible: line.title !== "",
             title: line.title,
           });
-          createdPriceLines.push({ series: opts.mainSeries, line: created });
+          createdPriceLines.push({ series: target as ISeriesApi<"Candlestick">, line: created });
         }
         return;
       }

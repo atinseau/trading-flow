@@ -24,6 +24,15 @@ function fakeChartAndSeries(calls: Call[]) {
     calls.push({ method: "chart.addSeries", args: [cls, opts, paneIdx] });
     return {
       setData: (d: unknown) => calls.push({ method: "series.setData", args: [d] }),
+      // Secondary-pane series may receive priceLines (RSI 70/30 refs etc.) —
+      // the dispatcher attaches priceLines from a compound to the last
+      // created line series rather than to mainSeries.
+      createPriceLine: (o: unknown) => {
+        calls.push({ method: "series.createPriceLine", args: [o] });
+        return { __pl: true };
+      },
+      removePriceLine: (line: unknown) =>
+        calls.push({ method: "series.removePriceLine", args: [line] }),
     };
   };
   const fakeChart = {
@@ -187,7 +196,9 @@ describe("applyContribution dispatcher", () => {
     const { cleanup } = applyContribution(opts._chart as never, c, opts);
     cleanup();
     expect(calls.some((c) => c.method === "chart.removeSeries")).toBe(true);
-    expect(calls.some((c) => c.method === "main.removePriceLine")).toBe(true);
+    // priceLines attached to the secondary line series (compound contains
+    // both lines + priceLines, so priceLines target the just-created line).
+    expect(calls.some((c) => c.method === "series.removePriceLine")).toBe(true);
     expect(calls.some((c) => c.method === "main.detachPrimitive")).toBe(true);
   });
 

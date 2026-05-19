@@ -27,12 +27,17 @@ describe("rsiPlugin", () => {
     expect(s.rsi as number).toBeLessThanOrEqual(100);
   });
 
-  test("computeSeries returns aligned line series of length n", () => {
+  test("computeSeries returns compound (lines + 70/30 refLines) of length n", () => {
     const c = candles(50);
     const series = rsiPlugin.computeSeries(c);
-    expect(series.kind).toBe("lines");
-    if (series.kind !== "lines") throw new Error();
-    expect(series.series.rsi.length).toBe(50);
+    expect(series.kind).toBe("compound");
+    if (series.kind !== "compound") throw new Error();
+    const lines = series.parts.find((p) => p.kind === "lines");
+    const refLines = series.parts.find((p) => p.kind === "priceLines");
+    if (lines?.kind !== "lines") throw new Error("lines part missing");
+    if (refLines?.kind !== "priceLines") throw new Error("priceLines part missing");
+    expect(lines.series.rsi.length).toBe(50);
+    expect(refLines.lines.map((l) => l.price).sort()).toEqual([30, 70]);
   });
 
   test("scalarSchemaFragment validates rsi number", () => {
