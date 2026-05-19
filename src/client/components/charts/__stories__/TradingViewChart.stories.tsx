@@ -1,3 +1,4 @@
+import { REGISTRY } from "@adapters/indicators/IndicatorRegistry";
 import { emaStackPlugin } from "@adapters/indicators/plugins/ema_stack";
 import { rsiPlugin } from "@adapters/indicators/plugins/rsi";
 import { TradingViewChart } from "@client/components/charts/TradingViewChart";
@@ -97,5 +98,21 @@ export const WithPriceLines = {
       { price: 105, color: "#ef4444", title: "SL", style: 2 as 0 | 1 | 2 },
       { price: 110, color: "#3b82f6", title: "Entry", style: 0 as 0 | 1 | 2 },
     ],
+  },
+};
+
+export const AllIndicators = {
+  args: {
+    candles,
+    enableControls: true,
+    height: 600,
+    // Hide everything by default — user reveals via chips, lets them
+    // explore each indicator in isolation or compose any combination.
+    initialVisibility: Object.fromEntries(REGISTRY.map((p) => [p.id, false])),
+    indicators: REGISTRY.map((plugin) => ({
+      id: plugin.id,
+      plugin,
+      contribution: plugin.computeSeries(candlesForCompute as never),
+    })),
   },
 };
